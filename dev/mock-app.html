@@ -1,0 +1,198 @@
+<!doctype html>
+<!--
+  DEV ONLY. A stand-in for the real apps, used by `npm run dev:demo`.
+  It runs the real docs/bridge.js (with the trusted origin swapped for this dev server's
+  origin), so the dashboard's bridge can be exercised end to end on localhost.
+  This folder is not part of the production build. All data shown here is fake.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mock app</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 28px;
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        background: #f6f7fb;
+        color: #162033;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+      }
+      .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 99px;
+        background: #e3e7f1;
+        font-size: 12px;
+      }
+      .card {
+        margin-top: 18px;
+        padding: 16px;
+        border: 1px solid #d5dae6;
+        border-radius: 12px;
+        background: #fff;
+        max-width: 640px;
+      }
+      button {
+        padding: 8px 14px;
+        border: 0;
+        border-radius: 8px;
+        background: #077a5f;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      label {
+        display: block;
+        margin-top: 8px;
+      }
+      #log {
+        margin: 10px 0 0;
+        padding-left: 18px;
+        color: #46546e;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="name">Mock app</h1>
+    <span class="tag">dev mock, fake data</span>
+    <span class="tag" id="status">starting</span>
+
+    <div class="card" id="producer" hidden>
+      <strong>Produces payroll results</strong>
+      <p>Sends the fake October sample to the dashboard, as the real payroll app would.</p>
+      <button id="send" type="button">Send to dashboard</button>
+    </div>
+
+    <div class="card" id="consumer" hidden>
+      <strong>Receives payroll results</strong>
+      <p id="received">Nothing received yet.</p>
+      <button id="request" type="button">Request latest run from dashboard</button>
+      <label><input type="checkbox" id="silent" /> Don't acknowledge (simulate a timeout)</label>
+      <label
+        ><input type="checkbox" id="late" /> Acknowledge 12 seconds late (import once, answer after
+        the timeout)</label
+      >
+      <label
+        ><input type="checkbox" id="refuse" /> Refuse the data (simulate an import error)</label
+      >
+    </div>
+
+    <div class="card">
+      <strong>Log</strong>
+      <ol id="log"></ol>
+    </div>
+
+    <script>
+      (async function () {
+        var params = new URLSearchParams(location.search);
+        var appId = params.get("app") || "mock";
+        var names = {
+          payroll: "Payroll System",
+          "pdf-editor": "PDF Form Filler",
+          payslip: "Payslip Automation",
+        };
+        var $ = function (id) {
+          return document.getElementById(id);
+        };
+        var imports = 0;
+        var log = function (text) {
+          var li = document.createElement("li");
+          li.textContent = new Date().toLocaleTimeString() + "  " + text;
+          $("log").prepend(li);
+        };
+
+        $("name").textContent = (names[appId] || appId) + " (mock)";
+        document.title = $("name").textContent;
+
+        // ?nobridge=1 behaves like an app that has not installed bridge.js yet.
+        if (params.get("nobridge")) {
+          $("status").textContent = "bridge not installed";
+          log("Running without the bridge.");
+          return;
+        }
+
+        // Load the real bridge, trusting this dev server instead of the deployed dashboard.
+        var source = await (await fetch("../docs/bridge.js")).text();
+        var marker = 'var HUB_ORIGIN = "https://noor1290.github.io";';
+        if (source.indexOf(marker) < 0) throw new Error("bridge.js: HUB_ORIGIN line not found");
+        new Function(
+          source.replace(marker, "var HUB_ORIGIN = " + JSON.stringify(location.origin) + ";"),
+        ).call(window);
+
+        var Bridge = window.PayrollHubBridge;
+        Bridge.onStatus(function (connected) {
+          $("status").textContent = !Bridge.isEmbedded()
+            ? "standalone"
+            : connected
+              ? "connected to dashboard"
+              : "waiting for dashboard";
+        });
+
+        var show = function (payload, how) {
+          imports += 1;
+          window.__mockImports = imports;
+          window.__lastKeys = Object.keys(payload.rows[0] || {});
+          window.__lastCount = payload.rows.length;
+          $("received").textContent =
+            how +
+            ": " +
+            payload.rows.length +
+            " rows of " +
+            payload.dataType +
+            (payload.meta && payload.meta.period ? " for " + payload.meta.period : "") +
+            " (import #" +
+            imports +
+            ")";
+          log(how + " " + payload.rows.length + " rows");
+        };
+
+        Bridge.init({
+          appId: appId,
+          onData: function (payload) {
+            if ($("silent").checked) return new Promise(function () {}); // never settles
+            if ($("refuse").checked) throw new Error("The mock app was told to refuse this data.");
+            show(payload, "Received");
+            if ($("late").checked)
+              return new Promise(function (resolve) {
+                setTimeout(resolve, 12000);
+              });
+          },
+        });
+
+        if (appId === "payroll") {
+          $("producer").hidden = false;
+          $("send").onclick = async function () {
+            var rows = await (
+              await fetch("../samples/ABC%20Co%20Ltd-pdf-fill-2026-10.json")
+            ).json();
+            var reply = await Bridge.sendToDashboard("send-data", {
+              dataType: "payroll-result",
+              rows: rows,
+              meta: { period: "2026-10" },
+            });
+            log(
+              reply.ok
+                ? "Dashboard received " + rows.length + " rows"
+                : "Dashboard said: " + reply.error,
+            );
+          };
+        } else {
+          $("consumer").hidden = false;
+          $("request").onclick = async function () {
+            log("Asked the dashboard for the latest run");
+            var reply = await Bridge.requestData("payroll-result");
+            if (reply.ok) show(reply, "Requested and got");
+            else log("Dashboard said: " + reply.error);
+          };
+        }
+      })();
+    </script>
+  </body>
+</html>

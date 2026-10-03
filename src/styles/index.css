@@ -1,0 +1,207 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Design tokens. Dark is the default; light applies when the OS asks
+   for it (and no manual choice was made) or when data-theme="light".
+   Components only ever use the Tailwind names mapped in @theme below.
+   ------------------------------------------------------------------ */
+:root {
+  color-scheme: dark;
+
+  --canvas: #070b14;
+  --elevated: #0d1424;
+  --surface: rgb(148 170 215 / 0.055);
+  --surface-hover: rgb(148 170 215 / 0.1);
+  --line: rgb(148 170 215 / 0.14);
+  --line-strong: rgb(148 170 215 / 0.28);
+
+  --fg: #e9eef8;
+  --muted: #a3b0c8;
+  --subtle: #7c8dab;
+
+  --accent: #2dd4a7;
+  --accent-hover: #4be0b8;
+  --accent-fg: #03241b;
+  --warn: #f5b544;
+  --danger: #fb7185;
+  --glow: #8b7cf6;
+
+  --aurora-a: rgb(45 212 167 / 0.16);
+  --aurora-b: rgb(139 124 246 / 0.14);
+  --aurora-c: rgb(56 132 255 / 0.1);
+  --inner-glow: inset 0 1px 0 0 rgb(255 255 255 / 0.06);
+  --shadow-pop: 0 24px 60px -20px rgb(0 0 0 / 0.7);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+
+    --canvas: #f3f5fa;
+    --elevated: #ffffff;
+    --surface: rgb(255 255 255 / 0.72);
+    --surface-hover: rgb(13 22 38 / 0.05);
+    --line: rgb(13 22 38 / 0.1);
+    --line-strong: rgb(13 22 38 / 0.22);
+
+    --fg: #0d1626;
+    --muted: #46546e;
+    --subtle: #5c6b87;
+
+    --accent: #077a5f;
+    --accent-hover: #066a52;
+    --accent-fg: #ffffff;
+    --warn: #96590a;
+    --danger: #be123c;
+    --glow: #6453c9;
+
+    --aurora-a: rgb(7 122 95 / 0.12);
+    --aurora-b: rgb(100 83 201 / 0.1);
+    --aurora-c: rgb(56 132 255 / 0.08);
+    --inner-glow: inset 0 1px 0 0 rgb(255 255 255 / 0.8);
+    --shadow-pop: 0 24px 60px -24px rgb(13 22 38 / 0.28);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --canvas: #f3f5fa;
+  --elevated: #ffffff;
+  --surface: rgb(255 255 255 / 0.72);
+  --surface-hover: rgb(13 22 38 / 0.05);
+  --line: rgb(13 22 38 / 0.1);
+  --line-strong: rgb(13 22 38 / 0.22);
+
+  --fg: #0d1626;
+  --muted: #46546e;
+  --subtle: #5c6b87;
+
+  --accent: #077a5f;
+  --accent-hover: #066a52;
+  --accent-fg: #ffffff;
+  --warn: #96590a;
+  --danger: #be123c;
+  --glow: #6453c9;
+
+  --aurora-a: rgb(7 122 95 / 0.12);
+  --aurora-b: rgb(100 83 201 / 0.1);
+  --aurora-c: rgb(56 132 255 / 0.08);
+  --inner-glow: inset 0 1px 0 0 rgb(255 255 255 / 0.8);
+  --shadow-pop: 0 24px 60px -24px rgb(13 22 38 / 0.28);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-elevated: var(--elevated);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-glow: var(--glow);
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --shadow-pop: var(--shadow-pop);
+  --shadow-inner-glow: var(--inner-glow);
+
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-drift: drift 22s ease-in-out infinite alternate;
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes drift {
+    from {
+      transform: translate3d(-2%, -1%, 0) scale(1);
+    }
+    to {
+      transform: translate3d(2%, 2%, 0) scale(1.06);
+    }
+  }
+}
+
+@layer base {
+  html {
+    height: 100%;
+    background: var(--canvas);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* The page body never scrolls; each screen scrolls inside its own container. */
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--canvas);
+    color: var(--fg);
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@utility glass {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--inner-glow);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+@utility tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

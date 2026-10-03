@@ -1,0 +1,90 @@
+# Checks every push and pull request; publishes the site to GitHub Pages from main.
+#
+# One-time setup in the repository (Settings):
+#   Pages               -> Build and deployment -> Source: "GitHub Actions"
+#   Secrets and variables -> Actions -> Variables:
+#       VITE_SUPABASE_URL        your Supabase project URL
+#       VITE_SUPABASE_ANON_KEY   the project's PUBLIC anon key (never any other key)
+#   Both values are public by design, so "Variables" is the right place. If you prefer to keep
+#   them out of the logs, add them as Secrets with the same names instead; either works.
+
+name: Check and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; the deploy job asks for what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_COMMIT_SHA: ${{ github.sha }}
+      # GitHub Pages serves a project site at /<repository name>/, so the build follows the
+      # repository's actual name. Set a VITE_BASE_PATH variable only to override that.
+      VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - name: Require the Supabase settings before publishing
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY under Settings > Secrets and variables > Actions > Variables. Without them the published site cannot sign anyone in."
+            exit 1
+          fi
+
+      - run: npm run build
+
+      - name: Make sure no demo code or sample data reached the build
+        run: |
+          if grep -rIlE "Enter demo workspace|mock-app\.html|Big Sample Ltd" dist; then
+            echo "::error::Demo-only code was found in the production build."
+            exit 1
+          fi
+
+      - name: Upload the site
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,21 @@
+node_modules/
+dist/
+coverage/
+*.local
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# Environment files: never commit (the example is the only exception)
+.env
+.env.*
+!.env.example
+
+# Payroll exports: the repo is public, only fake data under samples/ is allowed
+*-pdf-fill-*.json
+*payroll*.json
+/exports/
+/data/
+!samples/
+!samples/**
