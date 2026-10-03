@@ -36,7 +36,7 @@ Production builds carry a CSP meta tag (src/config/csp.ts): no inline scripts, n
 
 ## Database (already created; see supabase/migrations/0001_initial_schema.sql)
 
-Imports are saved only through `import_payroll_run` (migration 0002, atomic, run by hand by the owner). Field mapping lives in src/config/payrollFields.ts and nowhere else.
+Imports are saved only through `import_payroll_run` (migration 0002, atomic, run by hand by the owner). Companies are created only through `create_company` (migration 0003, existing admins only) and deleted only through `delete_company` (migration 0004, admins of that company, permanent, refused while it has an approved run). Both are SECURITY DEFINER; never add an insert or delete policy or grant on `companies` or `company_members`. Field mapping lives in src/config/payrollFields.ts and nowhere else.
 
 companies, company_members (read-only from app), employees, payroll_runs, payroll_entries (`extra jsonb` for new fields).
 Filter soft-deleted rows (`deleted_at is null`). New field? Put it in `extra` first; ALTER TABLE only if it must be queryable.

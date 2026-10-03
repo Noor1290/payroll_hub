@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge, StatusDot } from "@/components/ui/misc";
 import { APPS, getApp, PROTOCOL_VERSION } from "@/config/apps.config";
+import { DeleteCompanySection } from "@/features/company/DeleteCompanySection";
 import { useTheme, type ThemeChoice } from "@/features/theme/theme-context";
 import { deleteTemplate, mappingTemplates } from "@/features/transfer/templates";
 import { healthView } from "@/features/workspace/health";
@@ -376,6 +377,8 @@ export function SettingsPage() {
             <dd>Supabase, with the public anon key and row-level security</dd>
           </dl>
         </Section>
+
+        <DeleteCompanySection />
       </div>
     </>
   );

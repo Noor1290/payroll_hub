@@ -1,15 +1,17 @@
-import { Building2, Check, ChevronsUpDown, CircleAlert } from "lucide-react";
+import { Building2, Check, ChevronsUpDown, CircleAlert, Plus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge, Skeleton } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { Role } from "@/lib/supabase/schemas";
 import { useCompany } from "./company-context";
+import { addCompanyOpen } from "./createCompany";
 
 const TRIGGER_CLASS =
   "flex h-10 max-w-64 min-w-0 items-center gap-2.5 rounded-lg border border-line bg-surface px-3 text-sm shadow-inner-glow transition-colors";
@@ -19,7 +21,7 @@ export function RoleBadge({ role }: { role: Role }) {
 }
 
 export function CompanySwitcher() {
-  const { status, failure, retry, memberships, current, select } = useCompany();
+  const { status, failure, retry, memberships, current, select, canAddCompany } = useCompany();
 
   if (status === "loading") {
     return <Skeleton className="h-10 w-48" aria-hidden="true" />;
@@ -89,6 +91,17 @@ export function CompanySwitcher() {
             </DropdownMenuItem>
           );
         })}
+        {canAddCompany && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => addCompanyOpen.set(true)}>
+              <span className="grid size-4 shrink-0 place-items-center">
+                <Plus aria-hidden="true" />
+              </span>
+              <span className="text-fg">Add company</span>
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

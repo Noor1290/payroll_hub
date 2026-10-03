@@ -12,7 +12,7 @@ import { useUnlock } from "./useUnlock";
 
 const minutesText = (minutes: number) => (minutes === 1 ? "1 minute" : `${minutes} minutes`);
 
-const LOCKED_BECAUSE: Record<Exclude<LockReason, "session">, string> = {
+const LOCKED_BECAUSE: Partial<Record<LockReason, string>> = {
   timeout: "It locked again because the time was up.",
   hidden: "It locked again because this tab was in the background for more than two minutes.",
   manual: "You locked it.",
@@ -137,7 +137,7 @@ export function PasswordGate({ what, children }: PasswordGateProps) {
         {what} shows national IDs and salary figures. It stays open for {minutesText(minutes)}, then
         locks again. You stay signed in either way.
       </p>
-      {lockedBy && lockedBy !== "session" && (
+      {lockedBy && LOCKED_BECAUSE[lockedBy] && (
         <p role="status" className="mt-2 text-sm text-subtle">
           {LOCKED_BECAUSE[lockedBy]}
         </p>

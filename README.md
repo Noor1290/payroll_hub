@@ -54,12 +54,15 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 
 1. `0001_initial_schema.sql`: tables, row-level security, grants.
 2. `0002_import_payroll_run.sql`: the function that saves an import as one all-or-nothing step.
+3. `0003_create_company.sql`: the function behind "Add company".
+4. `0004_delete_company.sql`: the function behind "Delete company".
 
 Then:
 
 1. In Supabase, under **Authentication**, switch off sign-ups and create your user (tick "Auto Confirm User"). The dashboard has no sign-up screen.
 2. Create your first company and make yourself its admin: un-comment the "FIRST-TIME SETUP" block at the end of `0001_initial_schema.sql`, change the email, and run it.
 3. Add other people the same way, as `admin` or `viewer`, in `company_members`.
+4. Further companies can be added from the dashboard; see [Who can add a company](#who-can-add-a-company).
 
 Supabase pauses free projects after a period of inactivity. The dashboard then says it can't reach the database; resume the project from the Supabase dashboard.
 
@@ -107,9 +110,31 @@ What the dashboard does on top of that:
 - Everything that crosses a boundary (files, messages from apps, database responses) is validated first. A mismatch is shown as an error, never as data.
 - The published site carries a Content Security Policy: it runs only its own scripts, talks only to itself and the Supabase project, and embeds only the registered apps' origin. No third-party scripts, fonts or trackers are loaded.
 
+### Who can add a company
+
+"Add company" is in the company switcher and the command palette. The rule is: **only someone who is already an admin of at least one company can add another one**, and they become the new company's admin.
+
+- A viewer cannot add companies, and neither can a signed-in user who belongs to no company. The action is hidden from them, and the database refuses them even if they call it directly.
+- The very first company, and its first admin, are therefore still created by hand in the Supabase SQL editor (the "FIRST-TIME SETUP" block in `0001_initial_schema.sql`). So is giving anyone else access to a company: there is no way to add members from the dashboard.
+- A company needs a name and a BRN. The BRN has to be exactly the one in that company's payroll JSON exports, because imports are matched to a company by BRN. Each BRN can belong to one company only.
+- It works through one database function, `create_company` (migration `0003`), which checks the rule, creates the company and adds the admin membership in a single step. The `companies` table itself still accepts no inserts from the dashboard; the function is the only way in.
+- If someone tries to add a BRN that already exists, they are told it exists, even when it belongs to a company they cannot see. That follows from BRNs being unique; nothing else about that company is shown.
+
+### Deleting a company
+
+Settings has a "Danger zone" for the selected company, shown only to its admins. Deleting is **permanent**: the company goes, together with every employee, payroll run and payroll entry stored for it (soft-deleted ones included) and everyone's access to it. It cannot be undone from the dashboard; the only way back is a database backup.
+
+- **Who:** an admin of that company. Being an admin of a different company is not enough.
+- **Password first:** the dialog sits behind the password gate. Until you confirm your password it shows nothing about the company and offers no Delete button.
+- **You see what goes:** the dialog lists how many employees, runs and entries will be removed, and how many other people lose access.
+- **Type the name:** Delete stays disabled until you type the company's name exactly, capitals included.
+- **Approved runs protect it:** a company with any approved run cannot be deleted, whether or not that run was soft-deleted. Set each one back to draft in the Data explorer first. A deleted approved run doesn't appear there: import that month again (which brings it back as a draft), or change it in the SQL editor.
+- **Afterwards:** the dashboard switches to another of your companies, or shows the "no company" state. Everything it held about the deleted company is dropped from memory and the password gate locks again.
+- **How it works:** one database function, `delete_company` (migration `0004`), checks the caller's role, the name and the approved-run rule, then deletes entries, runs, employees, memberships and the company in a single transaction: all of it or none of it. The tables themselves still accept no deletes from the dashboard for companies or memberships; the function is the only way in.
+
 ### The password gate
 
-The data explorer, the Database page, and sending a saved run to an app ask you to **confirm your password** first. After that they stay open for 10 minutes (1 to 30, set in Settings), then lock again.
+The data explorer, the Database page, deleting a company, and sending a saved run to an app ask you to **confirm your password** first. After that they stay open for 10 minutes (1 to 30, set in Settings), then lock again.
 
 - The window is fixed: it is counted from the moment you unlock and is not extended by activity.
 - It also locks when you sign out, when you are signed out for inactivity, when the session expires, and when the tab has been in the background for more than two minutes.
@@ -150,7 +175,7 @@ Do this after any change to the migrations, and once after the first deployment.
 1. **The non-member must see nothing.** Sign in as that user. The company switcher should say "No company", the Overview should say you are not a member of any company, and Import should say it needs an admin role.
 2. **Check it at the API, not just on screen.** While signed in as the non-member, open the browser's developer tools, go to the Network tab, and reload. Every response from `…supabase.co/rest/v1/…` should be an empty list `[]`. This is the check that matters: it shows the database, not the page, is refusing.
 3. **The viewer can read but not write.** Sign in as the viewer. Runs and employees should be visible. There should be no Approve, Delete run or Save buttons, the Database item should be missing from the sidebar, and Import should refuse.
-4. **The viewer cannot write at the API either.** As the viewer, in the SQL editor's "Run as user" (role impersonation) or with any API client using the viewer's session, try `update payroll_runs set status = 'approved'`. It should change 0 rows. Calling `import_payroll_run` should fail with `PH_NOT_ADMIN`.
+4. **The viewer cannot write at the API either.** As the viewer, in the SQL editor's "Run as user" (role impersonation) or with any API client using the viewer's session, try `update payroll_runs set status = 'approved'`. It should change 0 rows. Calling `import_payroll_run`, `create_company` or `delete_company` should fail with `PH_NOT_ADMIN`. The non-member should get the same refusal from `create_company` and `delete_company`.
 5. **Signed-out access is refused.** In a private window, request `https://<project>.supabase.co/rest/v1/companies?apikey=<anon key>`. It should return a permission error or an empty list, never data.
 
 If any of these shows data it shouldn't, the fault is in the database rules. Fix it in a new migration; changing the dashboard would only hide it.
@@ -223,6 +248,8 @@ dev/           mock apps for demo mode (not part of the build)
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | "Can't reach the database"                          | You are offline, or the Supabase project is paused. Resume it in the Supabase dashboard.              |
 | "The import function isn't installed"               | Run `supabase/migrations/0002_import_payroll_run.sql` in the SQL editor.                              |
+| "Adding companies isn't set up in the database yet" | Run `supabase/migrations/0003_create_company.sql` in the SQL editor.                                  |
+| "Deleting companies isn't set up in the database yet" | Run `supabase/migrations/0004_delete_company.sql` in the SQL editor.                                |
 | "You're not a member of any company yet"            | Your user has no row in `company_members`.                                                            |
 | An app shows "Bridge not installed" (violet ring)   | The app loaded but has no `bridge.js`, or an old one. See docs/INTEGRATION.md.                        |
 | An app shows "Not connected (local run)"            | Expected on `localhost`: the live apps only answer the deployed dashboard. Use `npm run dev:demo`.    |

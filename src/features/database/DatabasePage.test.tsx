@@ -79,6 +79,7 @@ function companyValue(current: Membership): CompanyContextValue {
     memberships: [current],
     current,
     isAdmin: current.role === "admin",
+    canAddCompany: current.role === "admin",
     select: () => {},
   };
 }

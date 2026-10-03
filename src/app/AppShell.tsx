@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useLocation, useOutlet } from "react-router-dom";
 import { AuroraBackground } from "@/components/brand";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AddCompanyDialog } from "@/features/company/AddCompanyDialog";
 import { BridgeDialogs } from "@/features/workspace/BridgeDialogs";
 import { WorkspaceHost } from "@/features/workspace/WorkspaceHost";
 import { preferenceStorage } from "@/lib/storage";
@@ -95,6 +96,7 @@ export function AppShell() {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <BridgeDialogs />
+      <AddCompanyDialog />
     </div>
   );
 }

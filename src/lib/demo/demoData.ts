@@ -220,7 +220,8 @@ const liveRuns = (companyId: string) =>
 
 export async function demoFetchMemberships(): Promise<Membership[]> {
   await pause(300);
-  return demoMemberships;
+  // A copy, so a company added later is seen as a change.
+  return [...demoMemberships];
 }
 
 export async function demoFetchOverview(companyId: string) {
@@ -385,6 +386,78 @@ export async function demoSetRunStatus(runId: string, status: RunStatus): Promis
 export async function demoSoftDeleteRun(runId: string): Promise<void> {
   await pause(350);
   findRunAsAdmin(runId).deletedAt = new Date().toISOString();
+}
+
+/** Mirrors create_company (migration 0003): existing admins only, unique BRN, caller becomes admin. */
+export async function demoCreateCompany(input: {
+  name: string;
+  address: string | null;
+  brn: string;
+  vat: string | null;
+}): Promise<Membership["company"]> {
+  await pause(500);
+  if (!demoMemberships.some((m) => m.role === "admin")) {
+    throw Object.assign(new Error("PH_NOT_ADMIN"), { code: "42501" });
+  }
+  const wanted = input.brn.trim().toUpperCase();
+  if (demoMemberships.some((m) => (m.company.brn ?? "").trim().toUpperCase() === wanted)) {
+    throw Object.assign(new Error("PH_DUPLICATE_BRN"), { code: "23505" });
+  }
+  const company = { id: newId(1), ...input };
+  demoMemberships.push({ role: "admin", company });
+  return company;
+}
+
+export async function demoFetchDeletePreview(companyId: string) {
+  await pause(350);
+  const companyRuns = runs.filter((run) => run.companyId === companyId);
+  const runIds = new Set(companyRuns.map((run) => run.id));
+  return {
+    employees: employees.filter((e) => e.companyId === companyId).length,
+    runs: companyRuns.length,
+    entries: entries.filter((entry) => runIds.has(entry.runId)).length,
+    otherMembers: roleIn(companyId) ? 1 : 0,
+    approved: companyRuns
+      .filter((run) => run.status === "approved")
+      .sort((a, b) => b.period.localeCompare(a.period))
+      .map((run) => ({ period: run.period, deleted: run.deletedAt !== null })),
+  };
+}
+
+/** Mirrors delete_company (migration 0004): admin of that company, exact name, no approved runs. */
+export async function demoDeleteCompany(companyId: string, confirmName: string) {
+  await pause(600);
+  const membership = demoMemberships.find((m) => m.company.id === companyId);
+  if (!membership || membership.role !== "admin") {
+    throw Object.assign(new Error("PH_NOT_ADMIN"), { code: "42501" });
+  }
+  if (confirmName.trim() !== membership.company.name.trim()) {
+    throw Object.assign(new Error("PH_NAME_MISMATCH"), { code: "22023" });
+  }
+  const companyRuns = runs.filter((run) => run.companyId === companyId);
+  if (companyRuns.some((run) => run.status === "approved")) {
+    throw Object.assign(new Error("PH_HAS_APPROVED_RUNS"), { code: "P0001" });
+  }
+  const runIds = new Set(companyRuns.map((run) => run.id));
+  const removeWhere = <T>(list: T[], gone: (item: T) => boolean) => {
+    let removed = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (gone(list[i]!)) {
+        list.splice(i, 1);
+        removed += 1;
+      }
+    }
+    return removed;
+  };
+  const result = {
+    company_id: companyId,
+    entries: removeWhere(entries, (entry) => runIds.has(entry.runId)),
+    runs: removeWhere(runs, (run) => run.companyId === companyId),
+    employees: removeWhere(employees, (e) => e.companyId === companyId),
+    members: 2,
+  };
+  removeWhere(demoMemberships, (m) => m.company.id === companyId);
+  return result;
 }
 
 // ---------------------------------------------------------------------------------------------

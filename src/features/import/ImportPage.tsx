@@ -460,9 +460,9 @@ function ImportCard({
             {match.kind === "unknown" && (
               <Notice tone="danger" title={`No company with BRN ${match.brn}`}>
                 <p>
-                  None of your companies has this BRN. Companies are created by the owner in
-                  Supabase, not from this dashboard. Check the BRN in the file, or ask the owner to
-                  add the company and make you a member.
+                  None of your companies has this BRN. Check the BRN in the file. If the company is
+                  new, add it first with "Add company" in the company switcher, using exactly this
+                  BRN; if it already exists, ask the owner to make you a member.
                 </p>
               </Notice>
             )}

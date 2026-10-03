@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CompanyContext, type CompanyContextValue } from "@/features/company/company-context";
 import { ThemeContext, type ThemeContextValue } from "@/features/theme/theme-context";
 import { importInbox } from "@/features/import/importInbox";
 import { deleteTemplate, mappingTemplates, saveTemplate } from "@/features/transfer/templates";
@@ -30,10 +31,35 @@ vi.mock("sonner", () => ({
 const setTheme = vi.fn();
 const theme: ThemeContextValue = { theme: "system", resolved: "dark", setTheme, toggle: () => {} };
 
-const renderSettings = () =>
+const viewerOf = (role: "admin" | "viewer"): CompanyContextValue => {
+  const current = {
+    role,
+    company: {
+      id: "10000000-0000-4000-8000-000000000001",
+      name: "ABC Co Ltd",
+      address: null,
+      brn: null,
+      vat: null,
+    },
+  };
+  return {
+    status: "ready",
+    failure: null,
+    retry: () => {},
+    memberships: [current],
+    current,
+    isAdmin: role === "admin",
+    canAddCompany: role === "admin",
+    select: () => {},
+  };
+};
+
+const renderSettings = (role: "admin" | "viewer" = "viewer") =>
   render(
     <ThemeContext.Provider value={theme}>
-      <SettingsPage />
+      <CompanyContext.Provider value={viewerOf(role)}>
+        <SettingsPage />
+      </CompanyContext.Provider>
     </ThemeContext.Provider>,
   );
 
@@ -63,6 +89,13 @@ describe("Settings", () => {
       "Memory",
       "About",
     ]);
+  });
+
+  it("adds the danger zone last, for an admin of the selected company only", () => {
+    renderSettings("admin");
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings.at(-1)).toBe("Danger zone");
+    expect(screen.getByRole("button", { name: /Delete ABC Co Ltd/ })).toBeTruthy();
   });
 
   it("switches theme", () => {

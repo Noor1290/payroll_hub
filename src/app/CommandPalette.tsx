@@ -7,6 +7,7 @@ import {
   LogOut,
   Monitor,
   Moon,
+  Plus,
   Search,
   Sun,
   type LucideIcon,
@@ -16,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { Kbd } from "@/components/ui/misc";
 import { useAuth } from "@/features/auth/auth-context";
 import { useCompany } from "@/features/company/company-context";
+import { addCompanyOpen } from "@/features/company/createCompany";
 import { useTheme, type ThemeChoice } from "@/features/theme/theme-context";
 import { healthView } from "@/features/workspace/health";
 import { APPS } from "@/config/apps.config";
@@ -66,7 +68,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const { signOut } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { memberships, current, select, isAdmin } = useCompany();
+  const { memberships, current, select, isAdmin, canAddCompany } = useCompany();
   const health = useAppHealth();
 
   const run = (action: () => void) => {
@@ -96,6 +98,38 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               <Command.Empty className="px-4 py-10 text-center text-sm text-muted">
                 Nothing matches. Try a page name like “Import”.
               </Command.Empty>
+
+              {/* Actions come first: typing what you want to do should land on the action, not on a page. */}
+              <Command.Group heading="Actions" className={GROUP_CLASS}>
+                <Item
+                  value="start a transfer"
+                  keywords={["send", "wizard", "map"]}
+                  icon={ArrowLeftRight}
+                  onSelect={() => run(() => navigate("/transfer"))}
+                >
+                  Start a transfer
+                </Item>
+                {canAddCompany && (
+                  <Item
+                    value="add company"
+                    keywords={["new", "create", "brn"]}
+                    icon={Plus}
+                    onSelect={() => run(() => addCompanyOpen.set(true))}
+                  >
+                    Add company
+                  </Item>
+                )}
+                {isAdmin && (
+                  <Item
+                    value="open database"
+                    keywords={["tables", "raw", "rows", "sql"]}
+                    icon={Lock}
+                    onSelect={() => run(() => navigate("/database"))}
+                  >
+                    Open Database
+                  </Item>
+                )}
+              </Command.Group>
 
               <Command.Group heading="Go to" className={GROUP_CLASS}>
                 {navItemsFor(isAdmin).map(({ to, label, icon, description }) => (
@@ -146,28 +180,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   );
                 })}
               </Command.Group>
-
-              <Command.Group heading="Actions" className={GROUP_CLASS}>
-                <Item
-                  value="start a transfer"
-                  keywords={["send", "wizard", "map"]}
-                  icon={ArrowLeftRight}
-                  onSelect={() => run(() => navigate("/transfer"))}
-                >
-                  Start a transfer
-                </Item>
-                {isAdmin && (
-                  <Item
-                    value="open database"
-                    keywords={["tables", "raw", "rows", "sql"]}
-                    icon={Lock}
-                    onSelect={() => run(() => navigate("/database"))}
-                  >
-                    Open Database
-                  </Item>
-                )}
-              </Command.Group>
-
               <Command.Group heading="Preferences" className={GROUP_CLASS}>
                 {THEMES.map(([value, label, icon]) => (
                   <Item

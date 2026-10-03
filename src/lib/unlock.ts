@@ -17,7 +17,14 @@ import { createStore } from "@/lib/store";
  */
 
 /** Why the gate last closed, so the prompt can say so. */
-export type LockReason = "timeout" | "hidden" | "manual" | "session";
+export type LockReason =
+  | "timeout"
+  | "hidden"
+  | "manual"
+  /** The session ended. */
+  | "session"
+  /** The data behind the gate was removed (for example its company was deleted). */
+  | "cleared";
 
 export interface UnlockState {
   unlocked: boolean;

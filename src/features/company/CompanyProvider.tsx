@@ -6,6 +6,7 @@ import { classifyDataError } from "@/lib/supabase/errors";
 import { fetchMemberships } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import {
+  canAddCompany,
   COMPANY_STORAGE_KEY,
   CompanyContext,
   pickCompany,
@@ -49,6 +50,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       memberships,
       current,
       isAdmin: current?.role === "admin",
+      canAddCompany: canAddCompany(memberships),
       select,
     };
   }, [memberships, preferredId, query.isPending, failure, refetch, select]);
