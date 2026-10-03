@@ -1,0 +1,5 @@
+# Keep line endings as LF everywhere, so the formatting check gives the same result on
+# Windows, macOS and the build server.
+* text=auto eol=lf
+*.png binary
+*.woff2 binary
