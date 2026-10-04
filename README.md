@@ -56,6 +56,8 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 2. `0002_import_payroll_run.sql`: the function that saves an import as one all-or-nothing step.
 3. `0003_create_company.sql`: the function behind "Add company".
 4. `0004_delete_company.sql`: the function behind "Delete company".
+5. `0005_company_details.sql`: the table behind the Company profile page. It also limits what the dashboard may change on a company to its name, address and VAT (not the BRN).
+6. `0006_company_links.sql`: the table behind the Links page.
 
 Then:
 
@@ -90,11 +92,13 @@ The published site's path follows the repository's name automatically. Locally t
 | Transfer       | Pick rows and columns, map them to what an app expects, preview, and send                        |
 | Workspace      | The connected apps in tabs, kept loaded while you move around                                    |
 | Transfer log   | What was sent where in this session. No payroll values, memory only.                             |
+| Links          | The company's useful websites as cards. Admins manage them; everyone can open them.              |
+| Company profile | Name, BRN, address, VAT and any other details worth keeping. Admins manage them.                |
 | History        | Every run of the selected company                                                                |
 | Database       | A read-only look at the raw tables (admins). Behind the password gate.                           |
 | Settings       | Theme, lock and sign-out times, saved mappings, the app list, clear in-memory data               |
 
-Press Ctrl+K (Cmd+K on a Mac) anywhere for the command palette.
+Press Ctrl+K (Cmd+K on a Mac) anywhere for the command palette. It also lists the selected company's links ("Open Tax portal").
 
 ## Security model
 
@@ -126,15 +130,15 @@ Settings has a "Danger zone" for the selected company, shown only to its admins.
 
 - **Who:** an admin of that company. Being an admin of a different company is not enough.
 - **Password first:** the dialog sits behind the password gate. Until you confirm your password it shows nothing about the company and offers no Delete button.
-- **You see what goes:** the dialog lists how many employees, runs and entries will be removed, and how many other people lose access.
+- **You see what goes:** the dialog lists how many employees, runs and entries will be removed, how many company details and links go with them, and how many other people lose access.
 - **Type the name:** Delete stays disabled until you type the company's name exactly, capitals included.
 - **Approved runs protect it:** a company with any approved run cannot be deleted, whether or not that run was soft-deleted. Set each one back to draft in the Data explorer first. A deleted approved run doesn't appear there: import that month again (which brings it back as a draft), or change it in the SQL editor.
 - **Afterwards:** the dashboard switches to another of your companies, or shows the "no company" state. Everything it held about the deleted company is dropped from memory and the password gate locks again.
-- **How it works:** one database function, `delete_company` (migration `0004`), checks the caller's role, the name and the approved-run rule, then deletes entries, runs, employees, memberships and the company in a single transaction: all of it or none of it. The tables themselves still accept no deletes from the dashboard for companies or memberships; the function is the only way in.
+- **How it works:** one database function, `delete_company` (migration `0004`), checks the caller's role, the name and the approved-run rule, then deletes entries, runs, employees, memberships and the company in a single transaction: all of it or none of it. The company's details and links (migrations `0005` and `0006`) are removed in the same transaction, because those tables are tied to the company with `on delete cascade`. The tables themselves still accept no deletes from the dashboard for companies or memberships; the function is the only way in.
 
 ### The password gate
 
-The data explorer, the Database page, deleting a company, and sending a saved run to an app ask you to **confirm your password** first. After that they stay open for 10 minutes (1 to 30, set in Settings), then lock again.
+The data explorer, the Database page, deleting a company, revealing or editing a sensitive company detail, and sending a saved run to an app ask you to **confirm your password** first. After that they stay open for 10 minutes (1 to 30, set in Settings), then lock again.
 
 - The window is fixed: it is counted from the moment you unlock and is not extended by activity.
 - It also locks when you sign out, when you are signed out for inactivity, when the session expires, and when the tab has been in the background for more than two minutes.
@@ -146,9 +150,29 @@ The data explorer, the Database page, deleting a company, and sending a saved ru
 
 To put another screen behind the same gate, wrap it in `<PasswordGate what="…">`; for a single action, use the `useUnlock()` hook (`src/features/unlock/`). If the new screen caches data, add its query key to `GATED_QUERY_KEYS` in `src/lib/queryClient.ts` so locking wipes it.
 
+### Company profile
+
+The Company profile page shows the selected company's name, BRN, address and VAT, followed by a list of custom details: a label, a value and a kind (text, web address, email, phone, date or number). Viewers can read it. Admins can add, edit, delete and reorder details (drag, or the Move up / Move down buttons).
+
+- **The BRN cannot be changed from the dashboard.** Admins can edit the name, address and VAT. The BRN has to match the BRN in the payroll JSON exports, because imports are matched to a company by it, so it can only be changed in the Supabase SQL editor. This is enforced in the database: migration `0005` allows the dashboard to update only the `name`, `address` and `vat` columns of `companies`.
+- **Sensitive details are hidden from viewers by the database.** A detail marked "Sensitive" is not sent to a viewer at all: the row-level security rule on `company_details` leaves those rows out for anyone who is not an admin of the company. Viewers see no label, no value and no placeholder for them.
+- **For admins, sensitive values are masked until revealed.** The page reads the label of a sensitive detail but not its value. Revealing or editing one needs the password gate; only then is the value fetched. Values are masked again, and dropped from memory, when the gate locks, when you switch company and when you sign out.
+- **Don't store passwords here.** The page says so, and it means it: this is a place for reference numbers and contacts, not credentials. Anything an admin can reveal, any admin of that company can read.
+- No columns are ever created from the dashboard. Every custom detail is a row in `company_details`. Values are kept in memory only.
+
+### Links
+
+The Links page shows the selected company's useful websites as cards, grouped by category, with pinned links first and a search box. Clicking a card opens the site in a new tab (`target="_blank"` with `rel="noopener noreferrer"`). Viewers can only open links. Admins can add, edit, delete, pin and reorder them (drag within a group, or Move up / Move down in a card's menu; reordering is off while a search is active).
+
+- **Only `http://` and `https://` addresses are accepted.** The form refuses anything else (`javascript:`, `data:` and so on), the database refuses it too, and a stored address that somehow isn't a web address is treated as bad data and never becomes a link.
+- **Addresses are tidied before saving**: trimmed, host in lower case, trailing slash removed. Each address can be added once per company, so `https://Example.org/tax/` and `https://example.org/tax` count as the same link. Trying to add a duplicate says so in plain words.
+- **Copy links from another company** (admins) copies the links of another company you belong to into the selected one. Addresses the selected company already has are skipped, and the result says how many were copied and how many were skipped.
+- **Nothing is fetched for the cards.** Icons come from a fixed set bundled with the dashboard and colours from a fixed palette. No favicons, previews or any other request goes to the linked sites until you click.
+- The list is read again after every change and whenever the browser tab regains focus.
+
 ### The Database page
 
-An admin-only, read-only view of the raw tables for the selected company: `companies`, `employees`, `payroll_runs`, `payroll_entries` and `company_members`. It is there to check what is actually stored, without opening the Supabase dashboard.
+An admin-only, read-only view of the raw tables for the selected company: `companies`, `employees`, `payroll_runs`, `payroll_entries`, `company_members`, `company_details` and `company_links`. Every company detail value is masked there until revealed. A table whose migration has not been run yet shows a dash instead of a count and says which file to run. It is there to check what is actually stored, without opening the Supabase dashboard.
 
 What it does:
 
@@ -166,7 +190,7 @@ What it deliberately cannot do:
 - **Read user accounts.** It never touches `auth.users`. A user appears only as the first eight characters of their id.
 - **Remember what it showed.** Rows are kept in memory only: nothing goes to `localStorage`, `sessionStorage`, IndexedDB or the console.
 - **Use Supabase Realtime.** Refreshing is plain polling.
-- **Replace the database's own rules.** Hiding the page from viewers is a courtesy. A viewer could still read the same tables through the API, because the security rules allow members to read their company's data. If viewers must not see something, that has to be changed in the database rules, not here.
+- **Replace the database's own rules.** Hiding the page from viewers is a courtesy. A viewer could still read the same tables through the API, because the security rules allow members to read their company's data (the one exception is sensitive company details, which the database hides from viewers). If viewers must not see something, that has to be changed in the database rules, not here.
 
 ## Test the security yourself
 
@@ -174,9 +198,10 @@ Do this after any change to the migrations, and once after the first deployment.
 
 1. **The non-member must see nothing.** Sign in as that user. The company switcher should say "No company", the Overview should say you are not a member of any company, and Import should say it needs an admin role.
 2. **Check it at the API, not just on screen.** While signed in as the non-member, open the browser's developer tools, go to the Network tab, and reload. Every response from `…supabase.co/rest/v1/…` should be an empty list `[]`. This is the check that matters: it shows the database, not the page, is refusing.
-3. **The viewer can read but not write.** Sign in as the viewer. Runs and employees should be visible. There should be no Approve, Delete run or Save buttons, the Database item should be missing from the sidebar, and Import should refuse.
+3. **The viewer can read but not write.** Sign in as the viewer. Runs and employees should be visible. There should be no Approve, Delete run or Save buttons, the Database item should be missing from the sidebar, and Import should refuse. Links and Company profile should show no Add, Edit or Delete buttons.
 4. **The viewer cannot write at the API either.** As the viewer, in the SQL editor's "Run as user" (role impersonation) or with any API client using the viewer's session, try `update payroll_runs set status = 'approved'`. It should change 0 rows. Calling `import_payroll_run`, `create_company` or `delete_company` should fail with `PH_NOT_ADMIN`. The non-member should get the same refusal from `create_company` and `delete_company`.
-5. **Signed-out access is refused.** In a private window, request `https://<project>.supabase.co/rest/v1/companies?apikey=<anon key>`. It should return a permission error or an empty list, never data.
+5. **A viewer cannot see sensitive details, even at the API.** As an admin, add a company detail and tick Sensitive. As the viewer, open Company profile: the detail must not appear at all. Then, with the viewer's session, request `…/rest/v1/company_details?select=*`: the sensitive row must be missing from the response. Trying to insert, update or delete a row in `company_details` or `company_links` as the viewer must change nothing, and `update companies set brn = …` must be refused for everyone, admins included.
+6. **Signed-out access is refused.** In a private window, request `https://<project>.supabase.co/rest/v1/companies?apikey=<anon key>`. It should return a permission error or an empty list, never data.
 
 If any of these shows data it shouldn't, the fault is in the database rules. Fix it in a new migration; changing the dashboard would only hide it.
 
@@ -233,7 +258,7 @@ src/
   config/      apps.config.ts (registry), payrollFields.ts (field mapping), origins.ts, csp.ts, env.ts
   lib/         supabase/ (client, queries, validation), bridge/ (hub and protocol), unlock.ts, storage.ts
   features/    auth, company, overview, import, explorer, history, transfer, workspace,
-               database, settings, unlock, theme
+               links, profile, database, settings, unlock, theme
   components/  shared UI (PayrollTable, ui/…)
   app/         shell, sidebar, top bar, command palette
 docs/          BRIEF.md, INTEGRATION.md, bridge.js (copied into each app)
@@ -250,6 +275,8 @@ dev/           mock apps for demo mode (not part of the build)
 | "The import function isn't installed"               | Run `supabase/migrations/0002_import_payroll_run.sql` in the SQL editor.                              |
 | "Adding companies isn't set up in the database yet" | Run `supabase/migrations/0003_create_company.sql` in the SQL editor.                                  |
 | "Deleting companies isn't set up in the database yet" | Run `supabase/migrations/0004_delete_company.sql` in the SQL editor.                                |
+| "Company details aren't set up in the database yet" | Run `supabase/migrations/0005_company_details.sql` in the SQL editor.                               |
+| "Links aren't set up in the database yet"           | Run `supabase/migrations/0006_company_links.sql` in the SQL editor.                                   |
 | "You're not a member of any company yet"            | Your user has no row in `company_members`.                                                            |
 | An app shows "Bridge not installed" (violet ring)   | The app loaded but has no `bridge.js`, or an old one. See docs/INTEGRATION.md.                        |
 | An app shows "Not connected (local run)"            | Expected on `localhost`: the live apps only answer the deployed dashboard. Use `npm run dev:demo`.    |

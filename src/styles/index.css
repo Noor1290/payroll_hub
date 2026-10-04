@@ -25,6 +25,7 @@
   --warn: #f5b544;
   --danger: #fb7185;
   --glow: #8b7cf6;
+  --sky: #5aa9ff;
 
   --aurora-a: rgb(45 212 167 / 0.16);
   --aurora-b: rgb(139 124 246 / 0.14);
@@ -54,6 +55,7 @@
     --warn: #96590a;
     --danger: #be123c;
     --glow: #6453c9;
+    --sky: #1d6fd1;
 
     --aurora-a: rgb(7 122 95 / 0.12);
     --aurora-b: rgb(100 83 201 / 0.1);
@@ -83,6 +85,7 @@
   --warn: #96590a;
   --danger: #be123c;
   --glow: #6453c9;
+  --sky: #1d6fd1;
 
   --aurora-a: rgb(7 122 95 / 0.12);
   --aurora-b: rgb(100 83 201 / 0.1);
@@ -107,6 +110,7 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-glow: var(--glow);
+  --color-sky: var(--sky);
 
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;

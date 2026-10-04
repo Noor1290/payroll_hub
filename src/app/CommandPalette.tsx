@@ -18,6 +18,9 @@ import { Kbd } from "@/components/ui/misc";
 import { useAuth } from "@/features/auth/auth-context";
 import { useCompany } from "@/features/company/company-context";
 import { addCompanyOpen } from "@/features/company/createCompany";
+import { linkIcon } from "@/features/links/icons";
+import { hostOf, safeHref } from "@/features/links/linkModel";
+import { useCompanyLinks } from "@/features/links/useLinks";
 import { useTheme, type ThemeChoice } from "@/features/theme/theme-context";
 import { healthView } from "@/features/workspace/health";
 import { APPS } from "@/config/apps.config";
@@ -70,6 +73,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { theme, setTheme } = useTheme();
   const { memberships, current, select, isAdmin, canAddCompany } = useCompany();
   const health = useAppHealth();
+  // Read only while the palette is open. If the links can't be read, the group is simply absent.
+  const links = useCompanyLinks(current?.company.id, open);
+  const companyLinks = (links.data ?? []).flatMap((link) => {
+    const href = safeHref(link.url);
+    return href ? [{ link, href }] : [];
+  });
 
   const run = (action: () => void) => {
     onOpenChange(false);
@@ -144,6 +153,23 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   </Item>
                 ))}
               </Command.Group>
+
+              {companyLinks.length > 0 && (
+                <Command.Group heading="Links" className={GROUP_CLASS}>
+                  {companyLinks.map(({ link, href }) => (
+                    <Item
+                      key={link.id}
+                      value={`open link ${link.title} ${link.id}`}
+                      keywords={[link.category ?? "", hostOf(href), "website"]}
+                      icon={linkIcon(link.icon)}
+                      hint={hostOf(href)}
+                      onSelect={() => run(() => window.open(href, "_blank", "noopener,noreferrer"))}
+                    >
+                      Open {link.title}
+                    </Item>
+                  ))}
+                </Command.Group>
+              )}
 
               {memberships.length > 1 && (
                 <Command.Group heading="Switch company" className={GROUP_CLASS}>

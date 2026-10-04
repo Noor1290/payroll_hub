@@ -25,7 +25,15 @@ vi.mock("./deleteCompany", async (original) => ({
 const ABC = "10000000-0000-4000-8000-000000000001";
 const XYZ = "10000000-0000-4000-8000-000000000002";
 const USER = "00000000-0000-4000-8000-0000000000a1";
-const CLEAR: DeletePreview = { employees: 3, runs: 2, entries: 5, otherMembers: 1, approved: [] };
+const CLEAR: DeletePreview = {
+  employees: 3,
+  runs: 2,
+  entries: 5,
+  otherMembers: 1,
+  details: 2,
+  links: 4,
+  approved: [],
+};
 
 const auth: AuthContextValue = {
   status: "signed-in",
@@ -186,6 +194,8 @@ describe("confirming", () => {
     expect(text).toContain("3 employees");
     expect(text).toContain("2 payroll runs");
     expect(text).toContain("5 payroll entries");
+    expect(text).toContain("2 company details");
+    expect(text).toContain("4 links");
     expect(text).toContain("access for you and 1 other person");
     expect(text).toContain("including deleted rows");
     expect(text).toContain("This cannot be undone from the dashboard");

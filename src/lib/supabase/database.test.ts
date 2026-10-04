@@ -97,14 +97,22 @@ beforeEach(() => {
 });
 
 describe("the table list", () => {
-  it("covers exactly the five tables, and is read-only by construction", () => {
+  it("covers exactly these tables, and is read-only by construction", () => {
     expect(DB_TABLE_NAMES).toEqual([
       "companies",
       "employees",
       "payroll_runs",
       "payroll_entries",
       "company_members",
+      "company_details",
+      "company_links",
     ]);
+  });
+
+  it("masks every company detail value, and never searches inside them", () => {
+    const details = DB_TABLES.company_details;
+    expect(details.columns.filter((c) => c.sensitive).map((c) => c.key)).toEqual(["value"]);
+    expect(details.searchColumns).not.toContain("value");
   });
 
   it("marks national IDs and every salary or deduction figure as sensitive", () => {
@@ -363,6 +371,8 @@ describe("fetchTableCounts", () => {
       payroll_runs: 1250,
       payroll_entries: 1250,
       company_members: 1250,
+      company_details: 1250,
+      company_links: 1250,
     });
     for (const call of calls("select")) expect(call[2]).toEqual({ count: "exact", head: true });
     expect(calls("range")).toEqual([]);

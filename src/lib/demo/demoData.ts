@@ -10,6 +10,7 @@ import type {
   TableQuery,
 } from "@/lib/supabase/database";
 import type { ImportResult, Membership, RunStatus, RunSummary } from "@/lib/supabase/schemas";
+import { demoCompanyDataRows, demoForgetCompanyData } from "./demoCompanyData";
 
 /**
  * FAKE in-memory database for dev-only demo mode. Every name, number and id here is invented.
@@ -417,6 +418,8 @@ export async function demoFetchDeletePreview(companyId: string) {
     runs: companyRuns.length,
     entries: entries.filter((entry) => runIds.has(entry.runId)).length,
     otherMembers: roleIn(companyId) ? 1 : 0,
+    details: demoCompanyDataRows("company_details", companyId).length,
+    links: demoCompanyDataRows("company_links", companyId).length,
     approved: companyRuns
       .filter((run) => run.status === "approved")
       .sort((a, b) => b.period.localeCompare(a.period))
@@ -457,6 +460,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
     members: 2,
   };
   removeWhere(demoMemberships, (m) => m.company.id === companyId);
+  demoForgetCompanyData(companyId);
   return result;
 }
 
@@ -505,6 +509,9 @@ function rawRows(table: DbTableName, companyId: string): Record<string, unknown>
           created_at: r.createdAt,
           deleted_at: r.deletedAt,
         }));
+    case "company_details":
+    case "company_links":
+      return demoCompanyDataRows(table, companyId);
     case "payroll_entries": {
       const companyRuns = new Map(
         runs.filter((r) => r.companyId === companyId).map((r) => [r.id, r]),
@@ -602,5 +609,7 @@ export async function demoFetchTableCounts(
     payroll_runs: count("payroll_runs"),
     payroll_entries: count("payroll_entries"),
     company_members: count("company_members"),
+    company_details: count("company_details"),
+    company_links: count("company_links"),
   };
 }

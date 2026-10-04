@@ -38,7 +38,8 @@ Production builds carry a CSP meta tag (src/config/csp.ts): no inline scripts, n
 
 Imports are saved only through `import_payroll_run` (migration 0002, atomic, run by hand by the owner). Companies are created only through `create_company` (migration 0003, existing admins only) and deleted only through `delete_company` (migration 0004, admins of that company, permanent, refused while it has an approved run). Both are SECURITY DEFINER; never add an insert or delete policy or grant on `companies` or `company_members`. Field mapping lives in src/config/payrollFields.ts and nowhere else.
 
-companies, company_members (read-only from app), employees, payroll_runs, payroll_entries (`extra jsonb` for new fields).
+companies, company_members (read-only from app), employees, payroll_runs, payroll_entries (`extra jsonb` for new fields), company_details (migration 0005), company_links (migration 0006).
+On `companies` the app may update only name, address and vat (column grant in 0005); the BRN changes only in the SQL editor.
 Filter soft-deleted rows (`deleted_at is null`). New field? Put it in `extra` first; ALTER TABLE only if it must be queryable.
 
 ## Transfers
@@ -48,6 +49,10 @@ All data leaves through `deliver()` (src/features/workspace/deliver.ts): it writ
 ## Password gate
 
 Screens and actions that expose saved per-employee data sit behind `<PasswordGate>` / `useUnlock()` (src/features/unlock, state in src/lib/unlock.ts). Memory only, 10 minutes fixed (1 to 30 in Settings), independent of the login session. It is a convenience layer; RLS is the enforcement. New gated data: add its query key to `GATED_QUERY_KEYS` so locking wipes it.
+
+## Company profile and Links
+
+`/profile` (src/features/profile) and `/links` (src/features/links); reads and writes in src/lib/supabase/companyData.ts. Members read, admins write; RLS enforces both. Sensitive details: RLS hides those rows from viewers entirely (no placeholders in the UI either); for admins the value is fetched only with the gate open (`company-details-sensitive` is in `GATED_QUERY_KEYS`). Link URLs go through `normaliseUrl` (http/https only) before saving and `safeHref` before rendering; icons and colours are keys into fixed lists, never CSS or markup. No external requests for cards. Never add columns from the app: a new detail is a row.
 
 ## Database page
 

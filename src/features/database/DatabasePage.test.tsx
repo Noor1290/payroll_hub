@@ -110,6 +110,9 @@ beforeEach(() => {
     payroll_runs: 9,
     payroll_entries: 2500,
     company_members: 2,
+    company_details: 3,
+    // Its migration has not been run yet.
+    company_links: null,
   });
   fetchPage
     .mockReset()
@@ -196,6 +199,8 @@ describe("what it shows", () => {
       "payroll_runs9",
       "payroll_entries2,500",
       "company_members2",
+      "company_details3",
+      "company_links–",
     ]);
   });
 

@@ -143,6 +143,8 @@ describe("fetchDeletePreview", () => {
       if (table === "employees") return { data: null, count: 13, error: null };
       if (table === "payroll_entries") return { data: null, count: 67, error: null };
       if (table === "company_members") return { data: null, count: 3, error: null };
+      if (table === "company_details") return { data: null, count: 4, error: null };
+      if (table === "company_links") return { data: null, count: 6, error: null };
       if (has(own, "eq", "status", "approved")) {
         return {
           data: [
@@ -162,6 +164,8 @@ describe("fetchDeletePreview", () => {
       runs: 7,
       entries: 67,
       otherMembers: 2,
+      details: 4,
+      links: 6,
       approved: [
         { period: "2026-08-01", deleted: false },
         { period: "2026-03-01", deleted: true },
@@ -180,7 +184,32 @@ describe("fetchDeletePreview", () => {
     for (const write of ["insert", "update", "delete", "upsert", "rpc"])
       expect(used.has(write)).toBe(false);
     const scoped = db.state.calls.filter(([method, , value]) => method === "eq" && value === ABC);
-    expect(scoped).toHaveLength(5);
+    expect(scoped).toHaveLength(7);
+  });
+
+  it("still works before migrations 0005 and 0006 are run: missing tables count as nothing", async () => {
+    db.state.answer = (own) => {
+      const table = own[0]![1];
+      if (table === "company_details") {
+        return { data: null, count: null, error: { code: "PGRST205", message: "not found" } };
+      }
+      if (table === "company_links") {
+        return { data: null, count: null, error: { code: "42P01", message: "no relation" } };
+      }
+      return { data: [], count: 2, error: null };
+    };
+    const preview = await fetchDeletePreview(VIEWER, ABC);
+    expect(preview.details).toBe(0);
+    expect(preview.links).toBe(0);
+    expect(preview.employees).toBe(2);
+  });
+
+  it("does not hide any other failure reading details or links", async () => {
+    db.state.answer = (own) =>
+      own[0]![1] === "company_links"
+        ? { data: null, count: null, error: { code: "42501", message: "denied" } }
+        : { data: [], count: 2, error: null };
+    await expect(fetchDeletePreview(VIEWER, ABC)).rejects.toMatchObject({ code: "42501" });
   });
 
   it("fails rather than show wrong numbers", async () => {

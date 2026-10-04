@@ -35,6 +35,8 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
       <li>{plural(preview.employees, "employee")}</li>
       <li>{plural(preview.runs, "payroll run")}</li>
       <li>{plural(preview.entries, "payroll entry", "payroll entries")}</li>
+      {preview.details > 0 && <li>{plural(preview.details, "company detail")}</li>}
+      {preview.links > 0 && <li>{plural(preview.links, "link")}</li>}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"

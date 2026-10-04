@@ -2,7 +2,7 @@ import { z } from "zod";
 import { NUMERIC_COLUMNS } from "@/config/payrollFields";
 import { demoFetchTableCounts, demoFetchTablePage } from "@/lib/demo/demoData";
 import { supabase } from "./client";
-import { NotConfiguredError } from "./errors";
+import { isMissingTable, NotConfiguredError } from "./errors";
 import type { Viewer } from "./queries";
 import { moneySchema } from "./schemas";
 
@@ -21,6 +21,8 @@ export const DB_TABLE_NAMES = [
   "payroll_runs",
   "payroll_entries",
   "company_members",
+  "company_details",
+  "company_links",
 ] as const;
 export type DbTableName = (typeof DB_TABLE_NAMES)[number];
 
@@ -32,6 +34,8 @@ export type DbColumnKind =
   /** A user's id. Only ever kept and shown in shortened form. */
   | "user"
   | "money"
+  /** A whole number that is not money (a position in a list). */
+  | "number"
   | "date"
   | "timestamp"
   | "boolean"
@@ -153,6 +157,53 @@ export const DB_TABLES: Record<DbTableName, DbTable> = {
     defaultSort: { column: "created_at", ascending: true },
     keyColumns: ["company_id", "user_id"],
   },
+  company_details: {
+    name: "company_details",
+    columns: [
+      id("id"),
+      id("company_id"),
+      text("label", { nullable: false }),
+      // Masked for every row, whether or not the detail is marked sensitive.
+      text("value", { sensitive: true }),
+      text("field_type", { nullable: false }),
+      { key: "is_sensitive", kind: "boolean" },
+      { key: "sort_order", kind: "number" },
+      stamp("created_at"),
+      stamp("updated_at"),
+    ],
+    // Never the value: a search must not be a way to test what a masked value contains.
+    searchColumns: ["label", "field_type"],
+    canBeDeleted: false,
+    defaultSort: { column: "sort_order", ascending: true },
+    keyColumns: ["id"],
+  },
+  company_links: {
+    name: "company_links",
+    columns: [
+      id("id"),
+      id("company_id"),
+      text("title", { nullable: false }),
+      text("url", { nullable: false }),
+      text("description"),
+      text("category"),
+      text("icon"),
+      text("accent"),
+      { key: "is_pinned", kind: "boolean" },
+      { key: "sort_order", kind: "number" },
+      stamp("created_at"),
+      stamp("updated_at"),
+    ],
+    searchColumns: ["title", "url", "description", "category"],
+    canBeDeleted: false,
+    defaultSort: { column: "sort_order", ascending: true },
+    keyColumns: ["id"],
+  },
+};
+
+/** Tables added by a later migration (0005, 0006). The page still works before they exist. */
+export const OPTIONAL_TABLES: Partial<Record<DbTableName, string>> = {
+  company_details: "0005_company_details.sql",
+  company_links: "0006_company_links.sql",
 };
 
 /** A row as the page holds it: validated values plus two derived fields. */
@@ -178,7 +229,8 @@ export interface TablePage {
   total: number;
 }
 
-export type TableCounts = Record<DbTableName, number>;
+/** Rows per table. Null means the table is not in the database yet (its migration was not run). */
+export type TableCounts = Record<DbTableName, number | null>;
 
 export const PAGE_SIZES = [25, 50, 100] as const;
 
@@ -203,6 +255,7 @@ const kindSchema: Record<DbColumnKind, z.ZodType> = {
   // Shortened as it is read, so a full user id is never held by the page.
   user: z.uuid().transform(shortId),
   money: moneySchema,
+  number: z.number().int(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timestamp: z.string().min(1),
   boolean: z.boolean(),
@@ -285,6 +338,8 @@ function scope(query: Builder, table: DbTable, companyId: string, showDeleted: b
     case "companies":
       return query.eq("id", companyId);
     case "company_members":
+    case "company_details":
+    case "company_links":
       return query.eq("company_id", companyId);
     case "employees":
     case "payroll_runs": {
@@ -380,7 +435,10 @@ export async function fetchTableCounts(
         showDeleted,
       );
       const { count, error } = await request;
-      if (error) throw error;
+      if (error) {
+        if (name in OPTIONAL_TABLES && isMissingTable(error)) return [name, null] as const;
+        throw error;
+      }
       return [name, z.number().int().nonnegative().parse(count)] as const;
     }),
   );

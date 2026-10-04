@@ -1,7 +1,14 @@
 import { ZodError } from "zod";
 
 export type DataFailureKind =
-  "unreachable" | "session" | "forbidden" | "unexpected-shape" | "not-configured" | "unknown";
+  | "unreachable"
+  | "session"
+  | "forbidden"
+  | "unexpected-shape"
+  | "not-configured"
+  /** A table or function the dashboard needs is not in the database: a migration was not run. */
+  | "not-set-up"
+  | "unknown";
 
 export interface DataFailure {
   kind: DataFailureKind;
@@ -46,6 +53,13 @@ const FAILURES: Record<DataFailureKind, DataFailure> = {
     message: "VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set (see .env.example).",
     retryable: false,
   },
+  "not-set-up": {
+    kind: "not-set-up",
+    title: "This isn't set up in the database yet",
+    message:
+      "A table this screen needs doesn't exist. The owner needs to run the latest files in supabase/migrations in the Supabase SQL editor.",
+    retryable: false,
+  },
   unknown: {
     kind: "unknown",
     title: "Something went wrong loading this",
@@ -77,6 +91,15 @@ interface ErrorLike {
  * Turns a failed read/write into something a person can act on.
  * "unreachable" is a heuristic: a paused project and a dropped connection look alike from the browser.
  */
+/**
+ * True when the database says a table does not exist: PGRST205 from the Data API ("not in the
+ * schema cache"), or Postgres's own 42P01.
+ */
+export function isMissingTable(error: unknown): boolean {
+  const code = (typeof error === "object" && error !== null ? error : {}) as { code?: unknown };
+  return code.code === "PGRST205" || code.code === "42P01";
+}
+
 export function classifyDataError(error: unknown): DataFailure {
   if (error instanceof NotConfiguredError) return FAILURES["not-configured"];
   if (error instanceof ZodError) return FAILURES["unexpected-shape"];
@@ -84,6 +107,8 @@ export function classifyDataError(error: unknown): DataFailure {
 
   const { name, code, status, message } = error as ErrorLike;
   const text = typeof message === "string" ? message.toLowerCase() : "";
+
+  if (isMissingTable(error)) return FAILURES["not-set-up"];
 
   // PGRST301/PGRST303: JWT expired or invalid.
   if (code === "PGRST301" || code === "PGRST303" || status === 401 || text.includes("jwt")) {

@@ -21,8 +21,8 @@ export const queryClient = new QueryClient({
 
 registerSessionCleanup(() => queryClient.clear());
 
-/** Query keys that hold per-employee data shown behind the password gate. */
-export const GATED_QUERY_KEYS = [["run-entries"], ["db"]] as const;
+/** Query keys that hold data shown behind the password gate: per-employee rows and sensitive company details. */
+export const GATED_QUERY_KEYS = [["run-entries"], ["db"], ["company-details-sensitive"]] as const;
 
 // When the password gate locks, the rows it was protecting leave memory, not just the screen.
 registerLockCleanup(() => {

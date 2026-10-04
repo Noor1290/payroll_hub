@@ -1,8 +1,10 @@
 import {
   AppWindow,
   ArrowLeftRight,
+  Building2,
   History,
   LayoutDashboard,
+  Link2,
   Lock,
   ScrollText,
   Settings,
@@ -57,6 +59,18 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Transfer log",
     icon: ScrollText,
     description: "What was sent where during this session.",
+  },
+  {
+    to: "/links",
+    label: "Links",
+    icon: Link2,
+    description: "The selected company's useful websites, as cards.",
+  },
+  {
+    to: "/profile",
+    label: "Company profile",
+    icon: Building2,
+    description: "The selected company's name, BRN, address and other details.",
   },
   {
     to: "/history",

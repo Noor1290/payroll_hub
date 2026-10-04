@@ -35,6 +35,7 @@ import {
   DB_TABLES,
   fetchTableCounts,
   fetchTablePage,
+  OPTIONAL_TABLES,
   PAGE_SIZES,
   type DbColumn,
   type DbRow,
@@ -42,7 +43,7 @@ import {
   type DbTableName,
   type TableQuery,
 } from "@/lib/supabase/database";
-import { classifyDataError } from "@/lib/supabase/errors";
+import { classifyDataError, type DataFailure } from "@/lib/supabase/errors";
 import type { Company } from "@/lib/supabase/schemas";
 import { isUnlocked } from "@/lib/unlock";
 import { cn } from "@/lib/utils";
@@ -71,6 +72,19 @@ const initialView = (table: DbTable): View => ({
 function whileUnlocked<T>(read: () => Promise<T>): Promise<T> {
   if (!isUnlocked()) return Promise.reject(new Error("The database viewer is locked."));
   return read();
+}
+
+/** A missing table is explained by naming the migration that creates it. */
+function tableFailure(name: DbTableName, error: unknown): DataFailure {
+  const failure = classifyDataError(error);
+  const migration = OPTIONAL_TABLES[name];
+  return failure.kind === "not-set-up" && migration
+    ? {
+        ...failure,
+        title: `${name} isn't in the database yet`,
+        message: `The owner needs to run supabase/migrations/${migration} once in the Supabase SQL editor.`,
+      }
+    : failure;
 }
 
 // ---------------------------------------------------------------- JSON panel
@@ -373,7 +387,7 @@ function TablePanel({
         </div>
       ) : query.isError ? (
         <ErrorState
-          failure={classifyDataError(query.error)}
+          failure={tableFailure(table.name, query.error)}
           onRetry={() => void query.refetch()}
           className="m-3"
         />
@@ -631,9 +645,15 @@ function DatabaseViewer({ company }: { company: Company }) {
                 {name}
                 <span
                   className="rounded-full border border-line bg-surface px-1.5 text-[11px] text-muted"
-                  aria-label={count === undefined ? "counting rows" : `${count} rows`}
+                  aria-label={
+                    count === undefined
+                      ? "counting rows"
+                      : count === null
+                        ? "not set up yet"
+                        : `${count} rows`
+                  }
                 >
-                  {count === undefined ? "…" : formatCount(count)}
+                  {count === undefined ? "…" : count === null ? "–" : formatCount(count)}
                 </span>
               </button>
             );

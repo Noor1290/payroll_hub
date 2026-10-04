@@ -35,6 +35,12 @@ const SCREENS: Record<string, ComponentType> = {
   "/log": lazy(() =>
     import("@/features/transfer/TransferLogPage").then((m) => ({ default: m.TransferLogPage })),
   ),
+  "/links": lazy(() =>
+    import("@/features/links/LinksPage").then((m) => ({ default: m.LinksPage })),
+  ),
+  "/profile": lazy(() =>
+    import("@/features/profile/ProfilePage").then((m) => ({ default: m.ProfilePage })),
+  ),
   "/history": lazy(() =>
     import("@/features/history/HistoryPage").then((m) => ({ default: m.HistoryPage })),
   ),

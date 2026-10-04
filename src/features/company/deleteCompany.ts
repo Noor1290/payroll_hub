@@ -3,7 +3,12 @@ import { demoDeleteCompany, demoFetchDeletePreview } from "@/lib/demo/demoData";
 import { queryClient } from "@/lib/queryClient";
 import { preferenceStorage } from "@/lib/storage";
 import { supabase } from "@/lib/supabase/client";
-import { classifyDataError, NotConfiguredError, type DataFailure } from "@/lib/supabase/errors";
+import {
+  classifyDataError,
+  isMissingTable,
+  NotConfiguredError,
+  type DataFailure,
+} from "@/lib/supabase/errors";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import { isUnlocked, lock } from "@/lib/unlock";
@@ -17,6 +22,9 @@ export interface DeletePreview {
   entries: number;
   /** Members other than the person deleting, who lose access. */
   otherMembers: number;
+  /** Custom company details and links, removed with the company. Zero if those tables don't exist yet. */
+  details: number;
+  links: number;
   /** Approved runs, which block the deletion, whether or not they are soft-deleted. */
   approved: { period: string; deleted: boolean }[];
 }
@@ -68,7 +76,7 @@ export async function fetchDeletePreview(
   const db = supabase;
   const head = { count: "exact", head: true } as const;
 
-  const [employees, runs, entries, members, approved] = await Promise.all([
+  const [employees, runs, entries, members, approved, details, links] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
     db
@@ -82,16 +90,29 @@ export async function fetchDeletePreview(
       .eq("company_id", companyId)
       .eq("status", "approved")
       .order("period", { ascending: false }),
+    db.from("company_details").select("id", head).eq("company_id", companyId),
+    db.from("company_links").select("id", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
+  // These two tables come from later migrations (0005, 0006). Until they are run there is
+  // nothing in them to delete, and deleting a company must keep working.
+  const optional = (result: typeof details) => {
+    if (result.error) {
+      if (isMissingTable(result.error)) return 0;
+      throw result.error;
+    }
+    return count.parse(result.count);
+  };
 
   return {
     employees: count.parse(employees.count),
     runs: count.parse(runs.count),
     entries: count.parse(entries.count),
     otherMembers: Math.max(0, count.parse(members.count) - 1),
+    details: optional(details),
+    links: optional(links),
     approved: z
       .array(approvedRunSchema)
       .parse(approved.data)
