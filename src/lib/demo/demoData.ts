@@ -420,14 +420,11 @@ export async function demoFetchDeletePreview(companyId: string) {
     otherMembers: roleIn(companyId) ? 1 : 0,
     details: demoCompanyDataRows("company_details", companyId).length,
     links: demoCompanyDataRows("company_links", companyId).length,
-    approved: companyRuns
-      .filter((run) => run.status === "approved")
-      .sort((a, b) => b.period.localeCompare(a.period))
-      .map((run) => ({ period: run.period, deleted: run.deletedAt !== null })),
+    approvedRuns: companyRuns.filter((run) => run.status === "approved").length,
   };
 }
 
-/** Mirrors delete_company (migration 0004): admin of that company, exact name, no approved runs. */
+/** Mirrors delete_company (migration 0007): admin of that company, exact name, whatever its runs. */
 export async function demoDeleteCompany(companyId: string, confirmName: string) {
   await pause(600);
   const membership = demoMemberships.find((m) => m.company.id === companyId);
@@ -437,11 +434,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
   if (confirmName.trim() !== membership.company.name.trim()) {
     throw Object.assign(new Error("PH_NAME_MISMATCH"), { code: "22023" });
   }
-  const companyRuns = runs.filter((run) => run.companyId === companyId);
-  if (companyRuns.some((run) => run.status === "approved")) {
-    throw Object.assign(new Error("PH_HAS_APPROVED_RUNS"), { code: "P0001" });
-  }
-  const runIds = new Set(companyRuns.map((run) => run.id));
+  const runIds = new Set(runs.filter((run) => run.companyId === companyId).map((run) => run.id));
   const removeWhere = <T>(list: T[], gone: (item: T) => boolean) => {
     let removed = 0;
     for (let i = list.length - 1; i >= 0; i--) {

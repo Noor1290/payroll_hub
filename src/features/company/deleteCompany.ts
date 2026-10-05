@@ -25,17 +25,13 @@ export interface DeletePreview {
   /** Custom company details and links, removed with the company. Zero if those tables don't exist yet. */
   details: number;
   links: number;
-  /** Approved runs, which block the deletion, whether or not they are soft-deleted. */
-  approved: { period: string; deleted: boolean }[];
+  /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
+  approvedRuns: number;
 }
 
 const count = z.number().int().nonnegative();
-const approvedRunSchema = z.object({
-  period: z.string().regex(/^\d{4}-\d{2}-01$/),
-  deleted_at: z.string().nullable(),
-});
 
-/** What delete_company (migration 0004) returns: how much was removed. No company data. */
+/** What delete_company (migration 0007) returns: how much was removed. No company data. */
 const deleteResultSchema = z.object({
   company_id: z.uuid(),
   entries: count,
@@ -66,7 +62,7 @@ export class NameMismatchError extends Error {
   }
 }
 
-/** Counts what a deletion would remove, soft-deleted rows included, and finds approved runs. */
+/** Counts what a deletion would remove, soft-deleted rows included, and how many runs are approved. */
 export async function fetchDeletePreview(
   viewer: Viewer,
   companyId: string,
@@ -84,12 +80,7 @@ export async function fetchDeletePreview(
       .select("id, payroll_runs!inner(company_id)", head)
       .eq("payroll_runs.company_id", companyId),
     db.from("company_members").select("user_id", head).eq("company_id", companyId),
-    db
-      .from("payroll_runs")
-      .select("period, deleted_at")
-      .eq("company_id", companyId)
-      .eq("status", "approved")
-      .order("period", { ascending: false }),
+    db.from("payroll_runs").select("id", head).eq("company_id", companyId).eq("status", "approved"),
     db.from("company_details").select("id", head).eq("company_id", companyId),
     db.from("company_links").select("id", head).eq("company_id", companyId),
   ]);
@@ -113,18 +104,15 @@ export async function fetchDeletePreview(
     otherMembers: Math.max(0, count.parse(members.count) - 1),
     details: optional(details),
     links: optional(links),
-    approved: z
-      .array(approvedRunSchema)
-      .parse(approved.data)
-      .map((run) => ({ period: run.period, deleted: run.deleted_at !== null })),
+    approvedRuns: count.parse(approved.count),
   };
 }
 
 /**
  * Permanently deletes a company through the database function `delete_company`
- * (migration 0004). Refuses, without contacting the database, unless the password gate is
+ * (migration 0007). Refuses, without contacting the database, unless the password gate is
  * open and the typed name is the company's name. The database checks the name and the
- * caller's role again, and refuses a company that has an approved run.
+ * caller's role again. Approved runs do not protect a company: they are deleted with it.
  */
 export async function deleteCompany(
   viewer: Viewer,
@@ -167,6 +155,9 @@ export interface DeleteCompanyFailure extends DataFailure {
   nameField?: boolean;
 }
 
+/** The file that holds the current delete_company. Run on its own, it also installs the function. */
+const MIGRATION = "0007_delete_company_any_runs.sql";
+
 const failure = (
   title: string,
   message: string,
@@ -199,13 +190,14 @@ export function classifyDeleteCompanyError(error: unknown): DeleteCompanyFailure
   if (code === "PGRST202" || code === "42883") {
     return failure(
       "Deleting companies isn't set up in the database yet",
-      "The owner needs to run supabase/migrations/0004_delete_company.sql once in the Supabase SQL editor. Nothing was deleted.",
+      `The owner needs to run supabase/migrations/${MIGRATION} once in the Supabase SQL editor. Nothing was deleted.`,
     );
   }
+  // Only the function from migration 0004 says this: the database has not had 0007 yet.
   if (text.includes("PH_HAS_APPROVED_RUNS")) {
     return failure(
-      "This company has approved runs",
-      "A company with an approved run can't be deleted. Set every approved run back to draft first, then try again. Nothing was deleted.",
+      "The database needs an update",
+      `It still refuses companies with approved runs. The owner needs to run supabase/migrations/${MIGRATION} once in the Supabase SQL editor. Nothing was deleted.`,
     );
   }
   if (text.includes("PH_NAME_MISMATCH")) {
