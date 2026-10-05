@@ -30,7 +30,7 @@ npm run dev             # http://localhost:5173/payroll-hub/
 | `npm run dev:demo`  | Dev server with fake data, a fake sign-in and mock apps. Development only.  |
 | `npm run lint`      | ESLint                                                                      |
 | `npm run typecheck` | TypeScript, strict                                                          |
-| `npm test`          | Vitest                                                                      |
+| `npm test`          | Vitest. Includes the database tests for `delete_company` (see below).       |
 | `npm run build`     | Type-check and build to `dist/`                                             |
 | `npm run preview`   | Serve the built `dist/` locally                                             |
 
@@ -58,6 +58,7 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 4. `0004_delete_company.sql`: the function behind "Delete company".
 5. `0005_company_details.sql`: the table behind the Company profile page. It also limits what the dashboard may change on a company to its name, address and VAT (not the BRN).
 6. `0006_company_links.sql`: the table behind the Links page.
+7. `0007_delete_company_any_runs.sql`: replaces the "Delete company" function so approved runs no longer block a deletion.
 
 Then:
 
@@ -130,11 +131,12 @@ Settings has a "Danger zone" for the selected company, shown only to its admins.
 
 - **Who:** an admin of that company. Being an admin of a different company is not enough.
 - **Password first:** the dialog sits behind the password gate. Until you confirm your password it shows nothing about the company and offers no Delete button.
-- **You see what goes:** the dialog lists how many employees, runs and entries will be removed, how many company details and links go with them, and how many other people lose access.
-- **Type the name:** Delete stays disabled until you type the company's name exactly, capitals included.
-- **Approved runs protect it:** a company with any approved run cannot be deleted, whether or not that run was soft-deleted. Set each one back to draft in the Data explorer first. A deleted approved run doesn't appear there: import that month again (which brings it back as a draft), or change it in the SQL editor.
+- **You see what goes:** the dialog shows the company's name and lists how many employees, runs (and how many of those are approved) and entries will be removed, how many company details and links go with them, and how many other people lose access.
+- **Type the name, every time:** "Delete company" stays disabled until you type the company's name exactly, capitals included (spaces around it are ignored). This applies to every company, with or without runs. The database checks the typed name again, so the rule holds even if the function is called without the dashboard.
+- **Approved runs do not protect it:** a company can be deleted whatever its runs look like, approved or draft, soft-deleted or not. If it has approved runs, the dialog adds a line saying how many will be deleted permanently.
 - **Afterwards:** the dashboard switches to another of your companies, or shows the "no company" state. Everything it held about the deleted company is dropped from memory and the password gate locks again.
-- **How it works:** one database function, `delete_company` (migration `0004`), checks the caller's role, the name and the approved-run rule, then deletes entries, runs, employees, memberships and the company in a single transaction: all of it or none of it. The company's details and links (migrations `0005` and `0006`) are removed in the same transaction, because those tables are tied to the company with `on delete cascade`. The tables themselves still accept no deletes from the dashboard for companies or memberships; the function is the only way in.
+- **How it works:** one database function, `delete_company` (added in migration `0004`, replaced by `0007`), checks the caller's role and the typed name, then deletes entries, runs, employees, company details, links, memberships and the company in a single transaction: all of it or none of it. The tables themselves still accept no deletes from the dashboard for companies or memberships; the function is the only way in.
+- **Adding a table later:** a new table that references `companies` must also be added to `delete_company` in a new migration. A test fails until it is.
 
 ### The password gate
 
@@ -199,11 +201,20 @@ Do this after any change to the migrations, and once after the first deployment.
 1. **The non-member must see nothing.** Sign in as that user. The company switcher should say "No company", the Overview should say you are not a member of any company, and Import should say it needs an admin role.
 2. **Check it at the API, not just on screen.** While signed in as the non-member, open the browser's developer tools, go to the Network tab, and reload. Every response from `…supabase.co/rest/v1/…` should be an empty list `[]`. This is the check that matters: it shows the database, not the page, is refusing.
 3. **The viewer can read but not write.** Sign in as the viewer. Runs and employees should be visible. There should be no Approve, Delete run or Save buttons, the Database item should be missing from the sidebar, and Import should refuse. Links and Company profile should show no Add, Edit or Delete buttons.
-4. **The viewer cannot write at the API either.** As the viewer, in the SQL editor's "Run as user" (role impersonation) or with any API client using the viewer's session, try `update payroll_runs set status = 'approved'`. It should change 0 rows. Calling `import_payroll_run`, `create_company` or `delete_company` should fail with `PH_NOT_ADMIN`. The non-member should get the same refusal from `create_company` and `delete_company`.
+4. **The viewer cannot write at the API either.** As the viewer, in the SQL editor's "Run as user" (role impersonation) or with any API client using the viewer's session, try `update payroll_runs set status = 'approved'`. It should change 0 rows. Calling `import_payroll_run`, `create_company` or `delete_company` should fail with `PH_NOT_ADMIN`. The non-member should get the same refusal from `create_company` and `delete_company`. An admin calling `delete_company` with anything but the company's exact name should get `PH_NAME_MISMATCH`.
 5. **A viewer cannot see sensitive details, even at the API.** As an admin, add a company detail and tick Sensitive. As the viewer, open Company profile: the detail must not appear at all. Then, with the viewer's session, request `…/rest/v1/company_details?select=*`: the sensitive row must be missing from the response. Trying to insert, update or delete a row in `company_details` or `company_links` as the viewer must change nothing, and `update companies set brn = …` must be refused for everyone, admins included.
 6. **Signed-out access is refused.** In a private window, request `https://<project>.supabase.co/rest/v1/companies?apikey=<anon key>`. It should return a permission error or an empty list, never data.
 
 If any of these shows data it shouldn't, the fault is in the database rules. Fix it in a new migration; changing the dashboard would only hide it.
+
+### What the automated database tests cover
+
+`npm test` (and so the deploy workflow) runs the real migration files in a real Postgres and calls `delete_company` directly: `src/features/company/deleteCompany.db.test.ts`. It uses PGlite, Postgres built to run inside Node. PGlite is a development dependency only: nothing from it is in the published site, and nothing needs installing or starting.
+
+- **Checked there:** who is refused (viewer, non-member, admin of another company, no user, `anon`), a wrong name refused when the function is called directly, a company with approved and soft-deleted runs deleted with nothing left behind in any table that references `companies`, all-or-nothing on failure, and who may execute the function.
+- **Stand-ins:** PGlite is plain Postgres, not Supabase. The tests create the roles `anon` and `authenticated`, an `auth.users` table with only an id, and `auth.uid()` with Supabase's own definition. A call through the Data API is imitated by switching role and setting the JWT claims. The migrations are run by a role that is not a superuser, as on Supabase.
+- **Not checked there:** Supabase's real sign-in and JWT verification, and two sessions acting at once (PGlite has a single connection). The steps above cover the first on the real project.
+- No check is kept outside the test suite: all of them run in `npm test`.
 
 ## Add a new app
 
@@ -274,7 +285,8 @@ dev/           mock apps for demo mode (not part of the build)
 | "Can't reach the database"                          | You are offline, or the Supabase project is paused. Resume it in the Supabase dashboard.              |
 | "The import function isn't installed"               | Run `supabase/migrations/0002_import_payroll_run.sql` in the SQL editor.                              |
 | "Adding companies isn't set up in the database yet" | Run `supabase/migrations/0003_create_company.sql` in the SQL editor.                                  |
-| "Deleting companies isn't set up in the database yet" | Run `supabase/migrations/0004_delete_company.sql` in the SQL editor.                                |
+| "Deleting companies isn't set up in the database yet" | Run `supabase/migrations/0007_delete_company_any_runs.sql` in the SQL editor.                       |
+| "The database needs an update" (deleting a company) | The database still has the old rule about approved runs. Run `0007_delete_company_any_runs.sql`.      |
 | "Company details aren't set up in the database yet" | Run `supabase/migrations/0005_company_details.sql` in the SQL editor.                               |
 | "Links aren't set up in the database yet"           | Run `supabase/migrations/0006_company_links.sql` in the SQL editor.                                   |
 | "You're not a member of any company yet"            | Your user has no row in `company_members`.                                                            |

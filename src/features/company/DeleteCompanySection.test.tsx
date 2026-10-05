@@ -32,8 +32,10 @@ const CLEAR: DeletePreview = {
   otherMembers: 1,
   details: 2,
   links: 4,
-  approved: [],
+  approvedRuns: 0,
 };
+/** Two of its runs are approved; one of those is soft-deleted (the count includes it). */
+const WITH_APPROVED: DeletePreview = { ...CLEAR, runs: 4, entries: 9, approvedRuns: 2 };
 
 const auth: AuthContextValue = {
   status: "signed-in",
@@ -82,8 +84,14 @@ function renderSection(
 const openDialog = () => fireEvent.click(screen.getByRole("button", { name: /Delete ABC Co Ltd/ }));
 const dialog = () => screen.getByRole("alertdialog");
 const deleteButton = () =>
-  within(dialog()).getByRole("button", { name: "Delete this company" }) as HTMLButtonElement;
-const nameBox = () => within(dialog()).getByLabelText(/to confirm/) as HTMLInputElement;
+  within(dialog()).getByRole("button", { name: "Delete company" }) as HTMLButtonElement;
+const trigger = () => screen.getByRole("button", { name: /Delete ABC Co Ltd/ });
+const nameBox = () =>
+  within(dialog()).getByRole("textbox", {
+    name: "Type the company name to confirm",
+  }) as HTMLInputElement;
+const cancelButton = () => within(dialog()).getByRole("button", { name: "Cancel" });
+const hint = () => within(dialog()).queryByText(/The name must match exactly/);
 const type = (value: string) => fireEvent.change(nameBox(), { target: { value } });
 
 beforeEach(() => {
@@ -136,7 +144,7 @@ describe("the password gate", () => {
 
     expect(within(dialog()).getByText(/Confirm your password to continue/)).toBeTruthy();
     expect(within(dialog()).getByLabelText("Password")).toBeTruthy();
-    expect(within(dialog()).queryByRole("button", { name: "Delete this company" })).toBeNull();
+    expect(within(dialog()).queryByRole("button", { name: "Delete company" })).toBeNull();
     expect(within(dialog()).queryByLabelText(/to confirm/)).toBeNull();
     expect(preview).not.toHaveBeenCalled();
   });
@@ -178,7 +186,7 @@ describe("the password gate", () => {
 
     act(() => lock());
     expect(within(dialog()).getByLabelText("Password")).toBeTruthy();
-    expect(within(dialog()).queryByRole("button", { name: "Delete this company" })).toBeNull();
+    expect(within(dialog()).queryByRole("button", { name: "Delete company" })).toBeNull();
   });
 });
 
@@ -191,14 +199,83 @@ describe("confirming", () => {
     await within(dialog()).findByLabelText(/to confirm/);
 
     const text = dialog().textContent ?? "";
+    expect(within(dialog()).getByRole("heading", { name: "Delete ABC Co Ltd?" })).toBeTruthy();
+    expect(within(dialog()).getByText("ABC Co Ltd")).toBeTruthy();
     expect(text).toContain("3 employees");
-    expect(text).toContain("2 payroll runs");
+    expect(text).toContain("2 payroll runs (0 approved)");
     expect(text).toContain("5 payroll entries");
     expect(text).toContain("2 company details");
     expect(text).toContain("4 links");
     expect(text).toContain("access for you and 1 other person");
     expect(text).toContain("including deleted rows");
     expect(text).toContain("This cannot be undone from the dashboard");
+    // No approved runs, so no extra warning.
+    expect(text).not.toContain("will be deleted permanently");
+  });
+
+  it("says how many runs are approved and warns that they go too", async () => {
+    preview.mockResolvedValue(WITH_APPROVED);
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    const text = dialog().textContent ?? "";
+    expect(text).toContain("3 employees");
+    expect(text).toContain("4 payroll runs (2 approved)");
+    expect(text).toContain("9 payroll entries");
+    expect(text).toContain("2 approved runs will be deleted permanently.");
+    expect(text).toContain("This cannot be undone from the dashboard");
+    // Nothing blocks it any more: the name box and the button are there.
+    expect(text).not.toMatch(/can't be deleted|back to draft/);
+    expect(deleteButton().disabled).toBe(true);
+  });
+
+  it("words the warning for a single approved run", async () => {
+    preview.mockResolvedValue({ ...WITH_APPROVED, runs: 1, approvedRuns: 1 });
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    const text = dialog().textContent ?? "";
+    expect(text).toContain("1 payroll run (1 approved)");
+    expect(text).toContain("1 approved run will be deleted permanently.");
+  });
+
+  it("deletes a company that has approved runs once the name is typed", async () => {
+    preview.mockResolvedValue(WITH_APPROVED);
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    expect(deleteButton().disabled).toBe(true);
+    type("ABC Co Ltd");
+    fireEvent.click(deleteButton());
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(rpc).toHaveBeenCalledWith("delete_company", {
+      p_company_id: ABC,
+      p_confirm_name: "ABC Co Ltd",
+    });
+  });
+
+  it("asks for the name even when the company has no runs at all", async () => {
+    preview.mockResolvedValue({
+      ...CLEAR,
+      employees: 0,
+      runs: 0,
+      entries: 0,
+      details: 0,
+      links: 0,
+    });
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    expect(dialog().textContent).toContain("0 payroll runs");
+    expect(dialog().textContent).not.toContain("approved");
+    expect(deleteButton().disabled).toBe(true);
+    type("ABC Co Ltd");
+    expect(deleteButton().disabled).toBe(false);
   });
 
   it("keeps Delete disabled until the exact name is typed", async () => {
@@ -207,11 +284,23 @@ describe("confirming", () => {
     await within(dialog()).findByLabelText(/to confirm/);
 
     expect(deleteButton().disabled).toBe(true);
-    for (const attempt of ["ABC", "abc co ltd", "ABC Co Ltd.", "ABC  Co Ltd", "XYZ Trading Ltd"]) {
+    for (const attempt of [
+      "ABC",
+      "abc co ltd",
+      "ABC CO LTD",
+      "ABC Co Ltd.",
+      "ABC Co Ltd x",
+      "ABC  Co Ltd",
+      "XYZ Trading Ltd",
+      "   ",
+    ]) {
       type(attempt);
       expect(deleteButton().disabled).toBe(true);
     }
     type("ABC Co Ltd");
+    expect(deleteButton().disabled).toBe(false);
+    // Only the spaces around the name are ignored.
+    type("  ABC Co Ltd ");
     expect(deleteButton().disabled).toBe(false);
     type("ABC Co Lt");
     expect(deleteButton().disabled).toBe(true);
@@ -227,28 +316,100 @@ describe("confirming", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("blocks a company with an approved run, with a clear message and no way to delete", async () => {
-    preview.mockResolvedValue({
-      ...CLEAR,
-      approved: [
-        { period: "2026-08-01", deleted: false },
-        { period: "2026-03-01", deleted: true },
-      ],
-    });
+  it("submits with Enter once the name matches", async () => {
     renderSection(ABC_ADMIN);
     openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+    type("ABC Co Ltd");
+    fireEvent.submit(nameBox().closest("form")!);
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+  });
 
-    const alert = await within(dialog()).findByRole("alert");
-    expect(alert.textContent).toContain("can't be deleted while it has 2 approved runs");
-    expect(alert.textContent).toContain("August 2026");
-    expect(alert.textContent).toContain("March 2026 (a deleted run)");
-    expect(alert.textContent).toMatch(/back to draft/);
-    expect(within(dialog()).queryByLabelText(/to confirm/)).toBeNull();
-    expect(within(dialog()).queryByRole("button", { name: "Delete this company" })).toBeNull();
+  it("shows a hint under the box only while the name doesn't match", async () => {
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    expect(hint()).toBeTruthy();
+    expect(nameBox().getAttribute("aria-describedby")).toBe(hint()!.id);
+    type("abc co ltd");
+    expect(hint()).toBeTruthy();
+    type("ABC Co Ltd");
+    expect(hint()).toBeNull();
+    expect(nameBox().hasAttribute("aria-describedby")).toBe(false);
+    type("ABC Co Ltd!");
+    expect(hint()).toBeTruthy();
+  });
+
+  it("allows pasting the name", async () => {
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    // fireEvent returns false when a handler cancelled the event.
+    expect(fireEvent.paste(nameBox(), { clipboardData: { getData: () => "ABC Co Ltd" } })).toBe(
+      true,
+    );
+    type("ABC Co Ltd");
+    expect(deleteButton().disabled).toBe(false);
+  });
+
+  it("focuses Cancel by default, not the name box or Delete", async () => {
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+    expect(document.activeElement).toBe(cancelButton());
+  });
+
+  it("closes on Escape like Cancel, deleting nothing, and returns focus to the trigger", async () => {
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+    type("ABC Co Ltd");
+
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger()));
+    expect(rpc).not.toHaveBeenCalled();
+
+    // Nothing typed is kept for the next time.
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+    expect(nameBox().value).toBe("");
+    expect(deleteButton().disabled).toBe(true);
+  });
+
+  it("closes on Cancel and returns focus to the trigger", async () => {
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    fireEvent.click(cancelButton());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger()));
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("shows the database's refusal if a run was approved in the meantime", async () => {
+  it("shows the database's refusal when the name no longer matches there", async () => {
+    // For example the company was renamed in another tab: the browser's check passes, the
+    // database's does not.
+    rpc.mockResolvedValue({ data: null, error: { code: "22023", message: "PH_NAME_MISMATCH" } });
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+    type("ABC Co Ltd");
+    fireEvent.click(deleteButton());
+
+    expect((await within(dialog()).findByRole("alert")).textContent).toContain(
+      "That isn't the company's name",
+    );
+    expect(nameBox().getAttribute("aria-invalid")).toBe("true");
+    expect(select).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("says the database needs migration 0007 if it still has the old approved-run rule", async () => {
+    preview.mockResolvedValue(WITH_APPROVED);
     rpc.mockResolvedValue({
       data: null,
       error: { code: "P0001", message: "PH_HAS_APPROVED_RUNS" },
@@ -259,9 +420,9 @@ describe("confirming", () => {
     type("ABC Co Ltd");
     fireEvent.click(deleteButton());
 
-    expect((await within(dialog()).findByRole("alert")).textContent).toContain(
-      "This company has approved runs",
-    );
+    const alert = await within(dialog()).findByRole("alert");
+    expect(alert.textContent).toContain("The database needs an update");
+    expect(alert.textContent).toContain("0007_delete_company_any_runs.sql");
     expect(select).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
   });

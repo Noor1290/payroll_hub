@@ -126,6 +126,20 @@ describe("deleteCompany", () => {
     });
   });
 
+  it("passes on the database's own refusal of the name (it compares with the current name)", async () => {
+    grantUnlock(10);
+    db.state.rpc = () => ({ data: null, error: { code: "22023", message: "PH_NAME_MISMATCH" } });
+    await expect(deleteCompany(VIEWER, COMPANY, "ABC Co Ltd")).rejects.toMatchObject({
+      message: "PH_NAME_MISMATCH",
+    });
+  });
+
+  it("accepts the counts migration 0007 adds for details and links", async () => {
+    grantUnlock(10);
+    db.state.rpc = () => ({ data: { ...RESULT, details: 2, links: 4 }, error: null });
+    await expect(deleteCompany(VIEWER, COMPANY, "ABC Co Ltd")).resolves.toMatchObject(RESULT);
+  });
+
   it("refuses a response that isn't the expected counts", async () => {
     grantUnlock(10);
     db.state.rpc = () => ({ data: { company_id: ABC }, error: null });
@@ -137,7 +151,7 @@ describe("fetchDeletePreview", () => {
   const has = (own: Call[], method: string, ...args: unknown[]) =>
     own.some((call) => JSON.stringify(call) === JSON.stringify([method, ...args]));
 
-  it("counts employees, runs and entries INCLUDING soft-deleted ones, and finds approved runs", async () => {
+  it("counts employees, runs and entries INCLUDING soft-deleted ones, and how many runs are approved", async () => {
     db.state.answer = (own) => {
       const table = own[0]![1];
       if (table === "employees") return { data: null, count: 13, error: null };
@@ -145,15 +159,7 @@ describe("fetchDeletePreview", () => {
       if (table === "company_members") return { data: null, count: 3, error: null };
       if (table === "company_details") return { data: null, count: 4, error: null };
       if (table === "company_links") return { data: null, count: 6, error: null };
-      if (has(own, "eq", "status", "approved")) {
-        return {
-          data: [
-            { period: "2026-08-01", deleted_at: null },
-            { period: "2026-03-01", deleted_at: "2026-04-02T09:30:00+04:00" },
-          ],
-          error: null,
-        };
-      }
+      if (has(own, "eq", "status", "approved")) return { data: null, count: 3, error: null };
       return { data: null, count: 7, error: null };
     };
 
@@ -166,12 +172,9 @@ describe("fetchDeletePreview", () => {
       otherMembers: 2,
       details: 4,
       links: 6,
-      approved: [
-        { period: "2026-08-01", deleted: false },
-        { period: "2026-03-01", deleted: true },
-      ],
+      approvedRuns: 3,
     });
-    // Nothing is filtered on deleted_at: soft-deleted rows are counted, and can block.
+    // Nothing is filtered on deleted_at: soft-deleted rows, approved runs among them, are counted.
     expect(
       db.state.calls.some(([method, column]) => method === "is" && column === "deleted_at"),
     ).toBe(false);
@@ -272,10 +275,11 @@ describe("forgetCompany", () => {
 });
 
 describe("classifyDeleteCompanyError", () => {
-  it("explains that approved runs block the deletion", () => {
+  it("asks for migration 0007 when the database still refuses approved runs", () => {
     const failure = classifyDeleteCompanyError({ code: "P0001", message: "PH_HAS_APPROVED_RUNS" });
-    expect(failure.title).toBe("This company has approved runs");
-    expect(failure.message).toMatch(/back to draft/);
+    expect(failure.title).toBe("The database needs an update");
+    expect(failure.message).toContain("0007_delete_company_any_runs.sql");
+    expect(failure.message).not.toMatch(/back to draft/);
   });
 
   it("explains a refusal for someone who is not an admin of the company", () => {
@@ -303,7 +307,7 @@ describe("classifyDeleteCompanyError", () => {
   it("says which migration to run when the function is missing", () => {
     const failure = classifyDeleteCompanyError({ code: "PGRST202", message: "not found" });
     expect(failure.title).toBe("Deleting companies isn't set up in the database yet");
-    expect(failure.message).toContain("0004_delete_company.sql");
+    expect(failure.message).toContain("0007_delete_company_any_runs.sql");
   });
 
   it("explains an unreachable or paused database", () => {

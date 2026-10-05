@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, LoaderCircle, Trash2, TriangleAlert } from "lucide-react";
@@ -11,7 +11,7 @@ import { ErrorState } from "@/components/ui/states";
 import { useAuth } from "@/features/auth/auth-context";
 import { UnlockForm } from "@/features/unlock/PasswordGate";
 import { useUnlock } from "@/features/unlock/useUnlock";
-import { formatCount, formatPeriod } from "@/lib/format";
+import { formatCount } from "@/lib/format";
 import { classifyDataError } from "@/lib/supabase/errors";
 import type { Membership } from "@/lib/supabase/schemas";
 import { useCompany } from "./company-context";
@@ -25,7 +25,6 @@ import {
   type DeletePreview,
 } from "./deleteCompany";
 
-const MAX_PERIODS_SHOWN = 12;
 const plural = (n: number, one: string, many = `${one}s`) =>
   `${formatCount(n)} ${n === 1 ? one : many}`;
 
@@ -33,7 +32,10 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
   return (
     <ul className="list-disc space-y-1 pl-5 text-sm text-fg">
       <li>{plural(preview.employees, "employee")}</li>
-      <li>{plural(preview.runs, "payroll run")}</li>
+      <li>
+        {plural(preview.runs, "payroll run")}
+        {preview.runs > 0 && ` (${formatCount(preview.approvedRuns)} approved)`}
+      </li>
       <li>{plural(preview.entries, "payroll entry", "payroll entries")}</li>
       {preview.details > 0 && <li>{plural(preview.details, "company detail")}</li>}
       {preview.links > 0 && <li>{plural(preview.links, "link")}</li>}
@@ -43,35 +45,6 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
           : `access for you and ${plural(preview.otherMembers, "other person", "other people")}`}
       </li>
     </ul>
-  );
-}
-
-function Blocked({ preview }: { preview: DeletePreview }) {
-  const { approved } = preview;
-  const deleted = approved.filter((run) => run.deleted).length;
-  return (
-    <div role="alert" className="rounded-xl border border-danger/30 bg-danger/10 p-4 text-sm">
-      <p className="flex items-center gap-2 font-medium text-fg">
-        <CircleAlert className="size-4 shrink-0 text-danger" aria-hidden="true" />
-        This company can't be deleted while it has {plural(approved.length, "approved run")}
-      </p>
-      <ul className="mt-2 list-disc space-y-0.5 pl-9 text-muted">
-        {approved.slice(0, MAX_PERIODS_SHOWN).map((run) => (
-          <li key={run.period}>
-            {formatPeriod(run.period)}
-            {run.deleted && " (a deleted run)"}
-          </li>
-        ))}
-        {approved.length > MAX_PERIODS_SHOWN && (
-          <li>and {formatCount(approved.length - MAX_PERIODS_SHOWN)} more</li>
-        )}
-      </ul>
-      <p className="mt-2 text-muted">
-        Set each one back to draft in the Data explorer, then come back here.
-        {deleted > 0 &&
-          " A deleted run doesn't appear there: import that month again, which brings it back as a draft, or change it in the Supabase SQL editor."}
-      </p>
-    </div>
   );
 }
 
@@ -92,8 +65,14 @@ function ConfirmDelete({
   const [failure, setFailure] = useState<DeleteCompanyFailure | null>(null);
   const inputId = useId();
   const noteId = useId();
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const { company } = membership;
   const matches = nameMatches(typed, company.name);
+
+  // Cancel is the safe default, so focus starts there and not in the name box.
+  useEffect(() => {
+    cancelRef.current?.focus();
+  }, []);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -114,7 +93,7 @@ function ConfirmDelete({
     } catch (error) {
       setFailure(classifyDeleteCompanyError(error));
       setBusy(false);
-      // What blocks it may have changed (for example a run was approved meanwhile).
+      // What is stored may have changed meanwhile (an import, a rename): count it again.
       void queryClient.invalidateQueries({ queryKey: ["delete-preview", company.id] });
     }
   };
@@ -122,19 +101,28 @@ function ConfirmDelete({
   return (
     <form onSubmit={onSubmit} className="mt-5 space-y-4">
       <div className="rounded-xl border border-line bg-surface p-4">
-        <p className="mb-2 text-sm text-muted">This permanently removes, including deleted rows:</p>
+        <p className="font-semibold break-words text-fg">{company.name}</p>
+        <p className="mt-1 mb-2 text-sm text-muted">
+          This permanently removes, including deleted rows:
+        </p>
         <WhatGoes preview={preview} />
       </div>
 
-      <p className="flex items-start gap-2.5 text-sm font-medium text-danger">
-        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        This cannot be undone from the dashboard. The only way back is a database backup.
-      </p>
+      <div className="space-y-1.5 text-sm font-medium text-danger">
+        {preview.approvedRuns > 0 && (
+          <p className="flex items-start gap-2.5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            {plural(preview.approvedRuns, "approved run")} will be deleted permanently.
+          </p>
+        )}
+        <p className="flex items-start gap-2.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          This cannot be undone from the dashboard. The only way back is a database backup.
+        </p>
+      </div>
 
       <div className="space-y-2">
-        <Label htmlFor={inputId}>
-          Type <span className="font-semibold text-fg">{company.name}</span> to confirm
-        </Label>
+        <Label htmlFor={inputId}>Type the company name to confirm</Label>
         <Input
           id={inputId}
           value={typed}
@@ -143,15 +131,17 @@ function ConfirmDelete({
           spellCheck={false}
           disabled={busy}
           aria-invalid={failure?.nameField === true}
-          aria-describedby={noteId}
+          aria-describedby={matches ? undefined : noteId}
           onChange={(event) => {
             setTyped(event.target.value);
             setFailure(null);
           }}
         />
-        <p id={noteId} className="text-sm text-muted">
-          The name must match exactly, including capital letters.
-        </p>
+        {!matches && (
+          <p id={noteId} className="text-sm text-muted">
+            The name must match exactly, including capital letters.
+          </p>
+        )}
       </div>
 
       {failure && (
@@ -169,7 +159,9 @@ function ConfirmDelete({
 
       <div className="flex justify-end gap-2 pt-1">
         <Dialog.Close asChild>
-          <Button disabled={busy}>Cancel</Button>
+          <Button ref={cancelRef} disabled={busy}>
+            Cancel
+          </Button>
         </Dialog.Close>
         <Button type="submit" variant="danger" disabled={busy || !matches}>
           {busy ? (
@@ -177,7 +169,7 @@ function ConfirmDelete({
           ) : (
             <Trash2 aria-hidden="true" />
           )}
-          {busy ? "Deleting" : "Delete this company"}
+          {busy ? "Deleting" : "Delete company"}
         </Button>
       </div>
     </form>
@@ -246,26 +238,13 @@ function DeleteCompanyBody({
     );
   }
 
-  if (preview.data.approved.length > 0) {
-    return (
-      <div className="mt-5 space-y-4">
-        <Blocked preview={preview.data} />
-        <div className="flex justify-end">
-          <Dialog.Close asChild>
-            <Button>Close</Button>
-          </Dialog.Close>
-        </div>
-      </div>
-    );
-  }
-
   return <ConfirmDelete membership={membership} preview={preview.data} onClose={onClose} />;
 }
 
 /**
  * The "Danger zone" in Settings: permanently delete the selected company.
  * Shown only to an admin of that company. That is a courtesy; the database function checks
- * the caller's role itself (migration 0004).
+ * the caller's role and the typed name itself (migration 0007).
  */
 export function DeleteCompanySection() {
   const { current, isAdmin } = useCompany();
@@ -280,25 +259,28 @@ export function DeleteCompanySection() {
       aria-labelledby={headingId}
       className="rounded-2xl border border-danger/40 bg-danger/5"
     >
-      <div className="flex items-center gap-3 border-b border-danger/30 px-5 py-4">
-        <TriangleAlert className="size-4 text-danger" aria-hidden="true" />
-        <h2 id={headingId} className="font-semibold">
-          Danger zone
-        </h2>
-      </div>
-      <div className="space-y-4 p-5">
-        <p className="text-sm text-muted">
-          Deleting <span className="font-medium text-fg">{company.name}</span> permanently removes
-          the company with all of its employees, payroll runs and entries, and everyone's access to
-          it. It cannot be undone from the dashboard.
-        </p>
-        <Button variant="danger" onClick={() => setOpen(true)}>
-          <Trash2 aria-hidden="true" />
-          Delete {company.name}…
-        </Button>
-      </div>
-
       <Dialog.Root open={open} onOpenChange={setOpen}>
+        <div className="flex items-center gap-3 border-b border-danger/30 px-5 py-4">
+          <TriangleAlert className="size-4 text-danger" aria-hidden="true" />
+          <h2 id={headingId} className="font-semibold">
+            Danger zone
+          </h2>
+        </div>
+        <div className="space-y-4 p-5">
+          <p className="text-sm text-muted">
+            Deleting <span className="font-medium text-fg">{company.name}</span> permanently removes
+            the company with all of its employees, payroll runs and entries, and everyone's access
+            to it. It cannot be undone from the dashboard.
+          </p>
+          {/* The trigger, so focus comes back here when the dialog closes. */}
+          <Dialog.Trigger asChild>
+            <Button variant="danger">
+              <Trash2 aria-hidden="true" />
+              Delete {company.name}…
+            </Button>
+          </Dialog.Trigger>
+        </div>
+
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
           <Dialog.Content
