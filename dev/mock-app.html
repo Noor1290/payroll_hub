@@ -147,7 +147,19 @@
       <div class="row">
         <button id="templateImage" type="button">Save draft with an image</button>
         <button id="templateLarge" type="button">Save draft over 150 KB</button>
-        <button id="issueRequest" type="button">Ask for issued payslips</button>
+      </div>
+      <strong>Issued payslips</strong>
+      <p>
+        Uses the month, template id and version above. Get a run from the dashboard first: its
+        employees' IDs are filled in here. Needs an admin, and the dashboard unlocked.
+      </p>
+      <div class="row">
+        <label>National IDs <input type="text" id="issueIds" class="wide" /></label>
+      </div>
+      <div class="row">
+        <button id="issueLoad" type="button">Load the month's issued payslips</button>
+        <button id="issueSave" type="button">Issue the month</button>
+        <button id="issueUnknown" type="button">Issue with an unknown employee second</button>
       </div>
       <pre id="answer">No answer yet.</pre>
     </div>
@@ -219,6 +231,16 @@
             imports +
             ")";
           log(how + " " + payload.rows.length + " rows");
+          // The first few employees, for the "Issued payslips" buttons of the payslip mock.
+          var ids = payload.rows
+            .map(function (row) {
+              return row.ID;
+            })
+            .filter(Boolean)
+            .slice(0, 3);
+          if (ids.length && $("issueIds")) $("issueIds").value = ids.join(", ");
+          if (payload.meta && payload.meta.period && $("month"))
+            $("month").value = payload.meta.period;
         };
 
         Bridge.init({
@@ -234,10 +256,11 @@
           },
         });
 
-        // The payslip app's own exchanges: rates and templates, and one that is not registered.
+        // The payslip app's own exchanges: rates, templates and issued payslips.
         function payslipCard() {
           $("payslip").hidden = false;
           var saves = 0;
+          var issuedRevisions = {};
           var number = function (id) {
             return Number($(id).value);
           };
@@ -249,6 +272,14 @@
             log(what + ": " + (reply.ok ? "ok" : (reply.code || "refused") + ", " + reply.error));
             if (!reply.ok) return;
             if (reply.meta && reply.meta.brn) $("brn").value = reply.meta.brn;
+            // Issued payslips: remember each employee's revision, for the next "Issue the month".
+            if (reply.dataType === "payslip-issue" || (reply.result && reply.result.payslips)) {
+              if (reply.dataType) issuedRevisions = {};
+              (reply.rows || reply.result.payslips).forEach(function (row) {
+                issuedRevisions[row.national_id] = row.revision;
+              });
+              return;
+            }
             var first = (reply.rows && reply.rows[0]) || reply.result || {};
             if (first.template_id) $("templateId").value = first.template_id;
             if (first.draft_revision) $("draftRevision").value = first.draft_revision;
@@ -354,8 +385,56 @@
             large.padding = new Array(152000).join("x");
             save("Save draft over 150 KB", "payslip-template", draft(large, false));
           };
-          $("issueRequest").onclick = function () {
-            ask("Ask for issued payslips", "payslip-issue");
+          // One fake payslip per national ID in the box. The figures are invented.
+          var payslips = function (ids) {
+            return ids.map(function (id, i) {
+              return {
+                national_id: id,
+                expected_revision: issuedRevisions[id] || 0,
+                template_id: $("templateId").value.trim(),
+                template_version: number("version"),
+                rates: null,
+                lines: [
+                  { section: "earnings", label: "Basic salary", amount: 20000 + i * 1000 },
+                  { section: "totals", label: "Net pay", amount: 18000.5 + i * 900 },
+                ],
+                accepted_differences:
+                  i === 0
+                    ? [{ what: "Net Pay", payroll: 18000.49, payslip: 18000.5, reason: "rounding" }]
+                    : [],
+              };
+            });
+          };
+          var issueIds = function () {
+            return $("issueIds")
+              .value.split(",")
+              .map(function (id) {
+                return id.trim();
+              })
+              .filter(Boolean);
+          };
+          var issue = function (what, ids) {
+            save(what, "payslip-issue", {
+              action: "issue",
+              brn: brn(),
+              period: $("month").value,
+              payslips: payslips(ids),
+            });
+          };
+          $("issueLoad").onclick = function () {
+            ask("Load the month's issued payslips", "payslip-issue", {
+              action: "load",
+              brn: brn(),
+              period: $("month").value,
+            });
+          };
+          $("issueSave").onclick = function () {
+            issue("Issue the month", issueIds());
+          };
+          $("issueUnknown").onclick = function () {
+            var ids = issueIds();
+            ids.splice(1, 0, "NOBODY-0000000");
+            issue("Issue with an unknown employee second", ids);
           };
         }
 

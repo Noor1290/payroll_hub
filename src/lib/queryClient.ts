@@ -21,8 +21,16 @@ export const queryClient = new QueryClient({
 
 registerSessionCleanup(() => queryClient.clear());
 
+/** Issued payslips read for an app (appData.ts). Salaries and national IDs: gated. */
+export const ISSUED_PAYSLIPS_KEY = "issued-payslips";
+
 /** Query keys that hold data shown behind the password gate: per-employee rows and sensitive company details. */
-export const GATED_QUERY_KEYS = [["run-entries"], ["db"], ["company-details-sensitive"]] as const;
+export const GATED_QUERY_KEYS = [
+  ["run-entries"],
+  ["db"],
+  ["company-details-sensitive"],
+  [ISSUED_PAYSLIPS_KEY],
+] as const;
 
 // When the password gate locks, the rows it was protecting leave memory, not just the screen.
 registerLockCleanup(() => {

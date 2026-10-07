@@ -131,7 +131,7 @@ Plan (updated 6 Oct 2026): a SHARED `statutory_rates` table now exists as a desi
 - [ ] Realtime updates (Supabase Realtime) if several people ever work at once. Reload-to-refresh is fine for now. Enable it per table, add subscriptions, and test that RLS also applies to live updates.
 - [ ] Multi-factor authentication for admins (Authentication -> Multi-Factor). Much stronger than the password gate. Check the free-plan limits first.
 - [ ] Same-origin risk: the dashboard and the apps share https://noor1290.github.io, so an embedded app can reach the dashboard's page and in-memory data. Acceptable while it is a personal tool on fake data. Before real employee data or other users: move the dashboard to its own origin (custom domain or a second GitHub account/org). The origin is one constant in the dashboard and one line in bridge.js; follow the README section "Moving the dashboard to its own origin".
-- [ ] Payslip app: built in its own repo (see its CLAUDE.md). Hub side is docs/HUB_CHANGES.md, done in stages (items 1 and 2, then 3 to 7 with 9 and 10, then 8). The registry entry gets its URL and status "active" in item 2.
+- [ ] Payslip app: built in its own repo (see its CLAUDE.md). Hub side is docs/HUB_CHANGES.md, done in stages (items 1 and 2, then 3 to 7 with 9 and 10, then 8: all built; the last is on `feature/payslip-issue` with migration 0011 to run). The registry entry gets its URL and status "active" in item 2.
 - [ ] Sync the theme (light/dark) between the hub and the apps. Needs a new bridge message in all three projects.
 - [ ] Optional: store PDF files themselves in Supabase Storage (needs its own security rules; the free plan has limited space).
 
@@ -210,10 +210,14 @@ Only if wanted later. A scheduled job needs somewhere that is always on, because
 - [ ] Confirm "Travelling" is the transport allowance; where Presence Bonus, Productivity Bonus, Advance, Absences and Lateness come from (new payroll columns?).
 - [ ] Confirm the employee CSG threshold and strict "above" against MRA; confirm half-up vs the payroll's rounding.
 - [ ] Is Advance an earning or a recovery?
-- [x] Date of Employment: new column on hub employees (migration 0008), edited in the hub's Data explorer. Built on `feature/payslip-bridge-b`; the owner still has to run 0008.
+- [x] Date of Employment: new column on hub employees (migration 0008), edited in the hub's Data explorer. Merged and deployed with hub Stage B; 0008 has been run.
 - [ ] Payslip templates cannot be deleted or archived yet (hub Stage B left it out on purpose). Follow-up, as its own migration and branch: an `archived_at` on `payslip_templates` set through a new admin-only function (never a delete: issued payslips will point at published versions, which must stay), an "archive" / "unarchive" action on `payslip-template` saves, archived templates left out of "list" unless asked for, and a decision on whether an archived template still counts towards the 50 per company and still holds its name.
 - [ ] A logo on a payslip: template bodies cannot contain images (the hub refuses a `data:` URI). Decide where a logo lives (a company detail, or its own small table with a size limit) before adding one.
 - [ ] Hub Database page: show `statutory_rates`, `payslip_templates` and `payslip_template_versions` as read-only tabs.
+- [ ] Hub Database page: a read-only tab for `issued_payslips` (not now). Admin only and behind the gate like the rest of that page; mask the national ID, `lines`, `rates_snapshot` and `accepted_differences`, and shorten `issued_by`.
+- [ ] Display names in answers (not now). Answers say only "was it you" (`created_by_you`, `updated_by_you`, `published_by_you`, `issued_by_you`), never who. Showing a name needs a profiles table the hub does not have, and a decision on what a member may see about other members.
+- [ ] Default template per company (not now): which published template the payslip app opens with. A row per company set by an admin through a function, returned with the template list.
+- [ ] Revision history in a `payslip-issue` load (later). A load returns only the latest revision of each employee; earlier ones stay in the database. Add an optional way to ask for every revision of one employee and month, with its own size limit.
 - [ ] Payslip lookup (VLOOKUP/INDEX-MATCH) template: "coming soon".
 - [ ] Month-to-month comparison and bulk-approve (payslip Phase 5).
 - [ ] Check the GUST Font License once before real use.

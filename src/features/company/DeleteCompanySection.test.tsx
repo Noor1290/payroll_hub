@@ -35,6 +35,7 @@ const CLEAR: DeletePreview = {
   rates: 0,
   templates: 0,
   templateVersions: 0,
+  issuedPayslips: 0,
   approvedRuns: 0,
 };
 /** Two of its runs are approved; one of those is soft-deleted (the count includes it). */
@@ -263,8 +264,14 @@ describe("confirming", () => {
     });
   });
 
-  it("shows the statutory rates and payslip templates that go with it", async () => {
-    preview.mockResolvedValue({ ...CLEAR, rates: 3, templates: 1, templateVersions: 2 });
+  it("shows the statutory rates, payslip templates and issued payslips that go with it", async () => {
+    preview.mockResolvedValue({
+      ...CLEAR,
+      rates: 3,
+      templates: 1,
+      templateVersions: 2,
+      issuedPayslips: 24,
+    });
     renderSection(ABC_ADMIN);
     openDialog();
     await within(dialog()).findByLabelText(/to confirm/);
@@ -272,6 +279,7 @@ describe("confirming", () => {
     const text = dialog().textContent ?? "";
     expect(text).toContain("3 versions of the statutory rates");
     expect(text).toContain("1 payslip template (2 published versions)");
+    expect(text).toContain("24 issued payslips");
   });
 
   it("asks for the name even when the company has no runs at all", async () => {
@@ -424,7 +432,7 @@ describe("confirming", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it("says the database needs migration 0007 if it still has the old approved-run rule", async () => {
+  it("says the database needs its migrations if it still has the old approved-run rule", async () => {
     preview.mockResolvedValue(WITH_APPROVED);
     rpc.mockResolvedValue({
       data: null,
@@ -438,7 +446,8 @@ describe("confirming", () => {
 
     const alert = await within(dialog()).findByRole("alert");
     expect(alert.textContent).toContain("The database needs an update");
-    expect(alert.textContent).toContain("0007_delete_company_any_runs.sql");
+    expect(alert.textContent).toContain("up to 0011_issued_payslips.sql");
+    expect(alert.textContent).not.toContain("0007");
     expect(select).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
   });

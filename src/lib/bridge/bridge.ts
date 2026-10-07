@@ -36,11 +36,25 @@ export interface IncomingBatch {
   payload: SendDataPayload;
 }
 
+/**
+ * What the user is asked when a request is not for a saved run, and how it is answered once
+ * they agree. The dialog only calls `answer` while the password gate is open.
+ */
+export interface RequestQuestion {
+  /** What the app wants, to finish "It wants …" and "Send …". No values. */
+  what: string;
+  /** What agreeing sends to the app, in one sentence. */
+  warning: string;
+  answer: () => Promise<ResponseDataPayload>;
+}
+
 /** An app asking for saved data, waiting for the user to approve or deny. */
 export interface DataRequest {
   id: string;
   appId: string;
   payload: RequestDataPayload;
+  /** Absent for a saved run (payroll-result), which the dialog reads itself. */
+  question?: RequestQuestion;
   respond: (response: ResponseDataPayload) => void;
 }
 
@@ -102,6 +116,7 @@ bridge.setHandlers({
 export function handleDataRequest(
   appId: string,
   payload: RequestDataPayload,
+  question?: RequestQuestion,
 ): Promise<ResponseDataPayload> {
   return new Promise<ResponseDataPayload>((resolve) => {
     if (dataRequests.get().length >= MAX_WAITING) {
@@ -134,7 +149,7 @@ export function handleDataRequest(
             },
       );
     }, REQUEST_DEADLINE_MS);
-    dataRequests.set((current) => [...current, { id, appId, payload, respond }]);
+    dataRequests.set((current) => [...current, { id, appId, payload, question, respond }]);
   });
 }
 

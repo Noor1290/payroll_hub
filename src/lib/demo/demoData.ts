@@ -271,6 +271,14 @@ export async function demoFetchRunEntries(runId: string): Promise<PayrollRow[]> 
     });
 }
 
+/** True when the company has a current (not soft-deleted) employee with that national ID. */
+export function demoHasEmployee(companyId: string, nationalId: string): boolean {
+  ensureSeeded();
+  return employees.some(
+    (e) => e.companyId === companyId && e.national_id === nationalId && e.deleted_at === null,
+  );
+}
+
 /** Mirrors the employees update policy: admins of the employee's company only. */
 export async function demoSetEmployeeDate(employeeId: string, value: string | null): Promise<void> {
   await pause(300);

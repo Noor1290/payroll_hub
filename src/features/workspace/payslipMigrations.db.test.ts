@@ -3,7 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
- * Runs migrations 0001 to 0010 in a real Postgres (PGlite) and uses the three new ones the way
+ * Runs migrations 0001 to 0011 in a real Postgres (PGlite) and uses the four new ones the way
  * the Data API does: as the role "authenticated" (or "anon") with a user id in the request
  * claims. See deleteCompany.db.test.ts for what stands in for Supabase and what is not covered.
  *
@@ -26,6 +26,9 @@ const B = "00000000-0000-4000-8000-0000000000a4"; // admin of XYZ only
 const ABC = "10000000-0000-4000-8000-000000000001";
 const XYZ = "10000000-0000-4000-8000-000000000002";
 const EMPLOYEE = "30000000-0000-4000-8000-000000000001";
+const EMPLOYEE_2 = "30000000-0000-4000-8000-000000000002";
+const EMPLOYEE_GONE = "30000000-0000-4000-8000-000000000003";
+const EMPLOYEE_XYZ = "30000000-0000-4000-8000-000000000004";
 const SETUP_TIMEOUT = 120_000;
 
 const SUPABASE_STAND_INS = `
@@ -183,7 +186,7 @@ describe("the migrations' own checks", () => {
   }, SETUP_TIMEOUT);
   afterAll(() => db?.close());
 
-  it.each(["0008", "0009", "0010"])(
+  it.each(["0008", "0009", "0010", "0011"])(
     "%s can be run a second time and reports every check as true",
     async (number) => {
       const check = await selfCheck(db, number);
@@ -516,14 +519,378 @@ describe("0010: payslip templates", () => {
   });
 });
 
-describe("delete_company after 0010", () => {
+interface Slip {
+  national_id?: unknown;
+  expected_revision?: unknown;
+  template_id?: unknown;
+  template_version?: unknown;
+  rates?: unknown;
+  lines?: unknown;
+  accepted_differences?: unknown;
+}
+const LINES = [
+  { label: "Basic salary", amount: 25000 },
+  { label: "Net pay", amount: 23500.5 },
+];
+const issue = (
+  db: PGlite,
+  user: string | null,
+  payslips: unknown,
+  o: { company?: string; month?: string } = {},
+  role: Role = "authenticated",
+) =>
+  one<{ period: string; issued: number; payslips: { national_id: string; revision: number }[] }>(
+    db,
+    user,
+    "select public.issue_payslips($1::uuid, $2::date, $3::jsonb) as result",
+    [o.company ?? ABC, o.month ?? "2026-09-01", JSON.stringify(payslips)],
+    role,
+  );
+const month = (
+  db: PGlite,
+  user: string | null,
+  company = ABC,
+  period = "2026-09-01",
+  role: Role = "authenticated",
+) =>
+  one<Record<string, unknown>[]>(
+    db,
+    user,
+    "select public.issued_payslips_for_month($1::uuid, $2::date) as result",
+    [company, period],
+    role,
+  );
+
+describe("0011: issued payslips", () => {
+  let db: PGlite;
+  let template: string;
+  let theirs: string;
+  beforeAll(async () => {
+    db = await freshDatabase();
+    await db.exec(`
+      insert into public.employees (id, company_id, national_id, surname, deleted_at) values
+        ('${EMPLOYEE_2}', '${ABC}', 'X2', 'ROE', null),
+        ('${EMPLOYEE_GONE}', '${ABC}', 'X3', 'GONE', now()),
+        ('${EMPLOYEE_XYZ}', '${XYZ}', 'Y1', 'OTHER', null);
+    `);
+    template = (await saveDraft(db, A, {})).result!.template_id;
+    await publish(db, A, template, 1);
+    theirs = (await saveDraft(db, B, { company: XYZ, name: "Theirs" })).result!.template_id;
+    await publish(db, B, theirs, 1, XYZ);
+  }, SETUP_TIMEOUT);
+  afterAll(() => db?.close());
+
+  const slip = (s: Slip = {}) => ({
+    national_id: "X1",
+    expected_revision: 0,
+    template_id: template,
+    template_version: 1,
+    rates: null,
+    lines: LINES,
+    accepted_differences: [],
+    ...s,
+  });
+  const rows = () =>
+    scalar<number>(db, "select count(*)::int as result from public.issued_payslips");
+
+  it.each([
+    ["a viewer of the company", "authenticated", V, /42501 PH_NOT_ADMIN/],
+    ["a user who belongs to nothing", "authenticated", O, /42501 PH_NOT_ADMIN/],
+    ["an admin of a different company", "authenticated", B, /42501 PH_NOT_ADMIN/],
+    ["a signed-in role with no user id", "authenticated", null, /42501 PH_NOT_SIGNED_IN/],
+    ["the anon role carrying an admin's id", "anon", A, /permission denied for function/],
+  ] as const)("refuses %s", async (_who, role, user, expected) => {
+    expect((await issue(db, user, [slip()], {}, role)).error).toMatch(expected);
+    expect(await rows()).toBe(0);
+  });
+
+  it("refuses a month that is not the first day, a non-list, an empty list and 1001 payslips", async () => {
+    expect((await issue(db, A, [slip()], { month: "2026-09-15" })).error).toMatch(
+      /22023 PH_INVALID_INPUT: the month/,
+    );
+    expect((await issue(db, A, { national_id: "X1" })).error).toMatch(
+      /22023 PH_INVALID_INPUT: the payslips must be a list/,
+    );
+    expect((await issue(db, A, [])).error).toMatch(/22023 PH_INVALID_INPUT: there is no payslip/);
+    const many = Array.from({ length: 1001 }, () => slip());
+    expect((await issue(db, A, many)).error).toMatch(/54000 PH_TOO_LARGE$/);
+    expect(await rows()).toBe(0);
+  });
+
+  // The good payslip comes first each time: the refusal must name the SECOND, and store neither.
+  const X2 = { national_id: "X2" };
+  const INVALID = "22023 PH_INVALID_INPUT: payslip 2: ";
+  const cases: [string, (base: () => Slip) => unknown, string][] = [
+    ["a payslip that is not an object", () => "nope", `${INVALID}it must be an object`],
+    ["no national ID", () => ({ ...slip(), national_id: undefined }), `${INVALID}a part`],
+    ["a national ID of spaces", () => slip({ national_id: "  " }), `${INVALID}the national ID`],
+    [
+      "a last-seen revision as text",
+      () => slip({ ...X2, expected_revision: "0" }),
+      `${INVALID}a part`,
+    ],
+    [
+      "a last-seen revision of 1.5",
+      () => slip({ ...X2, expected_revision: 1.5 }),
+      `${INVALID}a revision`,
+    ],
+    [
+      "a negative last-seen revision",
+      () => slip({ ...X2, expected_revision: -1 }),
+      `${INVALID}a revision`,
+    ],
+    [
+      "a template id that is not an id",
+      () => slip({ ...X2, template_id: "abc" }),
+      `${INVALID}a revision`,
+    ],
+    ["a template version of 0", () => slip({ ...X2, template_version: 0 }), `${INVALID}a revision`],
+    ["lines that are an object", () => slip({ ...X2, lines: {} }), `${INVALID}a part`],
+    ["no lines", () => slip({ ...X2, lines: [] }), `${INVALID}it has no lines`],
+    [
+      "no list of accepted differences",
+      () => ({ ...slip(X2), accepted_differences: undefined }),
+      `${INVALID}a part`,
+    ],
+    ["rates that are a list", () => slip({ ...X2, rates: [1] }), `${INVALID}a part`],
+    ["the same employee twice", () => slip({ national_id: " X1 " }), `${INVALID}the same employee`],
+    [
+      "201 lines",
+      () => slip({ ...X2, lines: Array.from({ length: 201 }, () => ({})) }),
+      "54000 PH_TOO_LARGE: payslip 2$",
+    ],
+    [
+      "lines over 32 KB",
+      () => slip({ ...X2, lines: [{ pad: "x".repeat(33_000) }] }),
+      "54000 PH_TOO_LARGE: payslip 2$",
+    ],
+    [
+      "accepted differences over 8 KB",
+      () => slip({ ...X2, accepted_differences: [{ reason: "x".repeat(8_200) }] }),
+      "54000 PH_TOO_LARGE: payslip 2$",
+    ],
+    [
+      "rates over 2 KB",
+      () => slip({ ...X2, rates: { pad: "x".repeat(2_100) } }),
+      "54000 PH_TOO_LARGE: payslip 2$",
+    ],
+    [
+      "someone who is not an employee here",
+      () => slip({ national_id: "NOBODY" }),
+      "P0002 PH_UNKNOWN_EMPLOYEE: payslip 2$",
+    ],
+    [
+      "a soft-deleted employee",
+      () => slip({ national_id: "X3" }),
+      "P0002 PH_UNKNOWN_EMPLOYEE: payslip 2$",
+    ],
+    [
+      "another company's employee",
+      () => slip({ national_id: "Y1" }),
+      "P0002 PH_UNKNOWN_EMPLOYEE: payslip 2$",
+    ],
+    [
+      "a template version that was never published",
+      () => slip({ ...X2, template_version: 2 }),
+      "P0002 PH_UNKNOWN_TEMPLATE: payslip 2$",
+    ],
+    [
+      "a last-seen revision that is ahead",
+      () => slip({ ...X2, expected_revision: 1 }),
+      "P0001 PH_STALE: payslip 2$",
+    ],
+  ];
+  it.each(cases)(
+    "refuses a month because of %s, says which payslip by its position, and stores none of it",
+    async (_what, second, expected) => {
+      const { error } = await issue(db, A, [slip(), second(slip)]);
+      expect(error).toMatch(new RegExp(expected));
+      // The position and nothing else: no national ID in the message.
+      expect(error).not.toMatch(/X1|X2|X3|Y1|NOBODY/);
+      expect(await rows()).toBe(0);
+    },
+  );
+
+  it("refuses another company's template, and names the payslip", async () => {
+    const { error } = await issue(db, A, [slip({ template_id: theirs })]);
+    expect(error).toMatch(/P0002 PH_UNKNOWN_TEMPLATE: payslip 1$/);
+    expect(await rows()).toBe(0);
+  });
+
+  it("issues a month at revision 1, with the issuer and the time set by the database", async () => {
+    const rates = { effective_from: "2026-07", revision: 2, nsf_ceiling: 29710 };
+    const differences = [
+      { what: "Total Deductions", payroll: 502.87, payslip: 502.88, reason: "rounding" },
+    ];
+    const issued = await issue(db, A, [
+      // What a caller might try to choose for itself is ignored.
+      {
+        ...slip({ national_id: " X1 ", rates, accepted_differences: differences }),
+        issued_by: O,
+        issued_at: "2001-01-01",
+        revision: 9,
+      },
+      slip(X2),
+    ]);
+    expect(issued.error).toBeNull();
+    expect(issued.result).toMatchObject({
+      period: "2026-09-01",
+      issued: 2,
+      payslips: [
+        { national_id: "X1", revision: 1 },
+        { national_id: "X2", revision: 1 },
+      ],
+    });
+    const stored = await scalar<Record<string, unknown>>(
+      db,
+      `select to_jsonb(p) as result from public.issued_payslips p where employee_id = '${EMPLOYEE}'`,
+    );
+    expect(stored).toMatchObject({
+      company_id: ABC,
+      employee_id: EMPLOYEE,
+      period: "2026-09-01",
+      revision: 1,
+      template_id: template,
+      template_version: 1,
+      rates_snapshot: rates,
+      lines: LINES,
+      accepted_differences: differences,
+      issued_by: A,
+    });
+    expect(String(stored.issued_at)).not.toContain("2001");
+    expect(
+      await scalar(
+        db,
+        `select rates_snapshot is null as result from public.issued_payslips
+         where employee_id = '${EMPLOYEE_2}'`,
+      ),
+    ).toBe(true);
+    expect(
+      await scalar(
+        db,
+        "select count(distinct issued_at)::int as result from public.issued_payslips",
+      ),
+    ).toBe(1);
+  });
+
+  it("refuses the same save arriving twice (its first answer was lost): no second revision", async () => {
+    const again = await issue(db, A, [slip(), slip(X2)]);
+    expect(again.error).toMatch(/P0001 PH_STALE: payslip 1$/);
+    expect(await rows()).toBe(2);
+  });
+
+  it("stores nothing for anyone when one employee of the month is behind", async () => {
+    const mixed = await issue(db, A, [
+      slip({ expected_revision: 1 }),
+      slip({ ...X2, expected_revision: 0 }),
+    ]);
+    expect(mixed.error).toMatch(/P0001 PH_STALE: payslip 2$/);
+    expect(await rows()).toBe(2);
+  });
+
+  it("stores a re-issue as the next revision and keeps the earlier one as it was", async () => {
+    const again = await issue(db, A, [
+      slip({ expected_revision: 1, lines: [{ label: "Net pay", amount: 1 }] }),
+    ]);
+    expect(again.result).toMatchObject({
+      issued: 1,
+      payslips: [{ national_id: "X1", revision: 2 }],
+    });
+    expect(await rows()).toBe(3);
+    expect(
+      await scalar(
+        db,
+        `select lines as result from public.issued_payslips
+         where employee_id = '${EMPLOYEE}' and revision = 1`,
+      ),
+    ).toEqual(LINES);
+  });
+
+  it("numbers each month on its own", async () => {
+    const other = await issue(db, A, [slip()], { month: "2026-10-01" });
+    expect(other.result).toMatchObject({ payslips: [{ national_id: "X1", revision: 1 }] });
+  });
+
+  it("reads a month as the latest revision of each employee, for an admin only", async () => {
+    const mine = await month(db, A);
+    expect(mine.error).toBeNull();
+    expect(mine.result).toHaveLength(2);
+    expect(mine.result![0]).toMatchObject({
+      national_id: "X1",
+      revision: 2,
+      template_id: template,
+      template_version: 1,
+      lines: [{ label: "Net pay", amount: 1 }],
+      issued_by: A,
+    });
+    expect(mine.result![1]).toMatchObject({ national_id: "X2", revision: 1, rates: null });
+    expect((await month(db, A, ABC, "2026-11-01")).result).toEqual([]);
+    // A viewer of the company, an outsider and another company's admin get nothing at all.
+    for (const user of [V, O, B]) expect((await month(db, user)).result).toEqual([]);
+    expect((await month(db, A, ABC, "2026-09-01", "anon")).error).toMatch(
+      /permission denied for function/,
+    );
+  });
+
+  it("lets only an admin of the company see the rows; a viewer not even a count", async () => {
+    const count = "select count(*)::int as result from public.issued_payslips";
+    expect((await one(db, A, count)).result).toBe(4);
+    expect((await one(db, V, count)).result).toBe(0);
+    expect((await one(db, B, count)).result).toBe(0);
+    expect((await one(db, O, count)).result).toBe(0);
+    expect((await one(db, null, count, [], "anon")).error).toMatch(/permission denied/);
+  });
+
+  it.each([
+    `insert into public.issued_payslips (company_id, employee_id, period, revision, template_id,
+       template_version, lines)
+     select '${ABC}', '${EMPLOYEE}', '2026-12-01', 1, template_id, 1, '[{}]'
+     from public.payslip_template_versions limit 1`,
+    "update public.issued_payslips set lines = '[{}]'",
+    "delete from public.issued_payslips",
+  ])("gives even an admin no direct write: %s", async (statement) => {
+    const { error } = await as(db, "authenticated", A, () => db.exec(statement));
+    expect(error).toContain("permission denied for table issued_payslips");
+    expect(await rows()).toBe(4);
+  });
+
+  it("does not let an employee with an issued payslip be removed on their own", async () => {
+    const { error } = await as(db, "authenticated", A, () =>
+      db.exec(`delete from public.employees where id = '${EMPLOYEE_2}'`),
+    );
+    // 23001 (restrict_violation) on current Postgres; 23503 on older ones.
+    expect(error).toMatch(/^(23001|23503) /);
+  });
+
+  it("stops at 50 revisions for an employee and a month", async () => {
+    for (let seen = 1; seen < 50; seen++) {
+      const next = await issue(db, A, [slip({ ...X2, expected_revision: seen })]);
+      expect(next.error).toBeNull();
+    }
+    const over = await issue(db, A, [slip({ ...X2, expected_revision: 50 })]);
+    expect(over.error).toMatch(/54000 PH_LIMIT: payslip 1$/);
+  });
+
+  it("keeps the rows, with an empty issuer, when the user account is removed", async () => {
+    await db.exec(`delete from auth.users where id = '${A}'`);
+    expect(
+      await scalar(
+        db,
+        "select count(*)::int as result from public.issued_payslips where issued_by is not null",
+      ),
+    ).toBe(0);
+    expect(await rows()).toBe(53);
+  });
+});
+
+describe("delete_company after 0011", () => {
   let db: PGlite;
   beforeAll(async () => {
     db = await freshDatabase();
   }, SETUP_TIMEOUT);
   afterAll(() => db?.close());
 
-  it("removes the company's rates, templates and versions, counts them, and spares the other company", async () => {
+  it("removes the company's rates, templates, versions and issued payslips, counts them, and spares the other company", async () => {
     await saveRates(db, A);
     await saveRates(db, A, { expected: 1, ceiling: 30000 });
     await saveRates(db, B, { company: XYZ });
@@ -532,6 +899,19 @@ describe("delete_company after 0010", () => {
     await saveDraft(db, A, { name: "Second" });
     const theirs = (await saveDraft(db, B, { company: XYZ, name: "Theirs" })).result!.template_id;
     await publish(db, B, theirs, 1, XYZ);
+    await db.exec(`insert into public.employees (id, company_id, national_id, surname) values
+      ('${EMPLOYEE_XYZ}', '${XYZ}', 'Y1', 'OTHER')`);
+    const slip = (national_id: string, template_id: string) => ({
+      national_id,
+      expected_revision: 0,
+      template_id,
+      template_version: 1,
+      lines: LINES,
+      accepted_differences: [],
+    });
+    expect((await issue(db, A, [slip("X1", mine)])).error).toBeNull();
+    expect((await issue(db, A, [slip("X1", mine)], { month: "2026-10-01" })).error).toBeNull();
+    expect((await issue(db, B, [slip("Y1", theirs)], { company: XYZ })).error).toBeNull();
 
     const deleted = await one(db, A, "select public.delete_company($1::uuid, $2) as result", [
       ABC,
@@ -540,6 +920,7 @@ describe("delete_company after 0010", () => {
     expect(deleted.error).toBeNull();
     expect(deleted.result).toEqual({
       company_id: ABC,
+      issued_payslips: 2,
       entries: 0,
       runs: 0,
       employees: 1,
@@ -559,14 +940,24 @@ describe("delete_company after 0010", () => {
       where c.contype = 'f' and c.confrelid = 'public.companies'::regclass`);
     const tables = rows.map((row) => row.tbl);
     expect(tables).toEqual(
-      expect.arrayContaining(["statutory_rates", "payslip_templates", "payslip_template_versions"]),
+      expect.arrayContaining([
+        "statutory_rates",
+        "payslip_templates",
+        "payslip_template_versions",
+        "issued_payslips",
+      ]),
     );
     for (const { tbl, col } of rows) {
       const left = (table: string) =>
         scalar<number>(db, `select count(*)::int as result from ${tbl} where ${col} = $1`, [table]);
       expect(await left(ABC), `rows left in ${tbl}`).toBe(0);
     }
-    for (const table of ["statutory_rates", "payslip_templates", "payslip_template_versions"]) {
+    for (const table of [
+      "statutory_rates",
+      "payslip_templates",
+      "payslip_template_versions",
+      "issued_payslips",
+    ]) {
       expect(
         await scalar(db, `select count(*)::int as result from public.${table}`),
         `the other company's ${table}`,

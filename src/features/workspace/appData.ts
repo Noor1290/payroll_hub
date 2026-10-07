@@ -1,8 +1,15 @@
 import { z } from "zod";
-import { PAYROLL_RESULT, PAYSLIP_TEMPLATE, STATUTORY_RATES } from "@/config/apps.config";
+import {
+  PAYROLL_RESULT,
+  PAYSLIP_ISSUE,
+  PAYSLIP_TEMPLATE,
+  STATUTORY_RATES,
+} from "@/config/apps.config";
 import { handleDataRequest, registerDataType } from "@/lib/bridge/bridge";
 import {
+  ISSUE_MAX_PAYSLIPS,
   jsonBytes,
+  PAYSLIP_BYTES,
   TEMPLATE_BODY_BYTES,
   type ReceivedPayload,
   type Refusal,
@@ -11,7 +18,8 @@ import {
   type ResponseDataPayload,
   type SendDataPayload,
 } from "@/lib/bridge/protocol";
-import { formatPeriod } from "@/lib/format";
+import { formatCount, formatPeriod } from "@/lib/format";
+import { ISSUED_PAYSLIPS_KEY, queryClient } from "@/lib/queryClient";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { createStore } from "@/lib/store";
 import {
@@ -20,6 +28,11 @@ import {
   isMissingTable,
   NotConfiguredError,
 } from "@/lib/supabase/errors";
+import {
+  fetchIssuedPayslips,
+  ISSUED_MIGRATION,
+  issuePayslips,
+} from "@/lib/supabase/issuedPayslips";
 import {
   fetchTemplateDraft,
   fetchTemplates,
@@ -35,6 +48,7 @@ import {
   RATES_MIGRATION,
   saveStatutoryRates,
 } from "@/lib/supabase/statutoryRates";
+import { isUnlocked } from "@/lib/unlock";
 import { answerRequest, recordSave } from "./deliver";
 
 /**
@@ -49,6 +63,11 @@ import { answerRequest, recordSave } from "./deliver";
  *    nothing happens unseen. The database decides who may read (members) and save (admins);
  *    this file only checks the shape and that the app is talking about the company the user
  *    has selected.
+ *  - payslip-issue: issued payslips hold salaries and national IDs, so none of the above
+ *    applies. Admins only, and behind the password gate. A request asks the user first, in
+ *    the same dialog as a saved run. A save cannot wait for a dialog (it must be answered
+ *    within 8 seconds), so it needs the gate to be open already and is refused at once if
+ *    it is not. The log row and the toast carry a count and a month, never who.
  *
  * The wire contract (what `params`, rows and results look like) is docs/INTEGRATION.md.
  */
@@ -110,8 +129,19 @@ function invalid(error: z.ZodError): Refusal {
 /**
  * Turns a failed read or save into the refusal the app is told. The database's own PH_ codes
  * map one to one; a table or function that is not there names the file the owner must run.
+ *
+ * When the database names the payslip at fault ("PH_STALE: payslip 3", counted from 1), the
+ * refusal carries its position counted from 0 as `index`. That number is all there is: the
+ * database never puts a national ID or a name in a message, and neither does this.
  */
 export function refusalFor(error: unknown, migration: string): Refusal {
+  const refusal = classifyRefusal(error, migration);
+  const message = (error as { message?: unknown } | null)?.message;
+  const found = /\bPH_[A-Z_]+: payslip (\d+)/.exec(typeof message === "string" ? message : "");
+  return found ? { ...refusal, index: Number(found[1]) - 1 } : refusal;
+}
+
+function classifyRefusal(error: unknown, migration: string): Refusal {
   const { code, message } = (typeof error === "object" && error !== null ? error : {}) as {
     code?: unknown;
     message?: unknown;
@@ -136,6 +166,18 @@ export function refusalFor(error: unknown, migration: string): Refusal {
   if (text.includes("PH_NO_CHANGE")) {
     return refuse("no-change", "Nothing was saved: this is the same as what is already stored.");
   }
+  if (text.includes("PH_UNKNOWN_EMPLOYEE")) {
+    return refuse(
+      "not-found",
+      "A payslip is for someone who is not a current employee in the dashboard. Save the payroll run there first. Nothing was issued.",
+    );
+  }
+  if (text.includes("PH_UNKNOWN_TEMPLATE")) {
+    return refuse(
+      "not-found",
+      "A payslip uses a template version this company does not have. Reload the templates. Nothing was issued.",
+    );
+  }
   if (text.includes("PH_NOT_FOUND")) return refuse("not-found", "The dashboard has no such item.");
   if (text.includes("PH_TOO_LARGE")) return refuse("too-large", "It is too large to store.");
   if (text.includes("PH_LIMIT")) {
@@ -155,9 +197,15 @@ export function refusalFor(error: unknown, migration: string): Refusal {
   return refuse("unavailable", `${classifyDataError(error).title}.`);
 }
 
-const meta = (company: Membership["company"]) => ({
+/**
+ * What every answer says about itself: the company it is about, and the signed-in user's role
+ * there, so an app can show read-only from the start instead of finding out from a refusal.
+ */
+const meta = ({ company, role }: Membership) => ({
   label: company.name.slice(0, 120),
   ...(company.brn ? { brn: company.brn } : {}),
+  // The database's "viewer" is "member" on the wire. A hint only: the database decides.
+  role: role === "admin" ? ("admin" as const) : ("member" as const),
 });
 
 // ---------- statutory-rates ----------
@@ -208,7 +256,7 @@ export async function answerRatesRequest(
         // Not the user's id: only whether it was the person now signed in.
         created_by_you: created_by !== null && created_by === current.viewer.id,
       })),
-      meta: meta(company),
+      meta: meta(current.membership),
     };
   } catch (error) {
     return refusalFor(error, RATES_MIGRATION);
@@ -319,7 +367,7 @@ export async function answerTemplateRequest(
     ok: true,
     dataType: PAYSLIP_TEMPLATE,
     rows,
-    meta: meta(company),
+    meta: meta(current.membership),
   });
 
   try {
@@ -417,6 +465,238 @@ export function describeTemplateSave(result: Record<string, unknown>): string {
     : `Payslip template "${String(result.name)}" saved as a draft (revision ${String(result.draft_revision)})`;
 }
 
+// ---------- payslip-issue ----------
+
+/** The rates a payslip was cross-checked against: the values of a rates row, copied. */
+const ratesSnapshotSchema = z.strictObject({
+  effective_from: monthSchema,
+  revision: z.number().int().min(1),
+  nsf_employee_rate: rateSchema,
+  nsf_ceiling: amountSchema,
+  nsf_exempt_at_60: z.boolean(),
+  csg_employee_rate_low: rateSchema,
+  csg_employee_rate_high: rateSchema,
+  csg_threshold: amountSchema,
+});
+
+/** A difference between the payroll's figure and the payslip's that was accepted, and why. */
+const differenceSchema = z.strictObject({
+  what: z.string().trim().min(1).max(80),
+  payroll: z.number(),
+  payslip: z.number(),
+  reason: z.string().trim().min(1).max(300),
+});
+
+const payslipSchema = z.strictObject({
+  /** The row's "ID" in payroll-result. */
+  national_id: z.string().trim().min(1).max(50),
+  /** The revision last seen for this employee and month; 0 for none. */
+  expected_revision: z.number().int().min(0).max(50),
+  template_id: templateIdSchema,
+  template_version: z.number().int().min(1).max(1_000_000),
+  /** null = not cross-checked. The key itself must be there. */
+  rates: ratesSnapshotSchema.nullable(),
+  /** The lines shown, as the payslip app defines them. Stored exactly as sent. */
+  lines: z.array(z.record(z.string(), z.unknown())).min(1).max(200),
+  accepted_differences: z.array(differenceSchema).max(50),
+});
+
+const issuedParamsSchema = z.strictObject({
+  action: z.literal("load"),
+  /** Required here, unlike rates and templates: this is per-employee data. */
+  brn: brnSchema,
+  period: monthSchema,
+});
+
+const issueSaveSchema = z.strictObject({
+  action: z.literal("issue"),
+  brn: brnSchema,
+  period: monthSchema,
+  payslips: z.array(payslipSchema).min(1),
+});
+
+const READ_LOCKED = refuse(
+  "locked",
+  "The dashboard is locked. Confirm your password there to unlock it, then ask again.",
+);
+const SAVE_LOCKED = refuse(
+  "locked",
+  "The dashboard is locked, so nothing was issued. Confirm your password there, then issue again.",
+);
+
+/**
+ * Says which payslip of a refused month is at fault: its position in the list the app sent,
+ * counted from 0. The app names the employee from it; nothing here ever does.
+ */
+const at = (refusal: Refusal, index: number): Refusal => ({ ...refusal, index });
+
+/** As `invalid`, with the position of the payslip when the problem is inside one. */
+function invalidPayslip(error: z.ZodError): Refusal {
+  const [list, index] = error.issues[0]?.path ?? [];
+  const refusal = invalid(error);
+  return list === "payslips" && typeof index === "number" ? at(refusal, index) : refusal;
+}
+
+/** As `context`, for data only an admin of the company may read or add to. */
+function adminContext(brn: string): ExchangeContext | Refusal {
+  const current = context(brn);
+  if ("ok" in current) return current;
+  if (current.membership.role !== "admin") {
+    return refuse("forbidden", "Only an admin of this company can read or issue payslips.");
+  }
+  return current;
+}
+
+/**
+ * A month's issued payslips, the latest revision of each employee. Called only once the user
+ * has agreed in the dialog. Everything is checked again here, because the dialog may have been
+ * open for a while: the company selected, the role, and the password gate.
+ */
+async function loadIssued(brn: string, period: string): Promise<ResponseDataPayload> {
+  const current = adminContext(brn);
+  if ("ok" in current) return current;
+  if (!isUnlocked()) return READ_LOCKED;
+
+  const { viewer, membership } = current;
+  const { company } = membership;
+  // Read through the query cache under a gated key, so locking cancels a read in flight.
+  const queryKey = [ISSUED_PAYSLIPS_KEY, company.id, period];
+  try {
+    const issued = await queryClient.fetchQuery({
+      queryKey,
+      queryFn: () => fetchIssuedPayslips(viewer, company.id, `${period}-01`),
+      staleTime: 0,
+      gcTime: 0,
+      retry: false,
+    });
+    // The gate may have locked while the database was answering: then nothing leaves.
+    if (!isUnlocked()) return READ_LOCKED;
+    return {
+      ok: true,
+      dataType: PAYSLIP_ISSUE,
+      rows: issued.map(({ issued_by, ...row }) => ({
+        ...row,
+        // Not the user's id: only whether it was the person now signed in.
+        issued_by_you: issued_by !== null && issued_by === viewer.id,
+      })),
+      meta: { ...meta(membership), period },
+    };
+  } catch (error) {
+    if (!isUnlocked()) return READ_LOCKED;
+    return refusalFor(error, ISSUED_MIGRATION);
+  } finally {
+    // Nothing is kept once the app has its answer.
+    queryClient.removeQueries({ queryKey });
+  }
+}
+
+/**
+ * An app asks for a month's issued payslips. Unlike rates and templates this is per-employee
+ * data, so the user is asked first, in the same dialog as for a saved run, and the password
+ * gate must be open. What can be refused without asking is refused straight away.
+ */
+export function answerIssuedRequest(
+  appId: string,
+  payload: RequestDataPayload,
+): Promise<ResponseDataPayload> {
+  const params = issuedParamsSchema.safeParse(payload.params ?? {});
+  if (!params.success) return Promise.resolve(invalid(params.error));
+  const { brn, period } = params.data;
+  const current = adminContext(brn);
+  if ("ok" in current) return Promise.resolve(current);
+
+  return handleDataRequest(appId, payload, {
+    what: `the payslips issued for ${formatPeriod(`${period}-01`)}`,
+    warning:
+      "This sends every payslip issued for that month, with national IDs and pay, to the app.",
+    answer: () => loadIssued(brn, period),
+  });
+}
+
+/**
+ * Issues a month's selection: every payslip at its next revision, or none at all. No dialog (a
+ * save must be answered within 8 seconds), so the password gate has to be open already; while
+ * it is locked the save is refused at once and nothing reaches the database.
+ */
+export async function issueFromApp(payload: SendDataPayload): Promise<ReceivedPayload> {
+  const sent = payload.rows[0]?.payslips;
+  if (Array.isArray(sent) && sent.length > ISSUE_MAX_PAYSLIPS) {
+    return refuse(
+      "too-large",
+      `At most ${ISSUE_MAX_PAYSLIPS} payslips can be issued in one save. Nothing was issued.`,
+    );
+  }
+  const row = issueSaveSchema.safeParse(payload.rows[0]);
+  if (!row.success) return invalidPayslip(row.error);
+  const current = adminContext(row.data.brn);
+  if ("ok" in current) return current;
+  if (!isUnlocked()) return SAVE_LOCKED;
+
+  const { period, payslips } = row.data;
+  const seen = new Set<string>();
+  for (const [index, payslip] of payslips.entries()) {
+    if (jsonBytes(payslip) > PAYSLIP_BYTES) {
+      return at(
+        refuse(
+          "too-large",
+          "A payslip is larger than the dashboard accepts (16 KB). Nothing was issued.",
+        ),
+        index,
+      );
+    }
+    if (hasEmbeddedFile(payslip)) {
+      return at(
+        refuse(
+          "invalid",
+          "A payslip cannot contain images or other embedded files. Nothing was issued.",
+        ),
+        index,
+      );
+    }
+    if (seen.has(payslip.national_id)) {
+      return at(
+        refuse("invalid", "The same employee appears twice in the month. Nothing was issued."),
+        index,
+      );
+    }
+    seen.add(payslip.national_id);
+  }
+
+  try {
+    const issued = await issuePayslips(
+      current.viewer,
+      current.membership.company.id,
+      `${period}-01`,
+      payslips,
+    );
+    return {
+      ok: true,
+      result: {
+        period: issued.period.slice(0, 7),
+        issued: issued.issued,
+        issued_at: issued.issued_at,
+        payslips: issued.payslips,
+      },
+    };
+  } catch (error) {
+    const refusal = refusalFor(error, ISSUED_MIGRATION);
+    if (refusal.code === "stale") {
+      return {
+        ...refusal,
+        error:
+          "A payslip of this month was issued by someone else since the month was loaded. Nothing was issued. Reload the month, then issue again.",
+      };
+    }
+    return refusal;
+  }
+}
+
+/** The toast for an issued month: how many and which month. Never who. */
+export function describeIssue(result: Record<string, unknown>): string {
+  const issued = Number(result.issued);
+  return `${formatCount(issued)} ${issued === 1 ? "payslip" : "payslips"} issued for ${formatPeriod(`${String(result.period)}-01`)}`;
+}
+
 // ---------- registration ----------
 
 registerDataType(PAYROLL_RESULT, {
@@ -448,5 +728,19 @@ registerDataType(PAYSLIP_TEMPLATE, {
       "the payslip template",
       () => saveTemplate(payload),
       describeTemplateSave,
+    ),
+});
+
+registerDataType(PAYSLIP_ISSUE, {
+  request: (appId, payload) =>
+    answerRequest(appId, PAYSLIP_ISSUE, () => answerIssuedRequest(appId, payload)),
+  save: (appId, payload) =>
+    recordSave(
+      appId,
+      PAYSLIP_ISSUE,
+      "the issued payslips",
+      () => issueFromApp(payload),
+      describeIssue,
+      (result) => Number(result.issued),
     ),
 });

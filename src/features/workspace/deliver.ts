@@ -174,6 +174,7 @@ export async function answerRequest(
  * the toast still report what really happened when `save` settles later than that.
  *
  * `describe` turns a successful result into the toast's text. It must not include payroll values.
+ * `count` says how many rows the save stored, for the log; one unless told otherwise.
  */
 export async function recordSave(
   appId: string,
@@ -181,6 +182,7 @@ export async function recordSave(
   what: string,
   save: () => Promise<ReceivedPayload>,
   describe: (result: Record<string, unknown>) => string,
+  count: (result: Record<string, unknown>) => number = () => 1,
 ): Promise<ReceivedPayload> {
   const id = crypto.randomUUID();
   const name = getApp(appId)?.name ?? appId;
@@ -200,7 +202,7 @@ export async function recordSave(
     ack = { ok: false, code: "unavailable", error: "The dashboard could not save the data." };
   }
   if (ack.ok) {
-    finishExchange(id, { ok: true, rowCount: 1 });
+    finishExchange(id, { ok: true, rowCount: count(ack.result ?? {}) });
     toast.success(describe(ack.result ?? {}), { description: `Saved from ${name}.` });
   } else {
     finishExchange(id, { ok: false, code: ack.code });

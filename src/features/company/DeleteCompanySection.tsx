@@ -54,6 +54,7 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
           {` (${plural(preview.templateVersions, "published version")})`}
         </li>
       )}
+      {preview.issuedPayslips > 0 && <li>{plural(preview.issuedPayslips, "issued payslip")}</li>}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"
