@@ -38,6 +38,8 @@ export interface AppConfig {
 }
 
 export const PAYROLL_RESULT = "payroll-result";
+/** A company's employee-side NSF and CSG settings, versioned (migration 0009). */
+export const STATUTORY_RATES = "statutory-rates";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -99,8 +101,9 @@ export const APPS: readonly AppConfig[] = [
     icon: ReceiptText,
     accentColor: "var(--warn)",
     status: "active",
-    accepts: [PAYROLL_RESULT],
-    produces: [],
+    // "payslip-issue" is not here yet: until it is, the hub answers it with "not registered".
+    accepts: [PAYROLL_RESULT, STATUTORY_RATES],
+    produces: [STATUTORY_RATES],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,
   },

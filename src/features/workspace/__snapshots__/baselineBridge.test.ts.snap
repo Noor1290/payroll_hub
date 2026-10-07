@@ -169,7 +169,8 @@ exports[`baseline: what the dashboard answers over the bridge > the payslip app 
       "from": "dashboard",
       "id": "message-0000003",
       "payload": {
-        "error": "This app is not registered to receive this kind of data.",
+        "code": "unavailable",
+        "error": "Nobody is signed in to the dashboard, or no company is selected.",
         "ok": false,
       },
       "targetOrigin": "https://noor1290.github.io",
@@ -179,7 +180,22 @@ exports[`baseline: what the dashboard answers over the bridge > the payslip app 
     },
   ],
   "held": 0,
-  "transferLog": [],
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "statutory-rates",
+      "from": "Database",
+      "id": "(id)",
+      "kind": "request",
+      "reason": "not available",
+      "rowCount": 0,
+      "status": "failed",
+      "toAppId": "payslip",
+      "toName": "Payslip Automation",
+    },
+  ],
   "waiting": 0,
 }
 `;
@@ -235,7 +251,8 @@ exports[`baseline: what the dashboard answers over the bridge > the payslip app 
       "from": "dashboard",
       "id": "message-0000003",
       "payload": {
-        "error": "This app is not registered to send this kind of data.",
+        "code": "invalid",
+        "error": ""brn" is missing or not valid.",
         "ok": false,
       },
       "targetOrigin": "https://noor1290.github.io",
@@ -245,7 +262,22 @@ exports[`baseline: what the dashboard answers over the bridge > the payslip app 
     },
   ],
   "held": 0,
-  "transferLog": [],
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "statutory-rates",
+      "from": "Payslip Automation",
+      "id": "(id)",
+      "kind": "save",
+      "reason": "not valid",
+      "rowCount": 0,
+      "status": "failed",
+      "toAppId": "database",
+      "toName": "Database",
+    },
+  ],
   "waiting": 0,
 }
 `;

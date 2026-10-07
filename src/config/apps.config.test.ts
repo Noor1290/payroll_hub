@@ -25,11 +25,16 @@ describe("app registry", () => {
     expect(APPS.map((app) => app.status)).toEqual(["active", "active", "active"]);
   });
 
-  it("registers the payslip app to receive payroll results, and nothing else yet", () => {
+  it("registers what the payslip app may receive and send, and not issued payslips yet", () => {
     const payslip = getApp("payslip")!;
-    expect(payslip.accepts).toEqual([PAYROLL_RESULT]);
-    expect(payslip.produces).toEqual([]);
+    expect(payslip.accepts).toEqual(["payroll-result", "statutory-rates"]);
+    expect(payslip.produces).toEqual(["statutory-rates"]);
+    expect([...payslip.accepts, ...payslip.produces]).not.toContain("payslip-issue");
     expect(payslip.expectedFields).toEqual(getApp("pdf-editor")!.expectedFields);
+    // Nothing changes for the other apps, and payroll results still go to the same two.
+    expect(getApp("payroll")).toMatchObject({ accepts: [], produces: ["payroll-result"] });
+    expect(getApp("pdf-editor")).toMatchObject({ accepts: ["payroll-result"], produces: [] });
+    expect(appsAccepting("statutory-rates").map((app) => app.id)).toEqual(["payslip"]);
   });
 
   it("builds Send-to destinations from `accepts`, leaving out the sender", () => {
