@@ -1,13 +1,15 @@
 import { z } from "zod";
-import { PAYROLL_RESULT, STATUTORY_RATES } from "@/config/apps.config";
+import { PAYROLL_RESULT, PAYSLIP_TEMPLATE, STATUTORY_RATES } from "@/config/apps.config";
 import { handleDataRequest, registerDataType } from "@/lib/bridge/bridge";
-import type {
-  ReceivedPayload,
-  Refusal,
-  RefusalCode,
-  RequestDataPayload,
-  ResponseDataPayload,
-  SendDataPayload,
+import {
+  jsonBytes,
+  TEMPLATE_BODY_BYTES,
+  type ReceivedPayload,
+  type Refusal,
+  type RefusalCode,
+  type RequestDataPayload,
+  type ResponseDataPayload,
+  type SendDataPayload,
 } from "@/lib/bridge/protocol";
 import { formatPeriod } from "@/lib/format";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
@@ -18,6 +20,14 @@ import {
   isMissingTable,
   NotConfiguredError,
 } from "@/lib/supabase/errors";
+import {
+  fetchTemplateDraft,
+  fetchTemplates,
+  fetchTemplateVersion,
+  publishTemplate,
+  saveTemplateDraft,
+  TEMPLATES_MIGRATION,
+} from "@/lib/supabase/payslipTemplates";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import {
@@ -33,11 +43,12 @@ import { answerRequest, recordSave } from "./deliver";
  *
  *  - payroll-result: unchanged. The user is asked first and the password gate must be open
  *    (the dialog in BridgeDialogs). The only addition is a row in the transfer log.
- *  - statutory-rates: answered and saved WITHOUT a dialog and without the password gate. They
- *    are settings, not anyone's pay: nothing in them is per employee. Every exchange is a row
- *    in the transfer log and every save shows a toast, so nothing happens unseen. The database
- *    decides who may read (members) and save (admins); this file only checks the shape and
- *    that the app is talking about the company the user has selected.
+ *  - statutory-rates and payslip-template: answered and saved WITHOUT a dialog and without the
+ *    password gate. They are settings and layout, not anyone's pay: nothing in them is per
+ *    employee. Every exchange is a row in the transfer log and every save shows a toast, so
+ *    nothing happens unseen. The database decides who may read (members) and save (admins);
+ *    this file only checks the shape and that the app is talking about the company the user
+ *    has selected.
  *
  * The wire contract (what `params`, rows and results look like) is docs/INTEGRATION.md.
  */
@@ -235,6 +246,177 @@ export async function saveRates(payload: SendDataPayload): Promise<ReceivedPaylo
   }
 }
 
+// ---------- payslip-template ----------
+
+const templateIdSchema = z.uuid();
+/** The same limits as the database: 1 to 80 characters once trimmed. */
+const templateNameSchema = z.string().trim().min(1).max(80);
+
+/** What a request may ask for. `version` absent = the draft. */
+const templateParamsSchema = z.discriminatedUnion("action", [
+  z.strictObject({ action: z.literal("list"), brn: brnSchema.optional() }),
+  z.strictObject({
+    action: z.literal("load"),
+    brn: brnSchema.optional(),
+    template_id: templateIdSchema,
+    version: z.number().int().min(1).optional(),
+  }),
+]);
+
+/** What a save may ask for: one command per row. */
+const templateSaveSchema = z.discriminatedUnion("action", [
+  z.strictObject({
+    action: z.literal("save-draft"),
+    brn: brnSchema,
+    /** Absent or null for a new template. */
+    template_id: templateIdSchema.nullish(),
+    name: templateNameSchema,
+    body: z.record(z.string(), z.unknown()),
+    /** The draft revision last seen; 0 for a new template. */
+    expected_revision: z.number().int().min(0),
+  }),
+  z.strictObject({
+    action: z.literal("publish"),
+    brn: brnSchema,
+    template_id: templateIdSchema,
+    expected_revision: z.number().int().min(1),
+  }),
+]);
+
+/** A `data:` URI anywhere in a text: an image or another file embedded in the body. */
+const EMBEDDED_FILE = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+/i;
+
+/** True when any name or text in the body embeds a file. Walks without recursion. */
+export function hasEmbeddedFile(body: unknown): boolean {
+  const pending: unknown[] = [body];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === "string") {
+      if (EMBEDDED_FILE.test(value)) return true;
+    } else if (Array.isArray(value)) {
+      for (const inner of value as unknown[]) pending.push(inner);
+    } else if (typeof value === "object" && value !== null) {
+      for (const [key, inner] of Object.entries(value)) pending.push(key, inner);
+    }
+  }
+  return false;
+}
+
+/** The company's templates (no bodies), or one draft or published version with its body. */
+export async function answerTemplateRequest(
+  payload: RequestDataPayload,
+): Promise<ResponseDataPayload> {
+  const params = templateParamsSchema.safeParse(payload.params ?? {});
+  if (!params.success) return invalid(params.error);
+  const current = context(params.data.brn);
+  if ("ok" in current) return current;
+
+  const { viewer } = current;
+  const { company } = current.membership;
+  // Not anyone's user id: only whether it was the person now signed in.
+  const you = (id: string | null) => id !== null && id === viewer.id;
+  const answer = (rows: Record<string, unknown>[]): ResponseDataPayload => ({
+    ok: true,
+    dataType: PAYSLIP_TEMPLATE,
+    rows,
+    meta: meta(company),
+  });
+
+  try {
+    if (params.data.action === "list") {
+      const templates = await fetchTemplates(viewer, company.id);
+      return answer(
+        templates.map((template) => ({
+          template_id: template.id,
+          name: template.name,
+          draft_revision: template.draft_revision,
+          updated_at: template.updated_at,
+          updated_by_you: you(template.updated_by),
+          published_version: template.published?.version ?? null,
+          published_at: template.published?.published_at ?? null,
+        })),
+      );
+    }
+
+    const { template_id: templateId, version } = params.data;
+    if (version === undefined) {
+      const draft = await fetchTemplateDraft(viewer, company.id, templateId);
+      if (!draft) return refuse("not-found", "This company has no such payslip template.");
+      return answer([
+        {
+          template_id: draft.id,
+          name: draft.name,
+          draft_revision: draft.draft_revision,
+          body: draft.draft_body,
+          updated_at: draft.updated_at,
+          updated_by_you: you(draft.updated_by),
+        },
+      ]);
+    }
+    const published = await fetchTemplateVersion(viewer, company.id, templateId, version);
+    if (!published) return refuse("not-found", "This payslip template has no such version.");
+    return answer([
+      {
+        template_id: published.template_id,
+        name: published.name,
+        version: published.version,
+        body: published.body,
+        published_at: published.published_at,
+        published_by_you: you(published.published_by),
+      },
+    ]);
+  } catch (error) {
+    return refusalFor(error, TEMPLATES_MIGRATION);
+  }
+}
+
+/** Saves a draft (new or existing) or publishes one. The body is stored exactly as sent. */
+export async function saveTemplate(payload: SendDataPayload): Promise<ReceivedPayload> {
+  const row = templateSaveSchema.safeParse(payload.rows[0]);
+  if (!row.success) return invalid(row.error);
+  const current = context(row.data.brn);
+  if ("ok" in current) return current;
+  if (current.membership.role !== "admin") {
+    return refuse("forbidden", "Only an admin of this company can save or publish a template.");
+  }
+  const companyId = current.membership.company.id;
+
+  try {
+    if (row.data.action === "publish") {
+      const published = await publishTemplate(
+        current.viewer,
+        companyId,
+        row.data.template_id,
+        row.data.expected_revision,
+      );
+      return { ok: true, result: published };
+    }
+
+    if (jsonBytes(row.data.body) > TEMPLATE_BODY_BYTES) {
+      return refuse("too-large", "The template is larger than the dashboard accepts (150 KB).");
+    }
+    if (hasEmbeddedFile(row.data.body)) {
+      return refuse("invalid", "A template cannot contain images or other embedded files.");
+    }
+    const saved = await saveTemplateDraft(current.viewer, companyId, {
+      templateId: row.data.template_id ?? null,
+      name: row.data.name,
+      body: row.data.body,
+      expectedRevision: row.data.expected_revision,
+    });
+    return { ok: true, result: saved };
+  } catch (error) {
+    return refusalFor(error, TEMPLATES_MIGRATION);
+  }
+}
+
+/** The toast for a saved draft or a publication. A name and numbers only. */
+export function describeTemplateSave(result: Record<string, unknown>): string {
+  return "version" in result
+    ? `Payslip template published (version ${String(result.version)})`
+    : `Payslip template "${String(result.name)}" saved as a draft (revision ${String(result.draft_revision)})`;
+}
+
 // ---------- registration ----------
 
 registerDataType(PAYROLL_RESULT, {
@@ -253,5 +435,18 @@ registerDataType(STATUTORY_RATES, {
       () => saveRates(payload),
       (result) =>
         `Statutory rates saved for ${formatPeriod(`${String(result.effective_from)}-01`)} (revision ${String(result.revision)})`,
+    ),
+});
+
+registerDataType(PAYSLIP_TEMPLATE, {
+  request: (appId, payload) =>
+    answerRequest(appId, PAYSLIP_TEMPLATE, () => answerTemplateRequest(payload)),
+  save: (appId, payload) =>
+    recordSave(
+      appId,
+      PAYSLIP_TEMPLATE,
+      "the payslip template",
+      () => saveTemplate(payload),
+      describeTemplateSave,
     ),
 });
