@@ -6,12 +6,13 @@ import type {
   TemplateSummary,
   TemplateVersion,
 } from "@/lib/supabase/payslipTemplates";
+import type { IssuedMonth, IssuedPayslip, PayslipInput } from "@/lib/supabase/issuedPayslips";
 import type { RatesInput, RatesVersion, SavedRates } from "@/lib/supabase/statutoryRates";
-import { demoMemberships } from "./demoData";
+import { demoHasEmployee, demoMemberships } from "./demoData";
 
 /**
- * FAKE statutory rates and payslip templates for dev-only demo mode, so the mock payslip app
- * has something to talk to. They follow the same rules as the database functions (admin only,
+ * FAKE statutory rates, payslip templates and issued payslips for dev-only demo mode, so the
+ * mock payslip app has something to talk to. They follow the same rules as the database functions (admin only,
  * the revision the caller last saw must still be the latest, an identical correction or
  * publication is refused, names unique per company, 50 templates). Everything here is invented
  * and lives in memory. Only reachable behind `import.meta.env.DEV`.
@@ -272,8 +273,105 @@ export async function demoPublishTemplate(
 
 // ---------- issued payslips ----------
 
+type StoredPayslip = IssuedPayslip & { company_id: string; period: string };
+
 /** Every revision ever issued in this session. Nothing is seeded: the mock app issues them. */
-const issued: { company_id: string }[] = [];
+const issued: StoredPayslip[] = [];
+
+const latestIssued = (companyId: string, period: string, nationalId: string) =>
+  issued
+    .filter(
+      (row) =>
+        row.company_id === companyId && row.period === period && row.national_id === nationalId,
+    )
+    .reduce((best, row) => Math.max(best, row.revision), 0);
+
+/** The latest revision of each employee for that month. Admins only, like the read policy. */
+export async function demoFetchIssuedPayslips(
+  companyId: string,
+  period: string,
+): Promise<IssuedPayslip[]> {
+  await pause(250);
+  const role = demoMemberships.find((m) => m.company.id === companyId)?.role;
+  if (role !== "admin") return [];
+  return issued
+    .filter(
+      (row) =>
+        row.company_id === companyId &&
+        row.period === period &&
+        row.revision === latestIssued(companyId, period, row.national_id),
+    )
+    .sort((a, b) => a.national_id.localeCompare(b.national_id))
+    .map(({ company_id: _company, period: _period, ...row }) => {
+      void _company;
+      void _period;
+      return row;
+    });
+}
+
+/**
+ * Mirrors issue_payslips: all of the month or none of it, and a refusal names the payslip at
+ * fault by its position, counted from 1.
+ */
+export async function demoIssuePayslips(
+  companyId: string,
+  period: string,
+  payslips: PayslipInput[],
+): Promise<IssuedMonth> {
+  await pause(500);
+  requireAdmin(companyId);
+  if (payslips.length > 1000) throw fail("PH_TOO_LARGE", "54000");
+  const issued_at = new Date().toISOString();
+  const seen = new Set<string>();
+  const added: StoredPayslip[] = [];
+
+  payslips.forEach((payslip, i) => {
+    const n = i + 1;
+    const nationalId = payslip.national_id.trim();
+    if (seen.has(nationalId)) {
+      throw fail(
+        `PH_INVALID_INPUT: payslip ${n}: the same employee appears earlier in the list`,
+        "22023",
+      );
+    }
+    seen.add(nationalId);
+    if (!demoHasEmployee(companyId, nationalId)) {
+      throw fail(`PH_UNKNOWN_EMPLOYEE: payslip ${n}`, "P0002");
+    }
+    const published = versions.some(
+      (row) =>
+        row.company_id === companyId &&
+        row.template_id === payslip.template_id &&
+        row.version === payslip.template_version,
+    );
+    if (!published) throw fail(`PH_UNKNOWN_TEMPLATE: payslip ${n}`, "P0002");
+    const latest = latestIssued(companyId, period, nationalId);
+    if (latest !== payslip.expected_revision) throw fail(`PH_STALE: payslip ${n}`, "P0001");
+    if (latest >= 50) throw fail(`PH_LIMIT: payslip ${n}`, "54000");
+    added.push({
+      company_id: companyId,
+      period,
+      national_id: nationalId,
+      revision: latest + 1,
+      template_id: payslip.template_id,
+      template_version: payslip.template_version,
+      rates: payslip.rates,
+      lines: payslip.lines,
+      accepted_differences: payslip.accepted_differences,
+      issued_by: DEMO_USER_ID,
+      issued_at,
+    });
+  });
+
+  // Only now, when every payslip passed: all or none.
+  issued.push(...added);
+  return {
+    period,
+    issued: added.length,
+    issued_at,
+    payslips: added.map(({ national_id, revision }) => ({ national_id, revision })),
+  };
+}
 
 /** Rows the demo company has here, for the delete-company preview. */
 export function demoAppDataCounts(companyId: string) {
