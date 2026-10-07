@@ -28,6 +28,11 @@ describe("demoDeleteCompany", () => {
     expect(value).toMatchObject({ employees: 13, runs: 7, entries: 67, approvedRuns: 6 });
   });
 
+  it("counts the sample statutory rates and payslip template", async () => {
+    const { value } = await settle(demoFetchDeletePreview(ABC));
+    expect(value).toMatchObject({ rates: 1, templates: 1, templateVersions: 1 });
+  });
+
   it("refuses a wrong name even when called directly, and deletes nothing", async () => {
     for (const wrong of ["abc co ltd", "ABC Co Ltd.", "ABC Co Ltd x", "ABC", ""]) {
       const { error } = await settle(demoDeleteCompany(ABC, wrong));
@@ -56,6 +61,9 @@ describe("demoDeleteCompany", () => {
       otherMembers: 0,
       details: 0,
       links: 0,
+      rates: 0,
+      templates: 0,
+      templateVersions: 0,
       approvedRuns: 0,
     });
     expect(demoMemberships.some((m) => m.company.id === ABC)).toBe(false);

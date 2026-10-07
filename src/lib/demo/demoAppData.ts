@@ -272,7 +272,9 @@ export async function demoPublishTemplate(
 
 /** Rows the demo company has here, for the delete-company preview. */
 export function demoAppDataCounts(companyId: string) {
-  return { rates: rates.filter((row) => row.company_id === companyId).length };
+  const own = (rows: { company_id: string }[]) =>
+    rows.filter((row) => row.company_id === companyId).length;
+  return { rates: own(rates), templates: own(templates), templateVersions: own(versions) };
 }
 
 /** Removes everything a deleted demo company had here. */

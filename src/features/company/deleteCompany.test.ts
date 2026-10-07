@@ -159,6 +159,9 @@ describe("fetchDeletePreview", () => {
       if (table === "company_members") return { data: null, count: 3, error: null };
       if (table === "company_details") return { data: null, count: 4, error: null };
       if (table === "company_links") return { data: null, count: 6, error: null };
+      if (table === "statutory_rates") return { data: null, count: 5, error: null };
+      if (table === "payslip_templates") return { data: null, count: 2, error: null };
+      if (table === "payslip_template_versions") return { data: null, count: 9, error: null };
       if (has(own, "eq", "status", "approved")) return { data: null, count: 3, error: null };
       return { data: null, count: 7, error: null };
     };
@@ -172,6 +175,9 @@ describe("fetchDeletePreview", () => {
       otherMembers: 2,
       details: 4,
       links: 6,
+      rates: 5,
+      templates: 2,
+      templateVersions: 9,
       approvedRuns: 3,
     });
     // Nothing is filtered on deleted_at: soft-deleted rows, approved runs among them, are counted.
@@ -187,12 +193,16 @@ describe("fetchDeletePreview", () => {
     for (const write of ["insert", "update", "delete", "upsert", "rpc"])
       expect(used.has(write)).toBe(false);
     const scoped = db.state.calls.filter(([method, , value]) => method === "eq" && value === ABC);
-    expect(scoped).toHaveLength(7);
+    expect(scoped).toHaveLength(10);
   });
 
-  it("still works before migrations 0005 and 0006 are run: missing tables count as nothing", async () => {
+  it("still works before migrations 0005, 0006, 0009 and 0010 are run: missing tables count as nothing", async () => {
+    const later = ["statutory_rates", "payslip_templates", "payslip_template_versions"];
     db.state.answer = (own) => {
       const table = own[0]![1];
+      if (later.includes(table as string)) {
+        return { data: null, count: null, error: { code: "PGRST205", message: "not found" } };
+      }
       if (table === "company_details") {
         return { data: null, count: null, error: { code: "PGRST205", message: "not found" } };
       }
@@ -204,6 +214,7 @@ describe("fetchDeletePreview", () => {
     const preview = await fetchDeletePreview(VIEWER, ABC);
     expect(preview.details).toBe(0);
     expect(preview.links).toBe(0);
+    expect(preview).toMatchObject({ rates: 0, templates: 0, templateVersions: 0 });
     expect(preview.employees).toBe(2);
   });
 

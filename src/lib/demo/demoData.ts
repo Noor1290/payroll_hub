@@ -10,6 +10,7 @@ import type {
   TableQuery,
 } from "@/lib/supabase/database";
 import type { ImportResult, Membership, RunStatus, RunSummary } from "@/lib/supabase/schemas";
+import { demoAppDataCounts, demoForgetAppData } from "./demoAppData";
 import { demoCompanyDataRows, demoForgetCompanyData } from "./demoCompanyData";
 
 /**
@@ -436,6 +437,7 @@ export async function demoFetchDeletePreview(companyId: string) {
     otherMembers: roleIn(companyId) ? 1 : 0,
     details: demoCompanyDataRows("company_details", companyId).length,
     links: demoCompanyDataRows("company_links", companyId).length,
+    ...demoAppDataCounts(companyId),
     approvedRuns: companyRuns.filter((run) => run.status === "approved").length,
   };
 }
@@ -470,6 +472,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
   };
   removeWhere(demoMemberships, (m) => m.company.id === companyId);
   demoForgetCompanyData(companyId);
+  demoForgetAppData(companyId);
   return result;
 }
 

@@ -39,6 +39,21 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
       <li>{plural(preview.entries, "payroll entry", "payroll entries")}</li>
       {preview.details > 0 && <li>{plural(preview.details, "company detail")}</li>}
       {preview.links > 0 && <li>{plural(preview.links, "link")}</li>}
+      {preview.rates > 0 && (
+        <li>
+          {plural(
+            preview.rates,
+            "version of the statutory rates",
+            "versions of the statutory rates",
+          )}
+        </li>
+      )}
+      {preview.templates > 0 && (
+        <li>
+          {plural(preview.templates, "payslip template")}
+          {` (${plural(preview.templateVersions, "published version")})`}
+        </li>
+      )}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"

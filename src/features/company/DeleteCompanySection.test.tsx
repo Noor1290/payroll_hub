@@ -32,6 +32,9 @@ const CLEAR: DeletePreview = {
   otherMembers: 1,
   details: 2,
   links: 4,
+  rates: 0,
+  templates: 0,
+  templateVersions: 0,
   approvedRuns: 0,
 };
 /** Two of its runs are approved; one of those is soft-deleted (the count includes it). */
@@ -206,6 +209,8 @@ describe("confirming", () => {
     expect(text).toContain("5 payroll entries");
     expect(text).toContain("2 company details");
     expect(text).toContain("4 links");
+    // Nothing stored for the payslip app: no line for it.
+    expect(text).not.toMatch(/statutory rates|payslip template/);
     expect(text).toContain("access for you and 1 other person");
     expect(text).toContain("including deleted rows");
     expect(text).toContain("This cannot be undone from the dashboard");
@@ -256,6 +261,17 @@ describe("confirming", () => {
       p_company_id: ABC,
       p_confirm_name: "ABC Co Ltd",
     });
+  });
+
+  it("shows the statutory rates and payslip templates that go with it", async () => {
+    preview.mockResolvedValue({ ...CLEAR, rates: 3, templates: 1, templateVersions: 2 });
+    renderSection(ABC_ADMIN);
+    openDialog();
+    await within(dialog()).findByLabelText(/to confirm/);
+
+    const text = dialog().textContent ?? "";
+    expect(text).toContain("3 versions of the statutory rates");
+    expect(text).toContain("1 payslip template (2 published versions)");
   });
 
   it("asks for the name even when the company has no runs at all", async () => {
