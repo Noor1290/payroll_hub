@@ -8,9 +8,112 @@ import { z } from "zod";
  * Every message is an envelope: { type, from, to, version, id, payload }.
  * A reply reuses the `id` of the message it answers (pong -> ping, received -> send-data,
  * response-data -> request-data), which is how the two sides match them up.
+ *
+ * Still version 1. Everything added for the payslip app is optional and additive: `params` on
+ * a request, `result` and `code` on an acknowledgement, `brn` in `meta`, more refusal codes,
+ * and an answer that may have no rows for the data types listed in DATA_RULES.
  */
 
 const MAX_ROWS = 10_000;
+
+/** Why something was refused, for the app to act on. See docs/INTEGRATION.md for each one. */
+export const REFUSAL_CODES = [
+  "locked",
+  "denied",
+  "timeout",
+  "unavailable",
+  "stale",
+  "no-change",
+  "forbidden",
+  "wrong-company",
+  "invalid",
+  "not-found",
+  "too-large",
+] as const;
+export type RefusalCode = (typeof REFUSAL_CODES)[number];
+const codeSchema = z.enum(REFUSAL_CODES);
+
+/** Size of a value once written as JSON, in bytes: what actually crosses the bridge. */
+export function jsonBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value) ?? "").length;
+}
+
+/**
+ * Limits per data type, applied by the hub before a handler sees anything.
+ *  - sendRows:    how many rows an app may send in one message
+ *  - sendBytes:   how large that message's rows may be as JSON
+ *  - answerRows:  how many rows the dashboard's answer to a request may have, smallest first
+ * A data type that is not listed gets DEFAULT_RULES (the limits payroll results always had).
+ */
+export interface DataRules {
+  sendRows: number;
+  sendBytes: number | null;
+  answerRows: readonly [min: number, max: number];
+}
+const DEFAULT_RULES: DataRules = { sendRows: MAX_ROWS, sendBytes: null, answerRows: [1, MAX_ROWS] };
+export const DATA_RULES: Readonly<Record<string, DataRules>> = {
+  "payroll-result": DEFAULT_RULES,
+  // A save is one command: one row. An answer lists every version, and may be empty.
+  "statutory-rates": { sendRows: 1, sendBytes: 4_096, answerRows: [0, 1_000] },
+  // The body may be 150 KB (TEMPLATE_BODY_BYTES); the rest is the name and the ids around it.
+  "payslip-template": { sendRows: 1, sendBytes: 160_000, answerRows: [0, 50] },
+};
+export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
+
+/** The largest template body the hub accepts, as JSON. The database's own limit is 256 KB. */
+export const TEMPLATE_BODY_BYTES = 150_000;
+/** The largest `params` object on a request. */
+export const PARAMS_BYTES = 2_048;
+
+export interface Refusal {
+  ok: false;
+  error: string;
+  code: RefusalCode;
+}
+
+/** Checks what an app sent against its data type's limits. Null when it is within them. */
+export function checkSentData(payload: SendDataPayload): Refusal | null {
+  const rules = rulesFor(payload.dataType);
+  if (payload.rows.length > rules.sendRows) {
+    return {
+      ok: false,
+      code: rules.sendRows === 1 ? "invalid" : "too-large",
+      error:
+        rules.sendRows === 1
+          ? "Send exactly one row: one command per message."
+          : `Too many rows (the limit is ${rules.sendRows}).`,
+    };
+  }
+  if (rules.sendBytes !== null && jsonBytes(payload.rows) > rules.sendBytes) {
+    return {
+      ok: false,
+      code: "too-large",
+      error: "The data is larger than the dashboard accepts.",
+    };
+  }
+  return null;
+}
+
+/** Checks a request's `params`. Null when they are acceptable. */
+export function checkRequest(payload: RequestDataPayload): Refusal | null {
+  if (payload.params !== undefined && jsonBytes(payload.params) > PARAMS_BYTES) {
+    return { ok: false, code: "too-large", error: "The request's params are too large." };
+  }
+  return null;
+}
+
+/** Checks the dashboard's own answer before it is posted. Null when it may go. */
+export function checkAnswer(payload: ResponseDataPayload): Refusal | null {
+  if (!payload.ok) return null;
+  const [min, max] = rulesFor(payload.dataType).answerRows;
+  if (payload.rows.length < min) {
+    return { ok: false, code: "not-found", error: "There is nothing to send." };
+  }
+  if (payload.rows.length > max) {
+    return { ok: false, code: "too-large", error: "The answer is larger than the bridge allows." };
+  }
+  return null;
+}
 
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{8,64}$/);
 const partySchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
@@ -28,6 +131,8 @@ const metaSchema = z
       .optional(),
     /** Short human label, e.g. a company name. Never payroll figures. */
     label: z.string().max(120).optional(),
+    /** The BRN of the company the answer is about, so the app can check it got the right one. */
+    brn: z.string().max(50).optional(),
   })
   .optional();
 
@@ -39,8 +144,12 @@ export const sendDataPayloadSchema = z.object({
 export type SendDataPayload = z.infer<typeof sendDataPayloadSchema>;
 
 export const receivedPayloadSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true) }),
-  z.object({ ok: z.literal(false), error: z.string().max(300) }),
+  z.object({
+    ok: z.literal(true),
+    /** What a save produced, e.g. the new revision number. Only on the dashboard's own replies. */
+    result: z.record(z.string(), z.unknown()).optional(),
+  }),
+  z.object({ ok: z.literal(false), error: z.string().max(300), code: codeSchema.optional() }),
 ]);
 export type ReceivedPayload = z.infer<typeof receivedPayloadSchema>;
 
@@ -51,6 +160,8 @@ export const requestDataPayloadSchema = z.object({
     .string()
     .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
     .optional(),
+  /** What exactly is wanted. Its shape depends on the data type and is checked by its handler. */
+  params: z.record(z.string(), z.unknown()).optional(),
 });
 export type RequestDataPayload = z.infer<typeof requestDataPayloadSchema>;
 
@@ -58,14 +169,15 @@ export const responseDataPayloadSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
     dataType: dataTypeSchema,
-    rows: z.array(rowSchema).min(1).max(MAX_ROWS),
+    // May be empty for some data types; the hub checks the minimum per type (checkAnswer).
+    rows: z.array(rowSchema).max(MAX_ROWS),
     meta: metaSchema,
   }),
   z.object({
     ok: z.literal(false),
     error: z.string().max(300),
-    /** Why, for the app to act on: the dashboard is locked, the user said no, or nobody answered. */
-    code: z.enum(["locked", "denied", "timeout", "unavailable"]).optional(),
+    /** Why, for the app to act on. */
+    code: codeSchema.optional(),
   }),
 ]);
 export type ResponseDataPayload = z.infer<typeof responseDataPayloadSchema>;

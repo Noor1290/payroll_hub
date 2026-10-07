@@ -1,5 +1,8 @@
 import { logger } from "@/lib/logger";
 import {
+  checkAnswer,
+  checkRequest,
+  checkSentData,
   incomingMessageSchema,
   type Envelope,
   type OutgoingMessage,
@@ -47,8 +50,12 @@ export type SendOutcome =
   { ok: true; id: string } | { ok: false; id: string; reason: SendFailure; error?: string };
 
 export interface HubHandlers {
-  /** An app sent data to the dashboard. The return value is the acknowledgement. */
-  onData?: (appId: string, payload: SendDataPayload) => ReceivedPayload;
+  /**
+   * An app sent data to the dashboard. The return value is the acknowledgement. A handler that
+   * needs time (a save to the database) returns a promise; the hub then answers by itself if
+   * the promise has not settled within `saveAnswerMs`.
+   */
+  onData?: (appId: string, payload: SendDataPayload) => ReceivedPayload | Promise<ReceivedPayload>;
   /** An app asked for data. Resolve with what to reply (after checking permissions). */
   onRequest?: (appId: string, payload: RequestDataPayload) => Promise<ResponseDataPayload>;
 }
@@ -64,6 +71,11 @@ export interface HubOptions {
   /** How long a frame has to fire `load` before it counts as failed. */
   loadTimeoutMs?: number;
   pingIntervalMs?: number;
+  /**
+   * How long an asynchronous `onData` may take before the hub answers "unavailable" by itself.
+   * Must stay under the 10 seconds bridge.js waits, so the app always hears from the dashboard.
+   */
+  saveAnswerMs?: number;
   newId?: () => string;
 }
 
@@ -95,6 +107,17 @@ interface PendingSend {
 const MISSED_PINGS_BEFORE_UNRESPONSIVE = 2;
 
 /**
+ * Sent when a save did not finish in time, or its handler failed. The save may or may not
+ * have been stored, so the app must look before it tries again (docs/INTEGRATION.md).
+ */
+export const SAVE_UNCONFIRMED: ReceivedPayload = {
+  ok: false,
+  code: "unavailable",
+  error:
+    "The dashboard could not confirm the save. Reload from the dashboard and compare the revision before saving again.",
+};
+
+/**
  * The dashboard side of the bridge. Framework-free so it can be tested on its own.
  *
  * Trust rules, applied to every incoming message in this order:
@@ -120,6 +143,7 @@ export class BridgeHub {
   private readonly readyTimeoutMs: number;
   private readonly loadTimeoutMs: number;
   private readonly pingIntervalMs: number;
+  private readonly saveAnswerMs: number;
   private readonly newId: () => string;
 
   constructor(options: HubOptions) {
@@ -128,6 +152,7 @@ export class BridgeHub {
     this.readyTimeoutMs = options.readyTimeoutMs ?? 6_000;
     this.loadTimeoutMs = options.loadTimeoutMs ?? 20_000;
     this.pingIntervalMs = options.pingIntervalMs ?? 15_000;
+    this.saveAnswerMs = options.saveAnswerMs ?? 8_000;
     this.newId = options.newId ?? (() => crypto.randomUUID());
 
     for (const app of options.apps) {
@@ -443,23 +468,56 @@ export class BridgeHub {
       }
 
       case "send-data": {
-        let ack: ReceivedPayload;
+        const acknowledge = (payload: ReceivedPayload) =>
+          this.reply(state, { type: "received", payload }, message.id);
+        const tooMuch = checkSentData(message.payload);
         if (!state.app.produces.includes(message.payload.dataType)) {
-          ack = { ok: false, error: "This app is not registered to send this kind of data." };
+          acknowledge({
+            ok: false,
+            error: "This app is not registered to send this kind of data.",
+          });
+        } else if (tooMuch) {
+          acknowledge(tooMuch);
         } else if (!this.handlers.onData) {
-          ack = { ok: false, error: "The dashboard is not ready to receive data." };
+          acknowledge({ ok: false, error: "The dashboard is not ready to receive data." });
         } else {
-          ack = this.handlers.onData(state.app.id, message.payload);
+          let ack: ReceivedPayload | Promise<ReceivedPayload>;
+          try {
+            ack = this.handlers.onData(state.app.id, message.payload);
+          } catch {
+            ack = SAVE_UNCONFIRMED;
+          }
+          if (!(ack instanceof Promise)) {
+            acknowledge(ack);
+            return;
+          }
+          // Exactly one answer: the handler's, or the hub's own once the time is up. Whatever
+          // the handler says after that is not sent; the app has been told to look first.
+          let answered = false;
+          const once = (payload: ReceivedPayload) => {
+            if (answered) return;
+            answered = true;
+            clearTimeout(timer);
+            acknowledge(payload);
+          };
+          const timer = setTimeout(() => once(SAVE_UNCONFIRMED), this.saveAnswerMs);
+          ack.then(once, () => once(SAVE_UNCONFIRMED));
         }
-        this.reply(state, { type: "received", payload: ack }, message.id);
         return;
       }
 
       case "request-data": {
         const respond = (payload: ResponseDataPayload) =>
-          this.reply(state, { type: "response-data", payload }, message.id);
+          this.reply(
+            state,
+            { type: "response-data", payload: checkAnswer(payload) ?? payload },
+            message.id,
+          );
+        const tooMuch = checkRequest(message.payload);
         if (!state.app.accepts.includes(message.payload.dataType)) {
           respond({ ok: false, error: "This app is not registered to receive this kind of data." });
+        } else if (tooMuch) {
+          respond(tooMuch);
         } else if (!this.handlers.onRequest) {
           respond({ ok: false, error: "The dashboard is not ready to answer requests." });
         } else {
