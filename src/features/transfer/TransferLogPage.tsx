@@ -18,13 +18,20 @@ const SELECT =
 const TH = "border-b border-line px-4 py-3 text-left text-xs font-medium text-muted";
 const TD = "border-b border-line px-4 py-3";
 
+const WORDS = {
+  transfer: { delivered: "Delivered", failed: "Failed", sending: "Sending" },
+  request: { delivered: "Answered", failed: "Refused", sending: "Waiting" },
+  save: { delivered: "Saved", failed: "Not saved", sending: "Saving" },
+} as const;
+
 export function StatusBadge({ entry }: { entry: TransferLogEntry }) {
-  if (entry.status === "delivered") return <Badge tone="accent">Delivered</Badge>;
-  if (entry.status === "failed") return <Badge tone="danger">Failed</Badge>;
+  const words = WORDS[entry.kind ?? "transfer"];
+  if (entry.status === "delivered") return <Badge tone="accent">{words.delivered}</Badge>;
+  if (entry.status === "failed") return <Badge tone="danger">{words.failed}</Badge>;
   return (
     <Badge tone="warn">
       <LoaderCircle className="size-3 animate-spin" aria-hidden="true" />
-      Sending
+      {words.sending}
     </Badge>
   );
 }
@@ -68,7 +75,7 @@ export function TransferLogPage() {
     <>
       <PageHeader
         title="Transfer log"
-        description="What was sent where during this session. It lists no payroll values, lives in memory only, and is emptied when you sign out."
+        description="What was sent where during this session, including what apps asked for and saved. It lists no payroll values, lives in memory only, and is emptied when you sign out."
         actions={
           entries.length > 0 && (
             <Button onClick={clearTransferLog}>
@@ -167,6 +174,9 @@ export function TransferLogPage() {
                           <ArrowRight className="size-3.5 text-subtle" aria-label="to" />
                           {entry.toName}
                         </span>
+                        {entry.kind && (
+                          <span className="ml-2 text-xs text-subtle">{entry.dataType}</span>
+                        )}
                       </td>
                       <td className={`${TD} tabular text-right`}>{formatCount(entry.rowCount)}</td>
                       <td className={TD}>
@@ -179,7 +189,9 @@ export function TransferLogPage() {
                         </span>
                       </td>
                       <td className={`${TD} text-right whitespace-nowrap`}>
+                        {/* Only a transfer the dashboard sent can be sent again from here. */}
                         {entry.status === "failed" &&
+                          !entry.kind &&
                           (entry.canRetry ? (
                             <Button size="sm" onClick={() => retry(entry)}>
                               <RotateCw aria-hidden="true" />

@@ -20,7 +20,22 @@ exports[`baseline: an app asks for a saved run (Get from dashboard) > asks the u
     "version": 1,
   },
   "targetOrigin": "https://noor1290.github.io",
-  "transferLog": [],
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "payroll-result",
+      "from": "Database, October 2026",
+      "id": "(id)",
+      "kind": "request",
+      "reason": null,
+      "rowCount": 6,
+      "status": "delivered",
+      "toAppId": "pdf-editor",
+      "toName": "PDF Form Filler",
+    },
+  ],
 }
 `;
 
@@ -787,6 +802,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
       "Address | string",
       "BRN | string | required",
       "VAT | string",
+      "Date of Employment | date",
     ],
     "id": "pdf-editor",
     "name": "PDF Form Filler",
@@ -798,6 +814,8 @@ exports[`baseline: the app registry > lists these apps, with these data types an
   {
     "accepts": [
       "payroll-result",
+      "statutory-rates",
+      "payslip-template",
     ],
     "expectedFields": [
       "ID | string | required | sensitive",
@@ -829,10 +847,14 @@ exports[`baseline: the app registry > lists these apps, with these data types an
       "Address | string",
       "BRN | string | required",
       "VAT | string",
+      "Date of Employment | date",
     ],
     "id": "payslip",
     "name": "Payslip Automation",
-    "produces": [],
+    "produces": [
+      "statutory-rates",
+      "payslip-template",
+    ],
     "protocolVersion": 1,
     "status": "active",
     "url": "https://noor1290.github.io/payslip/",

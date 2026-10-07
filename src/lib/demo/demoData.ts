@@ -10,6 +10,7 @@ import type {
   TableQuery,
 } from "@/lib/supabase/database";
 import type { ImportResult, Membership, RunStatus, RunSummary } from "@/lib/supabase/schemas";
+import { demoAppDataCounts, demoForgetAppData } from "./demoAppData";
 import { demoCompanyDataRows, demoForgetCompanyData } from "./demoCompanyData";
 
 /**
@@ -48,6 +49,7 @@ export const demoMemberships: Membership[] = [
 interface DemoEmployee extends ExistingEmployee {
   id: string;
   companyId: string;
+  date_of_employment: string | null;
 }
 interface DemoRun {
   id: string;
@@ -132,6 +134,9 @@ function seed(
     other_names: FIRST_NAMES[i % FIRST_NAMES.length]!,
     employment_type: i % 5 === 3 ? "Part Time" : "Full Time",
     deleted_at: null,
+    // Two in three have one, so the grid shows both cases.
+    date_of_employment:
+      i % 3 === 2 ? null : `20${String(10 + (i % 14)).padStart(2, "0")}-0${(i % 9) + 1}-15`,
   }));
   employees.push(...staff);
 
@@ -258,10 +263,21 @@ export async function demoFetchRunEntries(runId: string): Promise<PayrollRow[]> 
         other_names: employee.other_names,
         employment_type: employee.employment_type,
         age_60_plus: entry.age_60_plus,
+        employee_id: employee.id,
+        date_of_employment: employee.date_of_employment,
         extra: entry.extra,
         ...entry.values,
       };
     });
+}
+
+/** Mirrors the employees update policy: admins of the employee's company only. */
+export async function demoSetEmployeeDate(employeeId: string, value: string | null): Promise<void> {
+  await pause(300);
+  const employee = employees.find((e) => e.id === employeeId);
+  if (!employee) throw Object.assign(new Error("No employee was updated."), { code: "42501" });
+  requireAdmin(employee.companyId);
+  employee.date_of_employment = value;
 }
 
 export async function demoFetchImportContext(
@@ -321,6 +337,7 @@ export async function demoImportRun(
         other_names: row.other_names,
         employment_type: row.employment_type,
         deleted_at: null,
+        date_of_employment: null,
       };
       employees.push(employee);
       employeesNew += 1;
@@ -420,6 +437,7 @@ export async function demoFetchDeletePreview(companyId: string) {
     otherMembers: roleIn(companyId) ? 1 : 0,
     details: demoCompanyDataRows("company_details", companyId).length,
     links: demoCompanyDataRows("company_links", companyId).length,
+    ...demoAppDataCounts(companyId),
     approvedRuns: companyRuns.filter((run) => run.status === "approved").length,
   };
 }
@@ -454,6 +472,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
   };
   removeWhere(demoMemberships, (m) => m.company.id === companyId);
   demoForgetCompanyData(companyId);
+  demoForgetAppData(companyId);
   return result;
 }
 

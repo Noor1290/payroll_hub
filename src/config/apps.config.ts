@@ -1,7 +1,7 @@
 import { Calculator, FileText, ReceiptText, type LucideIcon } from "lucide-react";
 import { DEMO_MODE } from "./env";
 import { HOSTING } from "./origins";
-import { PAYROLL_FIELDS } from "./payrollFields";
+import { DATE_OF_EMPLOYMENT, PAYROLL_FIELDS } from "./payrollFields";
 
 /** Version of the dashboard <-> app message protocol (docs/INTEGRATION.md). */
 export const PROTOCOL_VERSION = 1;
@@ -38,15 +38,31 @@ export interface AppConfig {
 }
 
 export const PAYROLL_RESULT = "payroll-result";
+/** A company's employee-side NSF and CSG settings, versioned (migration 0009). */
+export const STATUTORY_RATES = "statutory-rates";
+/** A company's payslip templates: a draft each, and published versions (migration 0010). */
+export const PAYSLIP_TEMPLATE = "payslip-template";
 
-/** Apps that consume payroll results want the payroll app's own export format, key for key. */
-const payrollExportFields: ExpectedField[] = PAYROLL_FIELDS.map((field) => ({
-  key: field.jsonKey,
-  label: field.label,
-  type: field.type,
-  required: field.required,
-  sensitive: field.sensitive,
-}));
+/**
+ * Apps that consume payroll results want the payroll app's own export format, key for key,
+ * plus the one field the dashboard adds for employees who have it.
+ */
+const payrollExportFields: ExpectedField[] = [
+  ...PAYROLL_FIELDS.map((field) => ({
+    key: field.jsonKey,
+    label: field.label,
+    type: field.type,
+    required: field.required,
+    sensitive: field.sensitive,
+  })),
+  {
+    key: DATE_OF_EMPLOYMENT,
+    label: "Date of employment",
+    type: "date",
+    required: false,
+    sensitive: false,
+  },
+];
 
 /**
  * The app registry. Adding an app = adding one entry here; menus, tabs, health and transfer
@@ -87,8 +103,9 @@ export const APPS: readonly AppConfig[] = [
     icon: ReceiptText,
     accentColor: "var(--warn)",
     status: "active",
-    accepts: [PAYROLL_RESULT],
-    produces: [],
+    // "payslip-issue" is not here yet: until it is, the hub answers it with "not registered".
+    accepts: [PAYROLL_RESULT, STATUTORY_RATES, PAYSLIP_TEMPLATE],
+    produces: [STATUTORY_RATES, PAYSLIP_TEMPLATE],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,
   },

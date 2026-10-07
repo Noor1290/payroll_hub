@@ -4,7 +4,12 @@ import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { createStore } from "@/lib/store";
 import { isUnlocked } from "@/lib/unlock";
 import { BridgeHub, type AppHealth } from "./hub";
-import type { RequestDataPayload, ResponseDataPayload, SendDataPayload } from "./protocol";
+import type {
+  ReceivedPayload,
+  RequestDataPayload,
+  ResponseDataPayload,
+  SendDataPayload,
+} from "./protocol";
 
 /** The one hub for this page, built from the app registry. */
 export const bridge = new BridgeHub({
@@ -53,8 +58,29 @@ export const dataRequests = createStore<DataRequest[]>([]);
 
 let sequence = 0;
 
+/** What the dashboard does with one data type, when it is not the default. */
+export interface DataTypeHandlers {
+  /** Answers an app that asks for this data type. Default: ask the user (handleDataRequest). */
+  request?: (appId: string, payload: RequestDataPayload) => Promise<ResponseDataPayload>;
+  /** Deals with data of this type sent by an app. Default: hold it for the user to decide. */
+  save?: (appId: string, payload: SendDataPayload) => ReceivedPayload | Promise<ReceivedPayload>;
+}
+
+const dataTypes = new Map<string, DataTypeHandlers>();
+
+/**
+ * Says how one data type is handled. The handlers live with the features that own the data
+ * (src/features/workspace/appData.ts); this file only routes messages to them. Which app may
+ * use which data type is still decided by the registry, before anything gets here.
+ */
+export function registerDataType(dataType: string, handlers: DataTypeHandlers): void {
+  dataTypes.set(dataType, { ...dataTypes.get(dataType), ...handlers });
+}
+
 bridge.setHandlers({
   onData(appId, payload) {
+    const save = dataTypes.get(payload.dataType)?.save;
+    if (save) return save(appId, payload);
     if (incomingBatches.get().length >= MAX_WAITING) {
       return { ok: false, error: "The dashboard still has earlier data waiting to be handled." };
     }
@@ -64,7 +90,8 @@ bridge.setHandlers({
     ]);
     return { ok: true };
   },
-  onRequest: handleDataRequest,
+  onRequest: (appId, payload) =>
+    (dataTypes.get(payload.dataType)?.request ?? handleDataRequest)(appId, payload),
 });
 
 /**

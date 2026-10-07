@@ -1,16 +1,22 @@
 import { z } from "zod";
-import { NUMERIC_COLUMNS, type NumericColumn, type PayrollRow } from "@/config/payrollFields";
+import {
+  isEmploymentDate,
+  NUMERIC_COLUMNS,
+  type NumericColumn,
+  type PayrollRow,
+} from "@/config/payrollFields";
 import { toRpcRow, type ExistingEmployee, type ExistingRun } from "@/features/import/importPlan";
 import {
   demoFetchImportContext,
   demoFetchRunEntries,
   demoFetchRuns,
   demoImportRun,
+  demoSetEmployeeDate,
   demoSetRunStatus,
   demoSoftDeleteRun,
 } from "@/lib/demo/demoData";
 import { supabase } from "./client";
-import { classifyDataError, NotConfiguredError, type DataFailure } from "./errors";
+import { classifyDataError, isMissingColumn, NotConfiguredError, type DataFailure } from "./errors";
 import { fetchAllRows } from "./paginate";
 import type { Viewer } from "./queries";
 import {
@@ -53,10 +59,17 @@ const entryRowSchema = z.object({
   age_60_plus: z.boolean(),
   extra: z.record(z.string(), z.unknown()),
   employees: z.object({
+    id: z.uuid(),
     national_id: z.string(),
     surname: z.string(),
     other_names: z.string().nullable(),
     employment_type: z.string().nullable(),
+    // Absent when the database has not had migration 0008.
+    date_of_employment: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .optional(),
   }),
   ...(Object.fromEntries(NUMERIC_COLUMNS.map((column) => [column, moneySchema])) as Record<
     NumericColumn,
@@ -64,23 +77,108 @@ const entryRowSchema = z.object({
   >),
 });
 
-const ENTRY_SELECT = `id, age_60_plus, extra, ${NUMERIC_COLUMNS.join(", ")}, employees(national_id, surname, other_names, employment_type)`;
+const entrySelect = (withDate: boolean) =>
+  `id, age_60_plus, extra, ${NUMERIC_COLUMNS.join(", ")}, employees(id, national_id, surname, other_names, employment_type${withDate ? ", date_of_employment" : ""})`;
 
-/** Every entry of a run with its employee, flattened into grid rows. */
+/** Set once a read shows the database has no employees.date_of_employment (migration 0008). */
+let dateColumnMissing = false;
+
+/** For tests: forget what was learnt about the database. */
+export function resetSchemaKnowledge(): void {
+  dateColumnMissing = false;
+}
+
+/**
+ * Every entry of a run with its employee, flattened into grid rows.
+ * Works against a database without migration 0008: the rows then carry no date of employment
+ * (`date_of_employment` is undefined, not null), and everything else is unchanged.
+ */
 export async function fetchRunEntries(viewer: Viewer, runId: string): Promise<PayrollRow[]> {
   if (import.meta.env.DEV && viewer.isDemo) return demoFetchRunEntries(runId);
 
-  const rows = await fetchAllRows(async (from, to) => {
-    const { data, error } = await client()
-      .from("payroll_entries")
-      .select(ENTRY_SELECT)
-      .eq("run_id", runId)
-      .order("id")
-      .range(from, to);
-    if (error) throw error;
-    return z.array(entryRowSchema).parse(data);
+  const read = (withDate: boolean) =>
+    fetchAllRows(async (from, to) => {
+      const { data, error } = await client()
+        .from("payroll_entries")
+        .select(entrySelect(withDate))
+        .eq("run_id", runId)
+        .order("id")
+        .range(from, to);
+      if (error) throw error;
+      return z.array(entryRowSchema).parse(data);
+    });
+
+  let rows: Awaited<ReturnType<typeof read>>;
+  if (dateColumnMissing) {
+    rows = await read(false);
+  } else {
+    try {
+      rows = await read(true);
+    } catch (error) {
+      if (!isMissingColumn(error)) throw error;
+      dateColumnMissing = true;
+      rows = await read(false);
+    }
+  }
+  return rows.map(({ employees, ...entry }) => {
+    const { id: employee_id, date_of_employment, ...employee } = employees;
+    return {
+      ...entry,
+      ...employee,
+      employee_id,
+      ...(date_of_employment === undefined ? {} : { date_of_employment }),
+    };
   });
-  return rows.map(({ employees, ...entry }) => ({ ...entry, ...employees }));
+}
+
+/**
+ * Sets or clears an employee's date of employment. Admins only: the database refuses anyone
+ * else by changing no row, which is reported as "not allowed".
+ */
+export async function setEmployeeDate(
+  viewer: Viewer,
+  employeeId: string,
+  value: string | null,
+): Promise<void> {
+  if (value !== null && !isEmploymentDate(value)) {
+    throw Object.assign(new Error("PH_INVALID_INPUT: not a date"), { code: "22023" });
+  }
+  if (import.meta.env.DEV && viewer.isDemo) return demoSetEmployeeDate(employeeId, value);
+
+  const { data, error } = await client()
+    .from("employees")
+    .update({ date_of_employment: value })
+    .eq("id", employeeId)
+    .select("id");
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw Object.assign(new Error("No employee was updated."), { code: "42501" });
+  }
+}
+
+/** Explains a failed change to a date of employment. In every case nothing was changed. */
+export function classifyEmployeeDateError(error: unknown): DataFailure {
+  const { code } = (typeof error === "object" && error !== null ? error : {}) as { code?: unknown };
+  if (isMissingColumn(error)) {
+    return failure(
+      "Dates of employment aren't set up in the database yet",
+      "The owner needs to run supabase/migrations/0008_employee_date_of_employment.sql once in the Supabase SQL editor. Nothing was changed.",
+    );
+  }
+  if (code === "22023" || code === "23514" || code === "22008" || code === "22007") {
+    return failure(
+      "That isn't a date the database accepts",
+      "Use a real date between 1900 and 2100. Nothing was changed.",
+    );
+  }
+  if (code === "42501") {
+    return failure(
+      "Only admins can change this",
+      "Your account isn't an admin of this company, or the employee no longer exists. Nothing was changed.",
+    );
+  }
+  const general = classifyDataError(error);
+  return { ...general, message: `${general.message} Nothing was changed.` };
 }
 
 export interface ImportContext {

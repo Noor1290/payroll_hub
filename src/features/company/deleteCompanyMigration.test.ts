@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import previewSource from "./deleteCompany.ts?raw";
 
 /**
  * delete_company removes rows table by table, by name. A table added in a later migration that
@@ -47,17 +48,21 @@ function ownedByCompany(): string[] {
   return owned;
 }
 
-/** The newest definition of the function: later migrations replace earlier ones. */
-const latest = migrations.filter((m) => m.sql.includes("function public.delete_company(")).at(-1)!;
-const body = latest.sql.slice(
-  latest.sql.indexOf("function public.delete_company("),
-  latest.sql.indexOf("$$;"),
-);
+/**
+ * The newest definition of the function: later migrations replace earlier ones. Only a file
+ * that DEFINES it counts; one that merely grants or revokes it mentions the name too.
+ */
+const DEFINITION = "create or replace function public.delete_company(";
+const latest = migrations.filter((m) => m.sql.includes(DEFINITION)).at(-1)!;
+// From the function's name to the end of ITS body: a file may define other functions first.
+const start = latest.sql.indexOf(DEFINITION);
+const body = latest.sql.slice(start, latest.sql.indexOf("$$;", start));
 const position = (table: string) => body.search(new RegExp(`delete from public\\.${table}\\b`));
 
 describe("delete_company in the migrations", () => {
-  it("is defined last in 0007", () => {
-    expect(latest.name).toBe("0007_delete_company_any_runs.sql");
+  it("is defined last in 0010", () => {
+    expect(latest.name).toBe("0010_payslip_templates.sql");
+    expect(body.length).toBeGreaterThan(500);
   });
 
   it("finds the tables that belong to a company", () => {
@@ -69,6 +74,9 @@ describe("delete_company in the migrations", () => {
         "employees",
         "payroll_entries",
         "payroll_runs",
+        "payslip_template_versions",
+        "payslip_templates",
+        "statutory_rates",
       ]),
     );
     // Every reference to companies is inside a "create table" this test understood. If this
@@ -85,6 +93,14 @@ describe("delete_company in the migrations", () => {
       );
     }
     expect(position("companies")).toBeGreaterThan(-1);
+  });
+
+  it("is counted, table by table, in the preview shown before a company is deleted", () => {
+    for (const table of ownedByCompany()) {
+      expect(previewSource, `the delete preview does not count ${table}`).toContain(
+        `.from("${table}")`,
+      );
+    }
   });
 
   it("deletes a table before the tables it references", () => {

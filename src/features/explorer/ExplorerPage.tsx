@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, LoaderCircle, Trash2, Undo2, Upload } from "lucide-react";
+import { CircleCheck, Info, LoaderCircle, Trash2, Undo2, Upload } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { PayrollTable } from "@/components/PayrollTable";
+import type { PayrollRow } from "@/config/payrollFields";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Badge, Skeleton } from "@/components/ui/misc";
@@ -16,9 +17,12 @@ import { formatCount, formatDateTime, formatPeriod } from "@/lib/format";
 import { classifyDataError } from "@/lib/supabase/errors";
 import { fetchRunEntries, fetchRuns, setRunStatus, softDeleteRun } from "@/lib/supabase/payroll";
 import type { Membership, RunStatus, RunSummary } from "@/lib/supabase/schemas";
+import { EmployeeDateDialog } from "./EmployeeDateDialog";
 
-function RunGrid({ run }: { run: RunSummary }) {
+function RunGrid({ run, isAdmin }: { run: RunSummary; isAdmin: boolean }) {
   const { user } = useAuth();
+  const [editing, setEditing] = useState<PayrollRow | null>(null);
+  const editDate = useCallback((row: PayrollRow) => setEditing(row), []);
   const query = useQuery({
     queryKey: ["run-entries", run.id, user?.id],
     queryFn: () => fetchRunEntries({ id: user!.id, isDemo: user!.isDemo }, run.id),
@@ -43,8 +47,28 @@ function RunGrid({ run }: { run: RunSummary }) {
       />
     );
   }
+  // Undefined on every row means the database has no such column yet (migration 0008).
+  const noDateColumn =
+    query.data.length > 0 && query.data.every((row) => row.date_of_employment === undefined);
   return (
-    <PayrollTable rows={query.data} selectable caption={`${formatPeriod(run.period)} payroll`} />
+    <>
+      {noDateColumn && isAdmin && (
+        <p className="flex items-start gap-2 border-b border-line px-4 py-2.5 text-sm text-muted">
+          <Info className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
+          Dates of employment aren't set up in the database yet. Run
+          supabase/migrations/0008_employee_date_of_employment.sql in the Supabase SQL editor to add
+          them. Everything else works as before.
+        </p>
+      )}
+      <PayrollTable
+        rows={query.data}
+        selectable
+        caption={`${formatPeriod(run.period)} payroll`}
+        // Hidden for viewers as a courtesy; the database refuses the change regardless.
+        onEditDate={isAdmin ? editDate : undefined}
+      />
+      <EmployeeDateDialog row={editing} onClose={() => setEditing(null)} />
+    </>
   );
 }
 
@@ -153,7 +177,7 @@ function RunView({ current, runs }: { current: Membership; runs: RunSummary[] })
         )}
       </div>
 
-      <RunGrid key={run.id} run={run} />
+      <RunGrid key={run.id} run={run} isAdmin={isAdmin} />
 
       <ConfirmDialog
         open={confirmingDelete}

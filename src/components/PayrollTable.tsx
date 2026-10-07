@@ -21,6 +21,7 @@ import {
   Columns3,
   Eye,
   EyeOff,
+  Pencil,
   Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,10 @@ function showExtra(value: unknown): string {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
-function buildColumns(rows: readonly PayrollRow[]): ColumnDef<PayrollRow>[] {
+function buildColumns(
+  rows: readonly PayrollRow[],
+  onEditDate: ((row: PayrollRow) => void) | undefined,
+): ColumnDef<PayrollRow>[] {
   const known: ColumnDef<PayrollRow>[] = ROW_FIELDS.map((field) => ({
     id: field.column,
     accessorFn: (row) =>
@@ -94,7 +98,39 @@ function buildColumns(rows: readonly PayrollRow[]): ColumnDef<PayrollRow>[] {
     cell: ({ getValue }) => getValue() as string,
   }));
 
-  return [...known, ...extras];
+  // Saved rows from a database that has the column (migration 0008). Not part of an import.
+  const date: ColumnDef<PayrollRow>[] = rows.some((row) => row.date_of_employment !== undefined)
+    ? [
+        {
+          id: "date_of_employment",
+          accessorFn: (row) => row.date_of_employment ?? undefined,
+          header: "Date of employment",
+          meta: { label: "Date of employment", sensitive: false, numeric: false },
+          cell: ({ getValue, row }) => {
+            const value = getValue() as string | undefined;
+            return (
+              <span className="inline-flex items-center gap-2">
+                <span className="tabular">
+                  {value ?? <span className="text-subtle">Not set</span>}
+                </span>
+                {onEditDate && (
+                  <button
+                    type="button"
+                    onClick={() => onEditDate(row.original)}
+                    aria-label={`${value ? "Change" : "Set"} the date of employment of ${row.original.surname}`}
+                    className="rounded p-0.5 text-subtle hover:text-fg"
+                  >
+                    <Pencil className="size-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </span>
+            );
+          },
+        },
+      ]
+    : [];
+
+  return [...known, ...date, ...extras];
 }
 
 const metaOf = (column: { columnDef: { meta?: unknown } }) => column.columnDef.meta as ColumnMeta;
@@ -109,6 +145,8 @@ interface PayrollTableProps {
   toolbar?: ReactNode;
   /** Accessible name for the table, e.g. "September 2026 payroll". */
   caption: string;
+  /** Adds an edit button to each date of employment. Leave out for people who may not change it. */
+  onEditDate?: (row: PayrollRow) => void;
 }
 
 /**
@@ -123,9 +161,10 @@ export function PayrollTable({
   initialPageSize = 25,
   toolbar,
   caption,
+  onEditDate,
 }: PayrollTableProps) {
   const data = useMemo(() => [...rows], [rows]);
-  const dataColumns = useMemo(() => buildColumns(rows), [rows]);
+  const dataColumns = useMemo(() => buildColumns(rows, onEditDate), [rows, onEditDate]);
 
   const [sorting, setSorting] = useState<SortingState>([{ id: "surname", desc: false }]);
   const [globalFilter, setGlobalFilter] = useState("");

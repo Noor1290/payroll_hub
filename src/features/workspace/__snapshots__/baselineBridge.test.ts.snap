@@ -1,0 +1,315 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`baseline: what the dashboard answers over the bridge > the PDF Form Filler asks for a run: nothing is answered until the user decides 1`] = `
+{
+  "answers": [],
+  "waiting": [
+    {
+      "appId": "pdf-editor",
+      "payload": {
+        "dataType": "payroll-result",
+        "period": "2026-10",
+      },
+    },
+  ],
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the PDF Form Filler asks for statutory rates 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "error": "This app is not registered to receive this kind of data.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "pdf-editor",
+      "type": "response-data",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the PDF Form Filler sends payroll results 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "error": "This app is not registered to send this kind of data.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "pdf-editor",
+      "type": "received",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payroll app asks for a run 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "error": "This app is not registered to receive this kind of data.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payroll",
+      "type": "response-data",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payroll app sends results: acknowledged, held in memory, not logged 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000001",
+      "payload": {
+        "ok": true,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payroll",
+      "type": "received",
+      "version": 1,
+    },
+  ],
+  "held": [
+    {
+      "appId": "payroll",
+      "payload": {
+        "dataType": "payroll-result",
+        "meta": {
+          "period": "2026-10",
+        },
+        "rows": [
+          {
+            "ID": "X0000000000001",
+            "Net Pay": 18169.12,
+            "Surname": "DOE",
+          },
+        ],
+      },
+    },
+  ],
+  "transferLog": [],
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payslip app asks for a payslip template 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "code": "invalid",
+        "error": ""action" is missing or not valid.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payslip",
+      "type": "response-data",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "payslip-template",
+      "from": "Database",
+      "id": "(id)",
+      "kind": "request",
+      "reason": "not valid",
+      "rowCount": 0,
+      "status": "failed",
+      "toAppId": "payslip",
+      "toName": "Payslip Automation",
+    },
+  ],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payslip app asks for issued payslips 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "error": "This app is not registered to receive this kind of data.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payslip",
+      "type": "response-data",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payslip app asks for statutory rates 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "code": "unavailable",
+        "error": "Nobody is signed in to the dashboard, or no company is selected.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payslip",
+      "type": "response-data",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "statutory-rates",
+      "from": "Database",
+      "id": "(id)",
+      "kind": "request",
+      "reason": "not available",
+      "rowCount": 0,
+      "status": "failed",
+      "toAppId": "payslip",
+      "toName": "Payslip Automation",
+    },
+  ],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payslip app sends a payslip template 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "code": "invalid",
+        "error": ""action" is missing or not valid.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payslip",
+      "type": "received",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "payslip-template",
+      "from": "Payslip Automation",
+      "id": "(id)",
+      "kind": "save",
+      "reason": "not valid",
+      "rowCount": 0,
+      "status": "failed",
+      "toAppId": "database",
+      "toName": "Database",
+    },
+  ],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payslip app sends issued payslips 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "error": "This app is not registered to send this kind of data.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payslip",
+      "type": "received",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [],
+  "waiting": 0,
+}
+`;
+
+exports[`baseline: what the dashboard answers over the bridge > the payslip app sends statutory rates 1`] = `
+{
+  "answers": [
+    {
+      "from": "dashboard",
+      "id": "message-0000003",
+      "payload": {
+        "code": "invalid",
+        "error": ""brn" is missing or not valid.",
+        "ok": false,
+      },
+      "targetOrigin": "https://noor1290.github.io",
+      "to": "payslip",
+      "type": "received",
+      "version": 1,
+    },
+  ],
+  "held": 0,
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "statutory-rates",
+      "from": "Payslip Automation",
+      "id": "(id)",
+      "kind": "save",
+      "reason": "not valid",
+      "rowCount": 0,
+      "status": "failed",
+      "toAppId": "database",
+      "toName": "Database",
+    },
+  ],
+  "waiting": 0,
+}
+`;

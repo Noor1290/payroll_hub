@@ -52,6 +52,37 @@
         display: block;
         margin-top: 8px;
       }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .row label {
+        margin-top: 0;
+      }
+      input[type="text"],
+      input[type="number"] {
+        width: 110px;
+        padding: 6px 8px;
+        border: 1px solid #c3cada;
+        border-radius: 8px;
+        font: inherit;
+      }
+      input.wide {
+        width: 320px;
+      }
+      #answer {
+        margin: 10px 0 0;
+        padding: 10px;
+        max-height: 220px;
+        overflow: auto;
+        border-radius: 8px;
+        background: #f1f3f9;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
       #log {
         margin: 10px 0 0;
         padding-left: 18px;
@@ -82,6 +113,43 @@
       <label
         ><input type="checkbox" id="refuse" /> Refuse the data (simulate an import error)</label
       >
+    </div>
+
+    <div class="card" id="payslip" hidden>
+      <strong>Statutory rates and payslip templates</strong>
+      <p>
+        Each button sends one message, as the real payslip app would. The fields are filled in from
+        the dashboard's last answer; change one to see a refusal (another BRN, an old revision).
+      </p>
+      <div class="row">
+        <label>BRN <input type="text" id="brn" /></label>
+        <label>Month <input type="text" id="month" value="2026-07" /></label>
+        <label>Rates revision last seen <input type="number" id="ratesRevision" value="0" /></label>
+      </div>
+      <div class="row">
+        <button id="ratesRequest" type="button">Request rates</button>
+        <button id="ratesSave" type="button">Save rates</button>
+      </div>
+      <div class="row">
+        <label>Template id <input type="text" id="templateId" class="wide" /></label>
+        <label>Draft revision last seen <input type="number" id="draftRevision" value="0" /></label>
+        <label>Version <input type="number" id="version" value="1" /></label>
+        <label>Name <input type="text" id="templateName" value="Mock template" /></label>
+      </div>
+      <div class="row">
+        <button id="templateList" type="button">List templates</button>
+        <button id="templateLoadDraft" type="button">Load draft</button>
+        <button id="templateLoadVersion" type="button">Load version</button>
+        <button id="templateNew" type="button">Save as a new template</button>
+        <button id="templateSave" type="button">Save draft</button>
+        <button id="templatePublish" type="button">Publish</button>
+      </div>
+      <div class="row">
+        <button id="templateImage" type="button">Save draft with an image</button>
+        <button id="templateLarge" type="button">Save draft over 150 KB</button>
+        <button id="issueRequest" type="button">Ask for issued payslips</button>
+      </div>
+      <pre id="answer">No answer yet.</pre>
     </div>
 
     <div class="card">
@@ -166,6 +234,131 @@
           },
         });
 
+        // The payslip app's own exchanges: rates and templates, and one that is not registered.
+        function payslipCard() {
+          $("payslip").hidden = false;
+          var saves = 0;
+          var number = function (id) {
+            return Number($(id).value);
+          };
+          // Shows the answer without a template body's full text, and keeps what later
+          // messages need: the company's BRN, the template in hand, the revisions last seen.
+          var done = function (what, reply) {
+            window.__lastReply = reply;
+            $("answer").textContent = what + "\n" + JSON.stringify(reply, null, 2).slice(0, 4000);
+            log(what + ": " + (reply.ok ? "ok" : (reply.code || "refused") + ", " + reply.error));
+            if (!reply.ok) return;
+            if (reply.meta && reply.meta.brn) $("brn").value = reply.meta.brn;
+            var first = (reply.rows && reply.rows[0]) || reply.result || {};
+            if (first.template_id) $("templateId").value = first.template_id;
+            if (first.draft_revision) $("draftRevision").value = first.draft_revision;
+            if (first.published_version || first.version)
+              $("version").value = first.published_version || first.version;
+            if (first.name) $("templateName").value = first.name;
+            if (
+              first.revision &&
+              (!first.effective_from || first.effective_from === $("month").value)
+            )
+              $("ratesRevision").value = first.revision;
+          };
+          var ask = async function (what, dataType, params) {
+            var payload = { dataType: dataType };
+            if (params) payload.params = params;
+            done(what, await Bridge.sendToDashboard("request-data", payload));
+          };
+          var save = async function (what, dataType, row) {
+            done(
+              what,
+              await Bridge.sendToDashboard("send-data", { dataType: dataType, rows: [row] }),
+            );
+          };
+          var brn = function () {
+            return $("brn").value.trim() || undefined;
+          };
+          var draft = function (body, isNew) {
+            saves += 1;
+            return {
+              action: "save-draft",
+              brn: brn(),
+              template_id: isNew ? null : $("templateId").value.trim(),
+              name: $("templateName").value + (isNew ? " " + Date.now() : ""),
+              body: body,
+              expected_revision: isNew ? 0 : number("draftRevision"),
+            };
+          };
+          var body = function () {
+            return {
+              title: "Payslip",
+              note: "Mock save " + (saves + 1),
+              lines: [{ label: "Net pay", column: "Net Pay" }],
+            };
+          };
+
+          $("ratesRequest").onclick = function () {
+            ask("Request rates", "statutory-rates", brn() ? { brn: brn() } : undefined);
+          };
+          $("ratesSave").onclick = function () {
+            saves += 1;
+            save("Save rates", "statutory-rates", {
+              brn: brn(),
+              effective_from: $("month").value,
+              expected_revision: number("ratesRevision"),
+              nsf_employee_rate: 1,
+              nsf_ceiling: 28570,
+              nsf_exempt_at_60: true,
+              csg_employee_rate_low: 1.5,
+              csg_employee_rate_high: 3,
+              csg_threshold: 50000,
+              source_note: "Mock save " + saves + " (sample figures)",
+            });
+          };
+          $("templateList").onclick = function () {
+            ask("List templates", "payslip-template", { action: "list", brn: brn() });
+          };
+          $("templateLoadDraft").onclick = function () {
+            ask("Load draft", "payslip-template", {
+              action: "load",
+              brn: brn(),
+              template_id: $("templateId").value.trim(),
+            });
+          };
+          $("templateLoadVersion").onclick = function () {
+            ask("Load version", "payslip-template", {
+              action: "load",
+              brn: brn(),
+              template_id: $("templateId").value.trim(),
+              version: number("version"),
+            });
+          };
+          $("templateNew").onclick = function () {
+            save("Save as a new template", "payslip-template", draft(body(), true));
+          };
+          $("templateSave").onclick = function () {
+            save("Save draft", "payslip-template", draft(body(), false));
+          };
+          $("templatePublish").onclick = function () {
+            save("Publish", "payslip-template", {
+              action: "publish",
+              brn: brn(),
+              template_id: $("templateId").value.trim(),
+              expected_revision: number("draftRevision"),
+            });
+          };
+          $("templateImage").onclick = function () {
+            var withImage = body();
+            withImage.logo = "data:image/png;base64,AAAA";
+            save("Save draft with an image", "payslip-template", draft(withImage, false));
+          };
+          $("templateLarge").onclick = function () {
+            var large = body();
+            large.padding = new Array(152000).join("x");
+            save("Save draft over 150 KB", "payslip-template", draft(large, false));
+          };
+          $("issueRequest").onclick = function () {
+            ask("Ask for issued payslips", "payslip-issue");
+          };
+        }
+
         if (appId === "payroll") {
           $("producer").hidden = false;
           $("send").onclick = async function () {
@@ -184,6 +377,7 @@
             );
           };
         } else {
+          if (appId === "payslip") payslipCard();
           $("consumer").hidden = false;
           $("request").onclick = async function () {
             log("Asked the dashboard for the latest run");

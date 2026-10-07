@@ -329,8 +329,8 @@ describe("delete_company refusals (migration 0007)", () => {
 
     it("is the same after running 0007 a second time", async () => {
       const before = await privileges();
-      await db.exec(`set role migration_owner; ${migrations.at(-1)!.sql}; reset role;`);
-      expect(migrations.at(-1)!.name).toBe("0007_delete_company_any_runs.sql");
+      const again = migrations.find((m) => m.name === "0007_delete_company_any_runs.sql")!;
+      await db.exec(`set role migration_owner; ${again.sql}; reset role;`);
       expect(await privileges()).toEqual(before);
       const sql = "select count(*)::int as n from pg_proc where proname = 'delete_company'";
       expect(await count(db, sql)).toBe(1);

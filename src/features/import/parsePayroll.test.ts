@@ -225,6 +225,30 @@ describe("parsePayrollFile: row-level errors", () => {
   });
 });
 
+describe('parsePayrollFile: a "Date of Employment" key', () => {
+  it("is reported as ignored when any row has it, whatever its capitals or its value", () => {
+    for (const key of ["Date of Employment", " date of  employment "]) {
+      for (const value of ["1999-01-01", "", null]) {
+        const result = parse(base, { ...base, ID: "X2", [key]: value });
+        expect(result.dateOfEmploymentIgnored).toBe(true);
+        expect(result.errors).toEqual([]);
+      }
+    }
+  });
+
+  it("is still never stored: not as the date, and not in extra", () => {
+    const result = parse({ ...base, "Date of Employment": "1999-01-01" });
+    expect(result.rows[0]!.date_of_employment).toBeUndefined();
+    expect(result.rows[0]!.extra).toEqual({});
+    expect(JSON.stringify(result.rows)).not.toContain("1999-01-01");
+  });
+
+  it("is not reported for a file without the key", () => {
+    expect(parse(base)).not.toHaveProperty("dateOfEmploymentIgnored");
+    expect(parsePayrollFile(validSample)).not.toHaveProperty("dateOfEmploymentIgnored");
+  });
+});
+
 describe("parsePayrollFile: file-level errors", () => {
   it("rejects invalid JSON, non-arrays and empty files with a clear message", () => {
     expect(parsePayrollFile("{not json").fatal).toMatch(/valid JSON/);

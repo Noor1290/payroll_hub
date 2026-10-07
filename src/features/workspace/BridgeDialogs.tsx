@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Database, Inbox, ListChecks, LoaderCircle, Send, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -29,6 +29,7 @@ import { useStore } from "@/lib/store";
 import { isUnlocked } from "@/lib/unlock";
 import { UnlockForm } from "@/features/unlock/PasswordGate";
 import { useUnlock } from "@/features/unlock/useUnlock";
+import { exchangeContext } from "./appData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";
 
@@ -293,6 +294,20 @@ function RequestDialog({ request }: { request: DataRequest }) {
 
 /** One dialog at a time: requests first (an app is waiting on them), then received data. */
 export function BridgeDialogs() {
+  const { user } = useAuth();
+  const { current } = useCompany();
+  const userId = user?.id;
+  const isDemo = user?.isDemo ?? false;
+
+  // Handlers that answer apps without a dialog (appData.ts) run outside React: tell them who
+  // is signed in and which company is selected.
+  useEffect(() => {
+    exchangeContext.set(
+      userId && current ? { viewer: { id: userId, isDemo }, membership: current } : null,
+    );
+    return () => exchangeContext.set(null);
+  }, [userId, isDemo, current]);
+
   const requests = useStore(dataRequests);
   const batches = useStore(incomingBatches);
   const request = requests[0];

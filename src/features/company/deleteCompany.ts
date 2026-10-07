@@ -25,6 +25,13 @@ export interface DeletePreview {
   /** Custom company details and links, removed with the company. Zero if those tables don't exist yet. */
   details: number;
   links: number;
+  /**
+   * Statutory rates versions, payslip templates and their published versions (migrations 0009
+   * and 0010), removed with the company. Zero if those tables don't exist yet.
+   */
+  rates: number;
+  templates: number;
+  templateVersions: number;
   /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
   approvedRuns: number;
 }
@@ -72,7 +79,18 @@ export async function fetchDeletePreview(
   const db = supabase;
   const head = { count: "exact", head: true } as const;
 
-  const [employees, runs, entries, members, approved, details, links] = await Promise.all([
+  const [
+    employees,
+    runs,
+    entries,
+    members,
+    approved,
+    details,
+    links,
+    rates,
+    templates,
+    templateVersions,
+  ] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
     db
@@ -83,12 +101,15 @@ export async function fetchDeletePreview(
     db.from("payroll_runs").select("id", head).eq("company_id", companyId).eq("status", "approved"),
     db.from("company_details").select("id", head).eq("company_id", companyId),
     db.from("company_links").select("id", head).eq("company_id", companyId),
+    db.from("statutory_rates").select("id", head).eq("company_id", companyId),
+    db.from("payslip_templates").select("id", head).eq("company_id", companyId),
+    db.from("payslip_template_versions").select("id", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
-  // These two tables come from later migrations (0005, 0006). Until they are run there is
-  // nothing in them to delete, and deleting a company must keep working.
+  // These tables come from later migrations (0005, 0006, 0009, 0010). Until they are run
+  // there is nothing in them to delete, and deleting a company must keep working.
   const optional = (result: typeof details) => {
     if (result.error) {
       if (isMissingTable(result.error)) return 0;
@@ -104,6 +125,9 @@ export async function fetchDeletePreview(
     otherMembers: Math.max(0, count.parse(members.count) - 1),
     details: optional(details),
     links: optional(links),
+    rates: optional(rates),
+    templates: optional(templates),
+    templateVersions: optional(templateVersions),
     approvedRuns: count.parse(approved.count),
   };
 }

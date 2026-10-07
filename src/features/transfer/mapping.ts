@@ -1,6 +1,8 @@
 import type { ExpectedField } from "@/config/apps.config";
 import {
+  DATE_OF_EMPLOYMENT,
   fieldForJsonKey,
+  isHubOwnedKey,
   PAYROLL_FIELDS,
   RESERVED_EXTRA_KEYS,
   toExportRow,
@@ -49,6 +51,9 @@ function columnFor(key: string, sample: unknown): SourceColumn {
       money: field.type === "number",
     };
   }
+  if (isHubOwnedKey(key)) {
+    return { key, label: "Date of employment", type: "string", sensitive: false, money: false };
+  }
   // A field this dashboard doesn't know: treat it as sensitive until someone decides otherwise.
   const type =
     typeof sample === "number" ? "number" : typeof sample === "boolean" ? "boolean" : "string";
@@ -70,8 +75,12 @@ export function tableFromRun(
   return {
     columns: [
       ...PAYROLL_FIELDS.map((field) => columnFor(field.jsonKey, undefined)),
+      // Only when the database has the column (migration 0008).
+      ...(rows.some((row) => row.date_of_employment !== undefined)
+        ? [columnFor(DATE_OF_EMPLOYMENT, undefined)]
+        : []),
       ...extraKeys
-        .filter((key) => !known.has(key) && !RESERVED_EXTRA_KEYS.has(key))
+        .filter((key) => !known.has(key) && !RESERVED_EXTRA_KEYS.has(key) && !isHubOwnedKey(key))
         .map((key) => columnFor(key, rows.find((row) => key in row.extra)?.extra[key])),
     ],
     rows: tableRows,
@@ -207,8 +216,8 @@ export function validateRows(
  * Exactly what the destination will receive: one object per selected row, holding only the
  * mapped destination fields, in the destination's own field order. Nothing else leaves.
  *
- * An optional number the row has no value for is left out of that row, never sent as "" or 0,
- * so the destination can tell "missing" from "nothing to pay".
+ * An optional number or date the row has no value for is left out of that row, never sent as
+ * "" or 0, so the destination can tell "missing" from "nothing to pay".
  */
 export function buildOutput(
   rows: readonly SourceRow[],
@@ -220,7 +229,8 @@ export function buildOutput(
     const out: Record<string, unknown> = {};
     for (const field of mapped) {
       const value = row.values[mapping[field.key]!];
-      if (field.type === "number" && !field.required && isEmpty(value)) continue;
+      const leaveOut = field.type === "number" || field.type === "date";
+      if (leaveOut && !field.required && isEmpty(value)) continue;
       out[field.key] = value ?? "";
     }
     return out;
