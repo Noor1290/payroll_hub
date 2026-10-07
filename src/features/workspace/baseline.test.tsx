@@ -236,7 +236,8 @@ describe("baseline: an app asks for a saved run (Get from dashboard)", () => {
         payload: { ...payload, rows: `(${rows.length} rows, checked above)` },
       },
       dialogStillOpen: screen.queryByRole("alertdialog") !== null,
-      transferLog: transferLog.get(),
+      // Without what changes on every run: the time and the generated id.
+      transferLog: transferLog.get().map((row) => ({ ...row, at: "(time)", id: "(id)" })),
     }).toMatchSnapshot();
   });
 });

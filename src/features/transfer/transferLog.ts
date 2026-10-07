@@ -1,5 +1,5 @@
 import type { SendOutcome } from "@/lib/bridge/hub";
-import type { SendDataPayload } from "@/lib/bridge/protocol";
+import type { RefusalCode, SendDataPayload } from "@/lib/bridge/protocol";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { createStore } from "@/lib/store";
 import { registerLockCleanup } from "@/lib/unlock";
@@ -13,6 +13,11 @@ import { registerLockCleanup } from "@/lib/unlock";
  * password gate locks.
  */
 export interface TransferLogEntry {
+  /**
+   * What happened. Absent for a transfer the dashboard sent to an app. "request": an app asked
+   * the dashboard for data and was answered. "save": an app sent something to be stored.
+   */
+  kind?: "request" | "save";
   /** The bridge message id. A retry reuses it, so the app can spot a duplicate. */
   id: string;
   /** When the transfer was first started (epoch milliseconds). */
@@ -133,6 +138,79 @@ export function finishTransfer(
     ),
   );
   syncRetryFlags();
+}
+
+/** Why a request or a save was refused, as fixed phrases. Never text supplied by an app. */
+const REFUSALS: Record<RefusalCode | "none", string> = {
+  locked: "dashboard locked",
+  denied: "declined in the dashboard",
+  timeout: "nobody answered in time",
+  unavailable: "not available",
+  stale: "someone else saved first",
+  "no-change": "nothing had changed",
+  forbidden: "not allowed (admins only)",
+  "wrong-company": "another company is selected",
+  invalid: "not valid",
+  "not-found": "not found",
+  "too-large": "too large",
+  none: "refused",
+};
+
+/** The dashboard's own side of an exchange, shown as the other end of a request or a save. */
+export const DATABASE = { id: "database", name: "Database" } as const;
+
+export interface Exchange {
+  id: string;
+  kind: "request" | "save";
+  from: string;
+  toAppId: string;
+  toName: string;
+  dataType: string;
+}
+
+/**
+ * Records that an app asked for data, or sent some to be stored, and is waiting for the
+ * outcome. Like every row here it holds no values: who, when, what kind, how many rows.
+ */
+export function beginExchange(exchange: Exchange): void {
+  transferLog.set((entries) =>
+    [
+      {
+        ...exchange,
+        at: Date.now(),
+        rowCount: 0,
+        status: "sending" as const,
+        reason: null,
+        attempts: 1,
+        canRetry: false,
+      },
+      ...entries,
+    ].slice(0, MAX_ENTRIES),
+  );
+}
+
+/**
+ * Records how it ended. If the row is gone (the log was cleared, or the session ended while
+ * the exchange was open) nothing is added back.
+ */
+export function finishExchange(
+  id: string,
+  outcome: { ok: true; rowCount: number; from?: string } | { ok: false; code?: RefusalCode },
+): void {
+  transferLog.set((entries) =>
+    entries.map((entry) =>
+      entry.id !== id
+        ? entry
+        : outcome.ok
+          ? {
+              ...entry,
+              status: "delivered",
+              rowCount: outcome.rowCount,
+              from: outcome.from ?? entry.from,
+            }
+          : { ...entry, status: "failed", reason: REFUSALS[outcome.code ?? "none"] },
+    ),
+  );
 }
 
 /** The data of a failed transfer, if it is still in memory. */

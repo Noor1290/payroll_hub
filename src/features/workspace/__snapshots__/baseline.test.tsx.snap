@@ -20,7 +20,22 @@ exports[`baseline: an app asks for a saved run (Get from dashboard) > asks the u
     "version": 1,
   },
   "targetOrigin": "https://noor1290.github.io",
-  "transferLog": [],
+  "transferLog": [
+    {
+      "at": "(time)",
+      "attempts": 1,
+      "canRetry": false,
+      "dataType": "payroll-result",
+      "from": "Database, October 2026",
+      "id": "(id)",
+      "kind": "request",
+      "reason": null,
+      "rowCount": 6,
+      "status": "delivered",
+      "toAppId": "pdf-editor",
+      "toName": "PDF Form Filler",
+    },
+  ],
 }
 `;
 

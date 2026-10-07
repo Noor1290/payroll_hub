@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { transferLog } from "@/features/transfer/transferLog";
 import { bridge, dataRequests, incomingBatches } from "@/lib/bridge/bridge";
 import { runSessionCleanup } from "@/lib/sessionCleanup";
+import "./appData";
 
 /**
  * A record (snapshots) of how the dashboard answers the apps over the bridge, message for
@@ -50,6 +51,9 @@ function connect(appId: string) {
   return { say, answers };
 }
 
+/** The log without what changes on every run: the time and the generated id. */
+const logged = () => transferLog.get().map((row) => ({ ...row, at: "(time)", id: "(id)" }));
+
 const ROW = { ID: "X0000000000001", Surname: "DOE", "Net Pay": 18169.12 };
 
 beforeEach(() => bridge.start());
@@ -71,7 +75,7 @@ describe("baseline: what the dashboard answers over the bridge", () => {
     expect({
       answers: app.answers(),
       held: incomingBatches.get().map(({ appId, payload }) => ({ appId, payload })),
-      transferLog: transferLog.get(),
+      transferLog: logged(),
     }).toMatchSnapshot();
   });
 
@@ -112,7 +116,7 @@ describe("baseline: what the dashboard answers over the bridge", () => {
       answers: app.answers(),
       waiting: dataRequests.get().length,
       held: incomingBatches.get().length,
-      transferLog: transferLog.get(),
+      transferLog: logged(),
     }).toMatchSnapshot();
   });
 });

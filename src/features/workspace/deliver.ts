@@ -1,15 +1,18 @@
 import { toast } from "sonner";
 import { getApp } from "@/config/apps.config";
 import {
+  beginExchange,
   beginTransfer,
+  DATABASE,
+  finishExchange,
   finishTransfer,
   retainedTransfer,
   type TransferSource,
 } from "@/features/transfer/transferLog";
 import { bridge } from "@/lib/bridge/bridge";
 import type { SendFailure, SendOutcome } from "@/lib/bridge/hub";
-import type { SendDataPayload } from "@/lib/bridge/protocol";
-import { formatCount } from "@/lib/format";
+import type { ReceivedPayload, ResponseDataPayload, SendDataPayload } from "@/lib/bridge/protocol";
+import { formatCount, formatPeriod } from "@/lib/format";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { isUnlocked } from "@/lib/unlock";
 
@@ -123,6 +126,87 @@ export function retryTransfer(id: string, notify = true): Promise<SendOutcome> |
   const kept = retainedTransfer(id);
   if (!kept) return null;
   return deliver(kept.appId, kept.payload, { source: kept.source, retryId: id, notify });
+}
+
+/**
+ * Answers an app's request for data and records the exchange in the transfer log: one row,
+ * "waiting" until `answer` settles, then answered (with the number of rows) or refused (with a
+ * fixed phrase for the reason). What is answered, and whether the user is asked first, is up
+ * to `answer`; this adds no check of its own.
+ */
+export async function answerRequest(
+  appId: string,
+  dataType: string,
+  answer: () => Promise<ResponseDataPayload>,
+): Promise<ResponseDataPayload> {
+  const id = crypto.randomUUID();
+  beginExchange({
+    id,
+    kind: "request",
+    from: DATABASE.name,
+    toAppId: appId,
+    toName: getApp(appId)?.name ?? appId,
+    dataType,
+  });
+
+  let response: ResponseDataPayload;
+  try {
+    response = await answer();
+  } catch {
+    response = { ok: false, code: "unavailable", error: "The dashboard could not get the data." };
+  }
+  if (response.ok) {
+    const period = response.meta?.period;
+    finishExchange(id, {
+      ok: true,
+      rowCount: response.rows.length,
+      from: period ? `${DATABASE.name}, ${formatPeriod(`${period}-01`)}` : undefined,
+    });
+  } else {
+    finishExchange(id, { ok: false, code: response.code });
+  }
+  return response;
+}
+
+/**
+ * Runs a save an app asked for, records it in the transfer log and tells the user with a
+ * toast, whatever the outcome. The hub answers the app by itself after 8 seconds; the row and
+ * the toast still report what really happened when `save` settles later than that.
+ *
+ * `describe` turns a successful result into the toast's text. It must not include payroll values.
+ */
+export async function recordSave(
+  appId: string,
+  dataType: string,
+  what: string,
+  save: () => Promise<ReceivedPayload>,
+  describe: (result: Record<string, unknown>) => string,
+): Promise<ReceivedPayload> {
+  const id = crypto.randomUUID();
+  const name = getApp(appId)?.name ?? appId;
+  beginExchange({
+    id,
+    kind: "save",
+    from: name,
+    toAppId: DATABASE.id,
+    toName: DATABASE.name,
+    dataType,
+  });
+
+  let ack: ReceivedPayload;
+  try {
+    ack = await save();
+  } catch {
+    ack = { ok: false, code: "unavailable", error: "The dashboard could not save the data." };
+  }
+  if (ack.ok) {
+    finishExchange(id, { ok: true, rowCount: 1 });
+    toast.success(describe(ack.result ?? {}), { description: `Saved from ${name}.` });
+  } else {
+    finishExchange(id, { ok: false, code: ack.code });
+    toast.error(`${name} could not save ${what}`, { description: ack.error });
+  }
+  return ack;
 }
 
 // Failed-delivery toasts offer Retry; they go when the session ends, along with the data.
