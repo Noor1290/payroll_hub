@@ -185,6 +185,25 @@ export const PAYROLL_FIELDS: readonly PayrollField[] = [
   },
 ];
 
+/**
+ * "Date of Employment" is not part of the payroll app's export. It is typed into the dashboard
+ * (employees.date_of_employment, migration 0008) and added to the rows of a saved run when an
+ * employee has one, as "YYYY-MM-DD". An employee without one gets no key at all.
+ */
+export const DATE_OF_EMPLOYMENT = "Date of Employment";
+
+/** True for a real calendar date written "YYYY-MM-DD", within what the database accepts. */
+export function isEmploymentDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value &&
+    value >= "1900-01-01" &&
+    value <= "2100-12-31"
+  );
+}
+
 /** Keys are compared ignoring case and stray whitespace, so "net pay " still finds "Net Pay". */
 export function normaliseKey(key: string): string {
   return key.trim().replace(/\s+/g, " ").toLowerCase();
@@ -194,6 +213,14 @@ const FIELD_BY_KEY = new Map(PAYROLL_FIELDS.map((field) => [normaliseKey(field.j
 const FIELD_BY_COLUMN = new Map(
   PAYROLL_FIELDS.filter((f) => f.target !== "company").map((field) => [field.column, field]),
 );
+
+/**
+ * Keys the dashboard adds to exported rows itself. An import leaves them out (they are not the
+ * payroll app's to set), so a file made from a dashboard export never stores them in `extra`.
+ */
+export function isHubOwnedKey(key: string): boolean {
+  return normaliseKey(key) === normaliseKey(DATE_OF_EMPLOYMENT);
+}
 
 export function fieldForJsonKey(key: string): PayrollField | undefined {
   return FIELD_BY_KEY.get(normaliseKey(key));
@@ -235,6 +262,13 @@ export type PayrollRow = {
   other_names: string | null;
   employment_type: string | null;
   age_60_plus: boolean;
+  /** The employee's own id. Saved rows only. */
+  employee_id?: string;
+  /**
+   * Saved rows only: "YYYY-MM-DD", or null when not set. Undefined when it is not known: a row
+   * still being imported, or a database that has not had migration 0008.
+   */
+  date_of_employment?: string | null;
   /**
    * Fields this version of the dashboard does not know about, kept verbatim, plus the known
    * `inExtra` fields under their column names (see RESERVED_EXTRA_KEYS).
@@ -264,9 +298,10 @@ export function toExportRow(
       out[field.jsonKey] = row[field.column as keyof PayrollRow] ?? "";
     }
   }
+  if (isEmploymentDate(row.date_of_employment)) out[DATE_OF_EMPLOYMENT] = row.date_of_employment;
   // Unknown fields travel along untouched, but never override a known one.
   for (const [key, value] of Object.entries(row.extra)) {
-    if (!(key in out) && !RESERVED_EXTRA_KEYS.has(key)) out[key] = value;
+    if (!(key in out) && !RESERVED_EXTRA_KEYS.has(key) && !isHubOwnedKey(key)) out[key] = value;
   }
   return out;
 }

@@ -1,7 +1,7 @@
 import { Calculator, FileText, ReceiptText, type LucideIcon } from "lucide-react";
 import { DEMO_MODE } from "./env";
 import { HOSTING } from "./origins";
-import { PAYROLL_FIELDS } from "./payrollFields";
+import { DATE_OF_EMPLOYMENT, PAYROLL_FIELDS } from "./payrollFields";
 
 /** Version of the dashboard <-> app message protocol (docs/INTEGRATION.md). */
 export const PROTOCOL_VERSION = 1;
@@ -39,14 +39,26 @@ export interface AppConfig {
 
 export const PAYROLL_RESULT = "payroll-result";
 
-/** Apps that consume payroll results want the payroll app's own export format, key for key. */
-const payrollExportFields: ExpectedField[] = PAYROLL_FIELDS.map((field) => ({
-  key: field.jsonKey,
-  label: field.label,
-  type: field.type,
-  required: field.required,
-  sensitive: field.sensitive,
-}));
+/**
+ * Apps that consume payroll results want the payroll app's own export format, key for key,
+ * plus the one field the dashboard adds for employees who have it.
+ */
+const payrollExportFields: ExpectedField[] = [
+  ...PAYROLL_FIELDS.map((field) => ({
+    key: field.jsonKey,
+    label: field.label,
+    type: field.type,
+    required: field.required,
+    sensitive: field.sensitive,
+  })),
+  {
+    key: DATE_OF_EMPLOYMENT,
+    label: "Date of employment",
+    type: "date",
+    required: false,
+    sensitive: false,
+  },
+];
 
 /**
  * The app registry. Adding an app = adding one entry here; menus, tabs, health and transfer

@@ -43,7 +43,15 @@ describe("app registry", () => {
 
   it("gives consumers the payroll export's own field names as expected fields", () => {
     const keys = getApp("pdf-editor")!.expectedFields.map((field) => field.key);
-    expect(keys).toEqual(PAYROLL_FIELDS.map((field) => field.jsonKey));
+    // The payroll export's own keys, then the one field the dashboard adds.
+    expect(keys).toEqual([...PAYROLL_FIELDS.map((field) => field.jsonKey), "Date of Employment"]);
+    expect(getApp("pdf-editor")!.expectedFields.at(-1)).toEqual({
+      key: "Date of Employment",
+      label: "Date of employment",
+      type: "date",
+      required: false,
+      sensitive: false,
+    });
     expect(getApp("pdf-editor")!.expectedFields.find((f) => f.key === "ID")).toMatchObject({
       required: true,
       sensitive: true,
@@ -131,5 +139,47 @@ describe('toExportRow: "Employee CSG" and "Employee NSF"', () => {
         sensitive: true,
       });
     }
+  });
+});
+
+describe('toExportRow: "Date of Employment"', () => {
+  const company = { name: "ABC Co Ltd", address: "Mauritius", brn: "C1234567", vat: "12%" };
+  const saved = (more: Partial<PayrollRow>): PayrollRow => ({
+    ...parsePayrollRows(JSON.parse(olderSample)).rows[0]!,
+    ...more,
+  });
+
+  it("adds it, as YYYY-MM-DD text, for an employee who has one", () => {
+    const row = toExportRow(saved({ date_of_employment: "2019-03-04" }), company);
+    expect(row["Date of Employment"]).toBe("2019-03-04");
+  });
+
+  it.each([null, undefined, "", "04/03/2019", "2019-02-30"])(
+    'leaves the key out when the stored value is %j: never "" and never a guess',
+    (value) => {
+      const row = toExportRow(saved({ date_of_employment: value }), company);
+      expect(row).not.toHaveProperty("Date of Employment");
+    },
+  );
+
+  it("changes nothing else about the row", () => {
+    const row = toExportRow(saved({ date_of_employment: "2019-03-04" }), company);
+    delete row["Date of Employment"];
+    expect(row).toEqual(toExportRow(saved({}), company));
+  });
+
+  it("is not taken from a file: an import leaves the key out, without an error", () => {
+    const [first] = JSON.parse(olderSample) as Record<string, unknown>[];
+    for (const key of ["Date of Employment", " date of  employment "]) {
+      const parsed = parsePayrollRows([{ ...first, [key]: "1999-01-01" }]);
+      expect(parsed.errors).toEqual([]);
+      expect(parsed.rows[0]!.extra).toEqual({});
+      expect(parsed.rows[0]!.date_of_employment).toBeUndefined();
+    }
+  });
+
+  it("does not let an old stored copy of the key travel as an unknown field", () => {
+    const row = toExportRow(saved({ extra: { "Date of Employment": "1999-01-01" } }), company);
+    expect(row).not.toHaveProperty("Date of Employment");
   });
 });

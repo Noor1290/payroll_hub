@@ -104,7 +104,11 @@ describe("autoMap", () => {
   it("matches the payroll export to the PDF filler's fields one for one", () => {
     const table = tableFromReceived(original);
     const mapping = autoMap(table.columns, pdfFields);
-    for (const expected of pdfFields) expect(mapping[expected.key]).toBe(expected.key);
+    // Everything the payroll app exports; the date is the dashboard's own and is not in a file.
+    for (const expected of pdfFields.filter((f) => f.key !== "Date of Employment")) {
+      expect(mapping[expected.key]).toBe(expected.key);
+    }
+    expect(mapping).not.toHaveProperty("Date of Employment");
   });
 
   it("matches by normalised name: case, spaces and punctuation don't matter", () => {
@@ -266,7 +270,9 @@ describe("buildOutput", () => {
     expect(output[0]!["CSG"]).toBe(original[0]!["CSG"]);
     // An unknown extra field is not something the PDF filler asked for, so it stays behind.
     expect(Object.keys(output[5]!)).not.toContain("Bonus");
-    expect(Object.keys(output[0]!)).toEqual(pdfFields.map((f) => f.key));
+    expect(Object.keys(output[0]!)).toEqual(
+      pdfFields.map((f) => f.key).filter((key) => key !== "Date of Employment"),
+    );
   });
 });
 
@@ -310,6 +316,46 @@ describe("buildOutput: a figure the row does not have", () => {
       expect(sent).not.toHaveProperty("Employee CSG");
       expect(sent).not.toHaveProperty("Employee NSF");
     }
+  });
+});
+
+describe("the date of employment in the wizard", () => {
+  const parsed = parsePayrollRows(JSON.parse(olderSample));
+  const withDates = parsed.rows.map((r, index) => ({
+    ...r,
+    employee_id: `30000000-0000-4000-8000-00000000000${index}`,
+    date_of_employment: index === 0 ? "2019-03-04" : null,
+  }));
+
+  it("is a column of a saved run when the database has it, and not otherwise", () => {
+    const table = tableFromRun(withDates, parsed.company!);
+    expect(table.columns.find((c) => c.key === "Date of Employment")).toEqual({
+      key: "Date of Employment",
+      label: "Date of employment",
+      type: "string",
+      sensitive: false,
+      money: false,
+    });
+    const without = tableFromRun(parsed.rows, parsed.company!);
+    expect(without.columns.map((c) => c.key)).not.toContain("Date of Employment");
+  });
+
+  it("is sent for the employee who has one and left out for the others", () => {
+    const table = tableFromRun(withDates, parsed.company!);
+    const mapping = autoMap(table.columns, pdfFields);
+    expect(mapping["Date of Employment"]).toBe("Date of Employment");
+    expect(validateRows(table.rows, mapping, pdfFields)).toEqual([]);
+    const output = buildOutput(table.rows, mapping, pdfFields);
+    expect(output[0]!["Date of Employment"]).toBe("2019-03-04");
+    for (const sent of output.slice(1)) expect(sent).not.toHaveProperty("Date of Employment");
+  });
+
+  it("is refused by the wizard when it is not a date", () => {
+    const fields = [field("Date of Employment", { type: "date" })];
+    const map = { "Date of Employment": "Date of Employment" };
+    expect(validateRows([row(1, { "Date of Employment": "last March" })], map, fields)).toEqual([
+      { row: 1, field: "Date of Employment", message: "must be a date" },
+    ]);
   });
 });
 

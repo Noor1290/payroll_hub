@@ -45,3 +45,38 @@ describe('PayrollTable: "Employee CSG" and "Employee NSF"', () => {
     expect(new Set(column("Employee NSF"))).toEqual(new Set([""]));
   });
 });
+
+describe("PayrollTable: date of employment", () => {
+  const saved = parsePayrollRows(JSON.parse(withoutFigures)).rows.map((row, index) => ({
+    ...row,
+    employee_id: `30000000-0000-4000-8000-00000000000${index}`,
+    date_of_employment: index === 0 ? "2019-03-04" : null,
+  }));
+
+  it("is not a column of an import preview, or of a database without the column", () => {
+    const { headers } = renderGrid(withoutFigures);
+    expect(headers).not.toContain("Date of employment");
+  });
+
+  it("shows the date or 'Not set', with no edit button for someone who may not change it", () => {
+    render(<PayrollTable rows={saved} caption="Saved" />);
+    const table = screen.getByRole("table", { name: "Saved" });
+    expect(within(table).getByText("2019-03-04")).toBeTruthy();
+    expect(within(table).getAllByText("Not set")).toHaveLength(saved.length - 1);
+    expect(screen.queryByRole("button", { name: /date of employment of/ })).toBeNull();
+  });
+
+  it("gives an admin an edit button per employee, which reports that employee's row", () => {
+    const edited: string[] = [];
+    render(
+      <PayrollTable rows={saved} caption="Saved" onEditDate={(row) => edited.push(row.surname)} />,
+    );
+    expect(screen.getAllByRole("button", { name: /date of employment of/ })).toHaveLength(
+      saved.length,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: `Change the date of employment of ${saved[0]!.surname}` }),
+    );
+    expect(edited).toEqual([saved[0]!.surname]);
+  });
+});

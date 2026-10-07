@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   fieldForJsonKey,
+  isHubOwnedKey,
   PAYROLL_FIELDS,
   RESERVED_EXTRA_KEYS,
   type CompanyColumn,
@@ -202,6 +203,8 @@ export function parsePayrollRows(data: unknown): ParsedFile {
     for (const [key, value] of Object.entries(source)) {
       const field = fieldForJsonKey(key);
       if (field) known[field.jsonKey] = value;
+      // Set in the dashboard, never by a file: left out, so an import cannot change it.
+      else if (isHubOwnedKey(key)) continue;
       // Where a known field is kept inside `extra`: an unknown field must not land on it.
       else if (RESERVED_EXTRA_KEYS.has(key)) fail(key, "is a name the dashboard reserves");
       else extra[key] = value;

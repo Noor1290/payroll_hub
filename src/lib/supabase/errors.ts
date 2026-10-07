@@ -100,6 +100,21 @@ export function isMissingTable(error: unknown): boolean {
   return code.code === "PGRST205" || code.code === "42P01";
 }
 
+/**
+ * True when the database says a column does not exist: Postgres's 42703, or PGRST204 from the
+ * Data API ("not in the schema cache"). A migration that adds the column was not run.
+ */
+export function isMissingColumn(error: unknown): boolean {
+  const code = (typeof error === "object" && error !== null ? error : {}) as { code?: unknown };
+  return code.code === "42703" || code.code === "PGRST204";
+}
+
+/** True when the database has no such function: PGRST202 from the Data API, or Postgres's 42883. */
+export function isMissingFunction(error: unknown): boolean {
+  const code = (typeof error === "object" && error !== null ? error : {}) as { code?: unknown };
+  return code.code === "PGRST202" || code.code === "42883";
+}
+
 export function classifyDataError(error: unknown): DataFailure {
   if (error instanceof NotConfiguredError) return FAILURES["not-configured"];
   if (error instanceof ZodError) return FAILURES["unexpected-shape"];
