@@ -28,6 +28,11 @@ export interface ParsedFile {
   company: FileCompany | null;
   /** Total objects found in the file, valid or not. */
   rowCount: number;
+  /**
+   * True when a row has a "Date of Employment" key. It is left out of what is stored (the date
+   * is set in the dashboard, never by a file); this only lets the report say so.
+   */
+  dateOfEmploymentIgnored?: boolean;
 }
 
 /** Largest absolute value a numeric(12,2) column can hold. */
@@ -185,6 +190,7 @@ export function parsePayrollRows(data: unknown): ParsedFile {
   const errors: RowError[] = [];
   const companies: FileCompany[] = [];
   const firstRowById = new Map<string, number>();
+  let dateOfEmploymentIgnored = false;
 
   data.forEach((raw, index) => {
     const rowNumber = index + 1;
@@ -204,7 +210,7 @@ export function parsePayrollRows(data: unknown): ParsedFile {
       const field = fieldForJsonKey(key);
       if (field) known[field.jsonKey] = value;
       // Set in the dashboard, never by a file: left out, so an import cannot change it.
-      else if (isHubOwnedKey(key)) continue;
+      else if (isHubOwnedKey(key)) dateOfEmploymentIgnored = true;
       // Where a known field is kept inside `extra`: an unknown field must not land on it.
       else if (RESERVED_EXTRA_KEYS.has(key)) fail(key, "is a name the dashboard reserves");
       else extra[key] = value;
@@ -278,7 +284,14 @@ export function parsePayrollRows(data: unknown): ParsedFile {
   }
 
   const company = companies.find((c) => c.brn) ?? null;
-  return { rows, errors, fatal: null, company, rowCount: data.length };
+  return {
+    rows,
+    errors,
+    fatal: null,
+    company,
+    rowCount: data.length,
+    ...(dateOfEmploymentIgnored ? { dateOfEmploymentIgnored } : {}),
+  };
 }
 
 /**
