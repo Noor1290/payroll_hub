@@ -72,3 +72,4 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 (Update this at the end of each phase.)
 
 - [x] Phase 1  - [x] Phase 2  - [x] Phase 3  - [x] Phase 4  - [x] Phase 5  - [x] Phase 6
+- Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [ ] Stage B, items 3 to 7, 9, 10 (start only when the owner says so)  - [ ] item 8
