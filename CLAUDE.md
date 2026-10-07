@@ -37,7 +37,7 @@ Production builds carry a CSP meta tag (src/config/csp.ts): no inline scripts, n
 
 ## Database (already created; see supabase/migrations/0001_initial_schema.sql)
 
-Imports are saved only through `import_payroll_run` (migration 0002, atomic, run by hand by the owner). Companies are created only through `create_company` (migration 0003, existing admins only) and deleted only through `delete_company` (migration 0007 replaces 0004's: admins of that company, typed name checked in the database, permanent, whatever its runs). A new table that references `companies` must be added to `delete_company` (a test checks). `deleteCompany.db.test.ts` runs the migrations in PGlite (dev dependency only; never import it from app code). Both are SECURITY DEFINER; never add an insert or delete policy or grant on `companies` or `company_members`. Field mapping lives in src/config/payrollFields.ts and nowhere else. A field marked `inExtra` there ("Employee CSG", "Employee NSF") is known and checked but kept in `extra`; when absent it stays absent, never "" or 0.
+Imports are saved only through `import_payroll_run` (migration 0002, atomic, run by hand by the owner). Companies are created only through `create_company` (migration 0003, existing admins only) and deleted only through `delete_company` (newest definition in migration 0011: admins of that company, typed name checked in the database, permanent, whatever its runs). A new table that references `companies` must be added to `delete_company` in a migration that replaces it, and `MIGRATION` in deleteCompany.ts must then name that file (tests check both). `deleteCompany.db.test.ts` runs the migrations in PGlite (dev dependency only; never import it from app code). Both are SECURITY DEFINER; never add an insert or delete policy or grant on `companies` or `company_members`. Field mapping lives in src/config/payrollFields.ts and nowhere else. A field marked `inExtra` there ("Employee CSG", "Employee NSF") is known and checked but kept in `extra`; when absent it stays absent, never "" or 0.
 
 companies, company_members (read-only from app), employees, payroll_runs, payroll_entries (`extra jsonb` for new fields), company_details (migration 0005), company_links (migration 0006).
 On `companies` the app may update only name, address and vat (column grant in 0005); the BRN changes only in the SQL editor.
@@ -49,7 +49,11 @@ All data leaves through `deliver()` (src/features/workspace/deliver.ts): it writ
 
 ## Payslip app data (statutory-rates, payslip-template)
 
-Handlers in src/features/workspace/appData.ts, reads and saves in src/lib/supabase/statutoryRates.ts and payslipTemplates.ts (migrations 0009, 0010). Answered and saved with NO prompt and NO password gate (nothing per employee in them); every exchange goes through `answerRequest()` / `recordSave()` in deliver.ts: a log row without values, a toast per save. Saves carry the BRN and are refused unless it is the selected company's. The wire contract is docs/INTEGRATION.md: change both together. `payroll-result` keeps its prompt and gate; `payslip-issue` is not registered.
+Handlers in src/features/workspace/appData.ts, reads and saves in src/lib/supabase/statutoryRates.ts and payslipTemplates.ts (migrations 0009, 0010). Answered and saved with NO prompt and NO password gate (nothing per employee in them); every exchange goes through `answerRequest()` / `recordSave()` in deliver.ts: a log row without values, a toast per save. Saves carry the BRN and are refused unless it is the selected company's. The wire contract is docs/INTEGRATION.md: change both together. `payroll-result` keeps its prompt and gate. Every answer carries the user's role in `meta` (`admin` or `member`).
+
+## Issued payslips (payslip-issue)
+
+Per-employee data, so none of the above exemptions apply: admins only, behind the password gate (migration 0011, reads and saves in src/lib/supabase/issuedPayslips.ts). A load asks the user in the request dialog and reads only with the gate open (query key `issued-payslips` is gated); an issue has no dialog and is refused at once as `locked` while the gate is closed. A month is issued all or none through `issue_payslips`; rows are immutable numbered revisions. A refusal names the payslip at fault only by position (`index`, from 0). Never a national ID or name in a message, the log or a toast, and never a user id in an answer (`issued_by_you`).
 
 ## Password gate
 
@@ -76,4 +80,4 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 (Update this at the end of each phase.)
 
 - [x] Phase 1  - [x] Phase 2  - [x] Phase 3  - [x] Phase 4  - [x] Phase 5  - [x] Phase 6
-- Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [x] Stage B, items 3 to 7, 9, 10 (on `feature/payslip-bridge-b`; migrations 0008 to 0010 are for the owner to run)  - [ ] item 8
+- Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [x] Stage B, items 3 to 7, 9, 10 (merged and deployed; migrations 0008 to 0010 run)  - [x] Stage C, item 8 (on `feature/payslip-issue`; migration 0011 is for the owner to run)

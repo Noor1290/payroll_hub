@@ -62,6 +62,7 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 8. `0008_employee_date_of_employment.sql`: an optional date of employment per employee, typed in the Data explorer.
 9. `0009_statutory_rates.sql`: the statutory rates the payslip app reads and saves through the dashboard. Replaces the "Delete company" function again.
 10. `0010_payslip_templates.sql`: payslip templates (a draft each, and published versions). Replaces the "Delete company" function again.
+11. `0011_issued_payslips.sql`: the payslips as they were issued, a month at a time, readable by admins only. Replaces the "Delete company" function again; never run an older file that defines it after this one.
 
 Then:
 

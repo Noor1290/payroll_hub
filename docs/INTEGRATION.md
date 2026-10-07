@@ -30,11 +30,11 @@ Both existing apps are React + Vite, so the steps assume that.
    interface PayrollHubPayload {
      dataType: string;
      rows: Record<string, unknown>[];
-     meta?: { period?: string; label?: string; brn?: string };
+     meta?: { period?: string; label?: string; brn?: string; role?: "admin" | "member" };
    }
    type PayrollHubReply =
      | ({ ok: true; result?: Record<string, unknown> } & Partial<PayrollHubPayload>)
-     | { ok: false; error: string; code?: string };
+     | { ok: false; error: string; code?: string; index?: number };
    interface Window {
      PayrollHubBridge: {
        isEmbedded(): boolean;
@@ -138,15 +138,16 @@ Ready-to-paste task for Claude Code in the `pdf-form-filler` repo:
 
 ## Payslip app (app id: `payslip`)
 
-The dashboard's registry entry is active and loads the app from `https://noor1290.github.io/payslip/` (keep the trailing slash). It is registered for three data types:
+The dashboard's registry entry is active and loads the app from `https://noor1290.github.io/payslip/` (keep the trailing slash). It is registered for four data types:
 
 | Data type          | The app may ask for it | The app may save it | Asked of the dashboard's user        |
 | ------------------ | ---------------------- | ------------------- | ------------------------------------ |
 | `payroll-result`   | yes                    | no                  | a prompt, and the password gate open |
 | `statutory-rates`  | yes                    | yes                 | nothing                              |
 | `payslip-template` | yes                    | yes                 | nothing                              |
+| `payslip-issue`    | yes, admins only       | yes, admins only    | to ask: a prompt, and the password gate open; to save: no prompt, but the gate must already be open |
 
-`payslip-issue` (issued payslips) is not registered yet: asking for it or sending it is answered with "not registered".
+**Every answer to a request for the last three says who the user is: `meta.role`**, `"admin"` or `"member"`, the signed-in user's role in the company the answer is about. Use it to show read-only from the start instead of finding out from a `forbidden`. It is a hint: the database still decides, and a save can still be refused. It is not on the acknowledgement of a save, and not on `payroll-result`.
 
 ### Payroll results
 
@@ -160,7 +161,7 @@ A row from a saved run also has `Date of Employment` (text, `YYYY-MM-DD`) when t
 
 - **No prompt and no password gate.** The dashboard answers by itself, straight away. This departs from the rule "a `request-data` always asks the user first" (docs/BRIEF.md, section 12), on purpose: rates and templates are settings and layout, with nothing about any employee in them, and the payslip app reads and saves them many times in a sitting. A prompt each time would only teach the user to click through it. In its place, every exchange is a row in the dashboard's Transfer log (who, when, how many rows, the outcome; never the values, a template's name or its body), and every save shows a toast in the dashboard. `payroll-result` keeps its prompt and its gate.
 - **The database decides who may do what.** Any member of the company may read, drafts included. Only an admin may save or publish. The dashboard checks the role first only to answer sooner.
-- **A request** is `sendToDashboard("request-data", { dataType, params })`. `bridge.js` waits up to 120 seconds for the answer; the dashboard normally answers in well under one. The answer is `{ ok: true, dataType, rows, meta: { label, brn } }`: `rows` may be empty, `label` is the company's name, and `brn` is the BRN of the company the answer is about (left out only if that company has none). Check `meta.brn` against the company the app is showing before using the rows.
+- **A request** is `sendToDashboard("request-data", { dataType, params })`. `bridge.js` waits up to 120 seconds for the answer; the dashboard normally answers in well under one. The answer is `{ ok: true, dataType, rows, meta: { label, brn, role } }`: `rows` may be empty, `label` is the company's name, `brn` is the BRN of the company the answer is about (left out only if that company has none), and `role` is `"admin"` or `"member"`. Check `meta.brn` against the company the app is showing before using the rows.
 - **A save** is `sendToDashboard("send-data", { dataType, rows: [row] })` with exactly ONE row: one command per message. The row must carry `brn`, the BRN of the company the app is showing; the dashboard refuses the save when it is not the company selected there. The answer is `{ ok: true, result: { … } }`.
 - **`params.brn` on a request is optional** and checked the same way when present. Send it whenever the app knows it.
 - **Nothing is rounded or filled in.** A field the dashboard does not know, a missing field, or a value of the wrong type or precision refuses the whole message.
@@ -257,6 +258,109 @@ else if (!reply.code || reply.code === "unavailable") reloadAndCompareRevision()
 else showMessage(reply.error);
 ```
 
+### `payslip-issue`
+
+The payslips as they were issued: one snapshot per employee, per month, per revision. A snapshot is never changed and never removed; issuing again for the same employee and month is the next revision. This is per-employee data (national IDs and pay), so it does NOT follow the "no prompt, no gate" rule above:
+
+- **Admins only.** A member who is not an admin is refused with `forbidden`, for a load and for an issue. `meta.role` on any earlier answer already says which the user is.
+- **`brn` is required**, on a load as on an issue, and must be the company selected in the dashboard.
+- **A load asks the dashboard's user first**, in the same dialog as `payroll-result`, and needs the password gate open (the dialog offers the password form). It can take up to 100 seconds and can end in `locked`, `denied` or `timeout`. Whatever can be refused without asking (`invalid`, `wrong-company`, `forbidden`, `unavailable`) is refused straight away.
+- **An issue has no dialog**: a save must be answered within 8 seconds. The password gate has to be open already. While it is locked the save is refused at once with `locked` and NOTHING is stored, so after the user has unlocked the dashboard the app may send the very same message again.
+- **An issue is all or nothing.** Every payslip in the message is stored at its next revision, or none is.
+- Every exchange is a row in the dashboard's Transfer log and an issue shows a toast: the number of payslips and the month. Never a national ID, a name or a figure.
+
+**Load a month**: `sendToDashboard("request-data", { dataType: "payslip-issue", params })`.
+
+| `params`                                         | Answer rows                                                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `{ action: "load", brn, period: "YYYY-MM" }`     | One per employee who has a payslip for that month, the LATEST revision only, ordered by national ID. May be empty. |
+
+Each row:
+
+```js
+{
+  national_id: "X0000000000001",   // the "ID" of the payroll rows
+  revision: 2,                     // 1, 2, 3… per employee and month; send it back as expected_revision
+  template_id: "…uuid…",
+  template_version: 3,
+  rates: { effective_from: "2026-07", revision: 2, nsf_employee_rate: 1, /* … */ }, // or null: not cross-checked
+  lines: [ /* exactly as the app sent them */ ],
+  accepted_differences: [ { what: "Total Deductions", payroll: 502.87, payslip: 502.88, reason: "rounding" } ],
+  issued_at: "2026-10-02T09:00:00+04:00",
+  issued_by_you: true              // never a user id
+}
+```
+
+`meta` is `{ label, brn, period, role }`. Earlier revisions are not returned (follow-up: docs/FUTURE_WORK.md, section 9c). For the month comparison, load each of the two months.
+
+**Issue a month**: `sendToDashboard("send-data", { dataType: "payslip-issue", rows: [row] })` with exactly ONE row, which holds the whole selection:
+
+| Row                                                                  | `result`                                                              |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `{ action: "issue", brn, period: "YYYY-MM", payslips: [ … ] }` (1 to 1,000 payslips) | `{ period, issued, issued_at, payslips: [{ national_id, revision }] }` |
+
+Each payslip, with every key present and no other key accepted:
+
+| Key                    | What it is                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `national_id`          | The employee, by the `ID` of the payroll rows (outer spaces ignored). Must be a current employee of the company in the dashboard: the month's payroll has to be saved there first. Once per message. |
+| `expected_revision`    | The revision the app last saw for this employee and month in a load; `0` when there is none.                                |
+| `template_id`, `template_version` | A PUBLISHED version of one of the company's templates. Never a draft.                                            |
+| `rates`                | `null` when the figures were not cross-checked. Otherwise the rates row used, copied: `effective_from` (`"YYYY-MM"`), `revision`, `nsf_employee_rate`, `nsf_ceiling`, `nsf_exempt_at_60`, `csg_employee_rate_low`, `csg_employee_rate_high`, `csg_threshold`. Exactly those eight keys. |
+| `lines`                | 1 to 200 JSON objects, the lines shown on the payslip, in a shape the payslip app defines. Stored and returned exactly as sent: nothing is rounded, renamed or reordered. |
+| `accepted_differences` | A list, possibly empty, of at most 50 `{ what, payroll, payslip, reason }`: `what` names the figure (1 to 80 characters), `payroll` and `payslip` are the two numbers, `reason` says why the difference was accepted (1 to 300 characters). No other key. WHO accepted is not sent: it is the dashboard's signed-in user at the moment of issuing, recorded by the database. |
+
+The revision, the issuer and the time are set by the database. A payslip that tries to set them (`revision`, `issued_by`, `issued_at`) is refused as `invalid`.
+
+**Which payslip was at fault: `index`.** When a month is refused because of ONE payslip, the refusal carries `index`: the position of the first payslip at fault in the `payslips` list the app sent, **counted from 0** (so `payslips[reply.index]` is it). The dashboard never names the employee, in the reply, in its log or in a toast: the app names them from the position. `index` is absent when the refusal is about the message as a whole. Some `error` sentences count for the reader instead and say "payslip 3": that is the same payslip as `index: 2`.
+
+| `code`          | When, for `payslip-issue`                                                                                   | `index` | What the app should do                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------- |
+| `locked`        | The password gate is closed. An issue: refused at once, nothing stored. A load: still locked after 100 seconds. | no  | Ask the user to unlock the dashboard, then send the same message again. |
+| `denied`, `timeout` | A load only: the user said no, or nobody answered in time.                                              | no      | Tell the user; ask again when they are ready.                       |
+| `forbidden`     | The user is not an admin of the company.                                                                    | no      | Show read-only.                                                     |
+| `wrong-company` | `brn` is not the selected company's.                                                                        | no      | Ask the user to select the same company in the dashboard.           |
+| `stale`         | For that employee, `expected_revision` is not the latest: someone issued since the month was loaded.        | yes     | Load the month again, show what was issued, let the user decide.    |
+| `not-found`     | That payslip is for someone who is not a current employee in the dashboard, or names a template version the company does not have. `error` says which of the two. | yes | Save the payroll run in the dashboard first, or reload the templates. |
+| `invalid`       | A key is missing, unknown or of the wrong type; an employee appears twice; a `data:` URI (an image) in a payslip. | yes, when it is inside one payslip | Fix the data.                             |
+| `too-large`     | More than 1,000 payslips or a message over 4 MB (no `index`); a payslip over 16 KB, or an employee who already has 50 revisions for that month (with `index`). | sometimes | Send fewer, or make it smaller; a retry cannot help. |
+| `unavailable`   | As for rates and templates, including "could not confirm the save".                                         | no      | The rule below.                                                     |
+
+**After "no answer" or `unavailable` on an issue: load the month again, then compare, before issuing again.** The rule is the one for rates and templates, read per month: the issue MAY have been stored. Because it is all or nothing, the load shows one of two things. Every employee of the selection is at `expected_revision + 1`: it went through; do not send it again. None has moved: it did not; the app may send the same message again. (An app that skips this is refused as `stale` at `index` 0 and stores nothing twice, but tells its user an issue failed when it did not.)
+
+Ready-to-paste example:
+
+```js
+const hub = window.PayrollHubBridge;
+const loadMonth = (period) =>
+  hub.sendToDashboard("request-data", { dataType: "payslip-issue", params: { action: "load", brn, period } });
+
+// 1. Load the month (the dashboard asks its user; allow up to two minutes).
+const loaded = await loadMonth("2026-09");
+if (!loaded.ok) return showMessage(loaded.code === "forbidden" ? "Only an admin can issue payslips." : loaded.error);
+const seen = new Map(loaded.rows.map((row) => [row.national_id, row.revision]));
+
+// 2. Issue the selected employees, all or none.
+const payslips = selected.map((employee) => ({
+  national_id: employee.ID,
+  expected_revision: seen.get(employee.ID) ?? 0,
+  template_id, template_version,
+  rates: ratesUsed ?? null,
+  lines: linesShownFor(employee),
+  accepted_differences: acceptedFor(employee),
+}));
+const reply = await hub.sendToDashboard("send-data", {
+  dataType: "payslip-issue",
+  rows: [{ action: "issue", brn, period: "2026-09", payslips }],
+});
+
+if (reply.ok) reply.result.payslips.forEach((p) => seen.set(p.national_id, p.revision));
+else if (reply.code === "locked") showMessage("Unlock the dashboard, then issue again."); // nothing was stored
+else if (!reply.code || reply.code === "unavailable") reloadMonthAndCompare();             // the rule above
+else if (typeof reply.index === "number") showMessage(`${nameOf(selected[reply.index])}: ${reply.error}`);
+else showMessage(reply.error);
+```
+
 ## How to check it works
 
 The bridge only trusts the **deployed** dashboard at `https://noor1290.github.io`. It will not connect to a dashboard running on `localhost`; there the app shows as "Not connected (local run)". So:
@@ -267,7 +371,7 @@ The bridge only trusts the **deployed** dashboard at `https://noor1290.github.io
 4. `pdf-form-filler`: from that dialog choose **Send to… → PDF Form Filler**. The dashboard should say "Delivered" and the app should show the data.
 5. Open each app directly in its own tab. No dashboard buttons should appear and everything should work as before.
 
-To try the dashboard side without touching the real apps, run `npm run dev:demo` in the `payroll-hub` repo: it loads mock apps that use the real `bridge.js`. The mock payslip app has a button for each rates and template message, against fake data kept in memory.
+To try the dashboard side without touching the real apps, run `npm run dev:demo` in the `payroll-hub` repo: it loads mock apps that use the real `bridge.js`. The mock payslip app has a button for each rates and template message, and buttons to load and issue a month of payslips, against fake data kept in memory.
 
 ## Protocol reference (version 1)
 
@@ -284,12 +388,12 @@ Every message is an envelope:
 | --------------- | ---------------------------- | ------------------------------------------------------------------- | -------------------------------- |
 | `ready`         | app → dashboard              | `{}`                                                                | a `ping`                         |
 | `ping`          | either                       | `{}`                                                                | `pong`, same id                  |
-| `send-data`     | dashboard → app, or app → dashboard | `{ dataType, rows: [...], meta?: { period?: "YYYY-MM", label?, brn? } }` | `received`, same id        |
-| `received`      | reply to `send-data`         | `{ ok: true, result? }` or `{ ok: false, error, code? }`            |                                  |
+| `send-data`     | dashboard → app, or app → dashboard | `{ dataType, rows: [...], meta?: { period?: "YYYY-MM", label?, brn?, role? } }` | `received`, same id |
+| `received`      | reply to `send-data`         | `{ ok: true, result? }` or `{ ok: false, error, code?, index? }`    |                                  |
 | `request-data`  | app → dashboard              | `{ dataType, period?: "YYYY-MM", params? }`                         | `response-data`, same id         |
 | `response-data` | dashboard → app              | `{ ok: true, dataType, rows, meta }` or `{ ok: false, error, code? }` |                                |
 
-Still version 1. What the payslip app needed was added as optional parts, so an app written before them keeps working unchanged and `bridge.js` did not change: `params` on a request (an object of at most 2 KB, its shape checked per data type), `result` on an ok `received` from the dashboard, `code` on a refused `received`, `brn` in `meta`, more refusal codes, and an answer with no rows for `statutory-rates` and `payslip-template` (`payroll-result` always has at least one).
+Still version 1. What the payslip app needed was added as optional parts, so an app written before them keeps working unchanged and `bridge.js` did not change: `params` on a request (an object of at most 2 KB, its shape checked per data type), `result` on an ok `received` from the dashboard, `code` on a refused `received`, `brn` and `role` in `meta`, `index` on a refused `received` (the position, from 0, of the payslip at fault in a refused month), more refusal codes, and an answer with no rows for `statutory-rates`, `payslip-template` and `payslip-issue` (`payroll-result` always has at least one).
 
 Limits per data type, checked by the dashboard before anything else:
 
@@ -298,14 +402,15 @@ Limits per data type, checked by the dashboard before anything else:
 | `payroll-result`   | 1 to 10,000                         | no limit of its own             | 1 to 10,000       |
 | `statutory-rates`  | exactly 1                           | 4 KB                            | 0 to 1,000        |
 | `payslip-template` | exactly 1                           | 160 KB (the body itself: 150 KB) | 0 to 50          |
+| `payslip-issue`    | exactly 1, holding 1 to 1,000 payslips | 4 MB (each payslip: 16 KB)   | 0 to 5,000        |
 
 Rules both sides follow:
 
 - A message is accepted only from the expected window **and** the exact expected origin, with the expected `version`, `from` and `to`. Anything else is dropped.
 - The target origin is always the exact origin, never `"*"`.
 - The dashboard waits about 10 seconds for `received`. After that it reports a failure and offers **Retry** (same id) and **Download JSON instead**. An acknowledgement that arrives after the timeout is ignored.
-- A refused `response-data` may carry a `code`: `"locked"` (the dashboard's password gate is closed and its user did not unlock it in time), `"denied"` (the user said no), `"timeout"` (nobody answered), or `"unavailable"`. The dashboard always answers a request within about 100 seconds; it never leaves one hanging. On `"locked"`, tell the user to unlock the dashboard and try again. Those first three only happen for `payroll-result`, the one data type that asks the user.
-- A refusal about rates or templates, whether to a request or to a save, always carries one of `"stale"`, `"no-change"`, `"forbidden"`, `"wrong-company"`, `"invalid"`, `"not-found"`, `"too-large"`, `"unavailable"`. The table in the payslip section says what each means. (A message the dashboard turns away before looking at it, such as a data type the app is "not registered" for, has an `error` and no `code`.)
+- A refused `response-data` may carry a `code`: `"locked"` (the dashboard's password gate is closed and its user did not unlock it in time), `"denied"` (the user said no), `"timeout"` (nobody answered), or `"unavailable"`. The dashboard always answers a request within about 100 seconds; it never leaves one hanging. On `"locked"`, tell the user to unlock the dashboard and try again. Those first three only happen for `payroll-result` and `payslip-issue`, the two data types behind the password gate; an issue of payslips can also be refused as `"locked"`, at once.
+- A refusal about rates, templates or issued payslips, whether to a request or to a save, always carries a `code`. For rates and templates it is one of `"stale"`, `"no-change"`, `"forbidden"`, `"wrong-company"`, `"invalid"`, `"not-found"`, `"too-large"`, `"unavailable"`. The table in the payslip section says what each means; `payslip-issue` has its own table there, which adds `"locked"`, `"denied"` and `"timeout"` and has no `"no-change"`. (A message the dashboard turns away before looking at it, such as a data type the app is "not registered" for, has an `error` and no `code`.)
 - The dashboard answers an app's save within 8 seconds, inside the 10 seconds `bridge.js` waits: with the outcome, or with `"unavailable"` when it has none yet. It never answers the same save twice. After `"unavailable"` or no answer, an app reloads and compares the revision before it saves again (the payslip section has the rule in full).
 - An app may only send a data type listed in its registry entry's `produces`, and only receive or request one listed in `accepts`.
 - The dashboard pings every 15 seconds while its tab is visible. Two missed pings show the app as "Not responding".
