@@ -49,15 +49,15 @@ function ownedByCompany(): string[] {
 
 /** The newest definition of the function: later migrations replace earlier ones. */
 const latest = migrations.filter((m) => m.sql.includes("function public.delete_company(")).at(-1)!;
-const body = latest.sql.slice(
-  latest.sql.indexOf("function public.delete_company("),
-  latest.sql.indexOf("$$;"),
-);
+// From the function's name to the end of ITS body: a file may define other functions first.
+const start = latest.sql.indexOf("function public.delete_company(");
+const body = latest.sql.slice(start, latest.sql.indexOf("$$;", start));
 const position = (table: string) => body.search(new RegExp(`delete from public\\.${table}\\b`));
 
 describe("delete_company in the migrations", () => {
-  it("is defined last in 0007", () => {
-    expect(latest.name).toBe("0007_delete_company_any_runs.sql");
+  it("is defined last in 0010", () => {
+    expect(latest.name).toBe("0010_payslip_templates.sql");
+    expect(body.length).toBeGreaterThan(500);
   });
 
   it("finds the tables that belong to a company", () => {
@@ -69,6 +69,9 @@ describe("delete_company in the migrations", () => {
         "employees",
         "payroll_entries",
         "payroll_runs",
+        "payslip_template_versions",
+        "payslip_templates",
+        "statutory_rates",
       ]),
     );
     // Every reference to companies is inside a "create table" this test understood. If this
