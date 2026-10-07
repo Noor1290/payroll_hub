@@ -174,8 +174,10 @@ function RequestDialog({ request }: { request: DataRequest }) {
   const [busy, setBusy] = useState(false);
   const app = getApp(request.appId);
   const { dataType, period } = request.payload;
-  const supported = dataType === PAYROLL_RESULT;
-  const what = period ? `the ${formatPeriod(`${period}-01`)} run` : "the latest run";
+  const { question } = request;
+  const supported = dataType === PAYROLL_RESULT || question !== undefined;
+  const what =
+    question?.what ?? (period ? `the ${formatPeriod(`${period}-01`)} run` : "the latest run");
 
   const { unlocked } = useUnlock();
 
@@ -191,6 +193,17 @@ function RequestDialog({ request }: { request: DataRequest }) {
     // The gate may have locked while this dialog was open. Saved runs never leave while locked.
     if (!isUnlocked()) return;
     setBusy(true);
+    if (question) {
+      // The handler that asked knows how to read and shape its own data (appData.ts).
+      request.respond(
+        await question.answer().catch((): ResponseDataPayload => ({
+          ok: false,
+          code: "unavailable",
+          error: "The dashboard could not get the data.",
+        })),
+      );
+      return;
+    }
     const viewer = { id: user.id, isDemo: user.isDemo };
     let response: ResponseDataPayload;
     try {
@@ -257,8 +270,9 @@ function RequestDialog({ request }: { request: DataRequest }) {
                         It wants {what} of <span className="text-fg">{current.company.name}</span>.
                       </p>
                       <p>
-                        This sends every employee's national ID and salary figures to the app. Only
-                        allow it if you started this from the app yourself.
+                        {question?.warning ??
+                          "This sends every employee's national ID and salary figures to the app."}{" "}
+                        Only allow it if you started this from the app yourself.
                       </p>
                     </>
                   )}

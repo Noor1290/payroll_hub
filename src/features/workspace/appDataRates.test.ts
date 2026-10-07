@@ -381,10 +381,10 @@ describe("statutory-rates over the bridge: no dialog, no password gate", () => {
     expect(toast.error).toHaveBeenCalledTimes(1);
   });
 
-  it("still refuses issued payslips as not registered", async () => {
+  it("still refuses a data type the app is not registered for", async () => {
     const app = connect();
-    app.say("request-data", "request-000002", { dataType: "payslip-issue" });
-    app.say("send-data", "save-00000003", { dataType: "payslip-issue", rows: [{ a: 1 }] });
+    app.say("request-data", "request-000002", { dataType: "payslip-archive" });
+    app.say("send-data", "save-00000003", { dataType: "payslip-archive", rows: [{ a: 1 }] });
     await vi.waitFor(() => expect(app.sent("received")).toHaveLength(1));
     expect(app.sent("response-data")[0]!.payload.error).toMatch(/not registered/);
     expect(app.sent("received")[0]!.payload.error).toMatch(/not registered/);

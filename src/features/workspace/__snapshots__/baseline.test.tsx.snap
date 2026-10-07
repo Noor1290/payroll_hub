@@ -816,6 +816,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
       "payroll-result",
       "statutory-rates",
       "payslip-template",
+      "payslip-issue",
     ],
     "expectedFields": [
       "ID | string | required | sensitive",
@@ -854,6 +855,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
     "produces": [
       "statutory-rates",
       "payslip-template",
+      "payslip-issue",
     ],
     "protocolVersion": 1,
     "status": "active",

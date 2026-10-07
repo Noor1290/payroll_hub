@@ -42,6 +42,8 @@ export const PAYROLL_RESULT = "payroll-result";
 export const STATUTORY_RATES = "statutory-rates";
 /** A company's payslip templates: a draft each, and published versions (migration 0010). */
 export const PAYSLIP_TEMPLATE = "payslip-template";
+/** Payslips as they were issued, a month at a time, in numbered revisions (migration 0011). */
+export const PAYSLIP_ISSUE = "payslip-issue";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -103,9 +105,8 @@ export const APPS: readonly AppConfig[] = [
     icon: ReceiptText,
     accentColor: "var(--warn)",
     status: "active",
-    // "payslip-issue" is not here yet: until it is, the hub answers it with "not registered".
-    accepts: [PAYROLL_RESULT, STATUTORY_RATES, PAYSLIP_TEMPLATE],
-    produces: [STATUTORY_RATES, PAYSLIP_TEMPLATE],
+    accepts: [PAYROLL_RESULT, STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE],
+    produces: [STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,
   },
