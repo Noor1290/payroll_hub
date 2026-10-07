@@ -273,6 +273,7 @@ export async function demoFetchRunEntries(runId: string): Promise<PayrollRow[]> 
 
 /** True when the company has a current (not soft-deleted) employee with that national ID. */
 export function demoHasEmployee(companyId: string, nationalId: string): boolean {
+  ensureSeeded();
   return employees.some(
     (e) => e.companyId === companyId && e.national_id === nationalId && e.deleted_at === null,
   );
