@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import sample from "../../../samples/ABC Co Ltd-pdf-fill-2026-09.json?raw";
+import olderSample from "../../../samples/ABC Co Ltd-pdf-fill-2026-10.json?raw";
 import { getApp, type ExpectedField } from "@/config/apps.config";
 import { parsePayrollRows } from "@/features/import/parsePayroll";
 import {
@@ -81,6 +82,21 @@ describe("source tables", () => {
       "Company Name": "ABC Co Ltd",
     });
     expect(table.columns.map((c) => c.key)).toContain("Bonus");
+  });
+
+  it('shows "Employee CSG" once, as a masked money column, and never its storage name', () => {
+    const parsed = parsePayrollRows(original);
+    const table = tableFromRun(parsed.rows, parsed.company!);
+    const keys = table.columns.map((c) => c.key);
+    expect(keys.filter((key) => key === "Employee CSG")).toHaveLength(1);
+    expect(keys).not.toContain("employee_csg");
+    expect(keys).not.toContain("employee_nsf");
+    expect(table.columns.find((c) => c.key === "Employee CSG")).toMatchObject({
+      type: "number",
+      money: true,
+      sensitive: true,
+    });
+    expect(table.rows[0]!.values["Employee CSG"]).toBe(279.53);
   });
 });
 
@@ -204,6 +220,21 @@ describe("validateRows (type checks, row by row)", () => {
     ]);
   });
 
+  it("accepts an optional number that is empty, and refuses one that is text", () => {
+    const optional = [field("Employee CSG", { type: "number" })];
+    const map = { "Employee CSG": "Employee CSG" };
+    expect(
+      validateRows(
+        [row(1, {}), row(2, { "Employee CSG": null }), row(3, { "Employee CSG": "" })],
+        map,
+        optional,
+      ),
+    ).toEqual([]);
+    expect(validateRows([row(4, { "Employee CSG": "279.53" })], map, optional)).toEqual([
+      { row: 4, field: "Employee CSG", message: "must be a number" },
+    ]);
+  });
+
   it("only checks fields that are mapped", () => {
     const rows = [row(1, { ID: "X1", "Net Pay": "oops", "Age 60+": "No" })];
     expect(validateRows(rows, { ID: "ID" }, fields)).toEqual([]);
@@ -236,6 +267,49 @@ describe("buildOutput", () => {
     // An unknown extra field is not something the PDF filler asked for, so it stays behind.
     expect(Object.keys(output[5]!)).not.toContain("Bonus");
     expect(Object.keys(output[0]!)).toEqual(pdfFields.map((f) => f.key));
+  });
+});
+
+describe("buildOutput: a figure the row does not have", () => {
+  const fields = [
+    field("Name"),
+    field("Net Pay", { type: "number", required: true }),
+    field("Employee CSG", { type: "number" }),
+  ];
+  const mapping = { Name: "Name", "Net Pay": "Net Pay", "Employee CSG": "Employee CSG" };
+
+  it('leaves an empty optional number out of that row: no key, never "" and never 0', () => {
+    const rows = [
+      row(1, { Name: "A", "Net Pay": 1, "Employee CSG": 279.53 }),
+      row(2, { Name: "B", "Net Pay": 2 }),
+      row(3, { Name: "C", "Net Pay": 3, "Employee CSG": null }),
+      row(4, { Name: "D", "Net Pay": 4, "Employee CSG": "" }),
+      row(5, { Name: "E", "Net Pay": 5, "Employee CSG": 0 }),
+    ];
+    expect(buildOutput(rows, mapping, fields)).toEqual([
+      { Name: "A", "Net Pay": 1, "Employee CSG": 279.53 },
+      { Name: "B", "Net Pay": 2 },
+      { Name: "C", "Net Pay": 3 },
+      { Name: "D", "Net Pay": 4 },
+      { Name: "E", "Net Pay": 5, "Employee CSG": 0 },
+    ]);
+  });
+
+  it("still sends every other empty field exactly as before", () => {
+    expect(buildOutput([row(1, { "Net Pay": null })], mapping, fields)).toEqual([
+      { Name: "", "Net Pay": "" },
+    ]);
+  });
+
+  it("sends a run saved without the figures with neither key, on every row", () => {
+    const parsed = parsePayrollRows(JSON.parse(olderSample));
+    const table = tableFromRun(parsed.rows, parsed.company!);
+    const output = buildOutput(table.rows, autoMap(table.columns, pdfFields), pdfFields);
+    expect(output).toHaveLength(6);
+    for (const sent of output) {
+      expect(sent).not.toHaveProperty("Employee CSG");
+      expect(sent).not.toHaveProperty("Employee NSF");
+    }
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import validSample from "../../../samples/ABC Co Ltd-pdf-fill-2026-09.json?raw";
+import olderSample from "../../../samples/ABC Co Ltd-pdf-fill-2026-10.json?raw";
 import invalidSample from "../../../samples/INVALID rows-pdf-fill-2026-09.json?raw";
 import mixedSample from "../../../samples/INVALID mixed companies-pdf-fill-2026-09.json?raw";
 import {
@@ -120,6 +121,66 @@ describe("parsePayrollFile: mapping", () => {
       brn: "C1234567",
       vat: "12%",
     });
+  });
+});
+
+describe('parsePayrollFile: "Employee CSG" and "Employee NSF"', () => {
+  it("stores both inside extra under their column names, with the numbers unchanged", () => {
+    const { rows, errors } = parse({ ...base, "Employee CSG": 279.53, "Employee NSF": 186.35 });
+    expect(errors).toEqual([]);
+    expect(rows[0]?.extra).toEqual({ employee_csg: 279.53, employee_nsf: 186.35 });
+  });
+
+  it("keeps them next to unknown fields, which still travel untouched", () => {
+    const { rows } = parse({ ...base, "employee  csg ": 279.53, Bonus: 1500 });
+    expect(rows[0]?.extra).toEqual({ Bonus: 1500, employee_csg: 279.53 });
+  });
+
+  it.each([
+    ["the key is not there", {}],
+    ["the value is null", { "Employee CSG": null, "Employee NSF": null }],
+    ['the value is ""', { "Employee CSG": "", "Employee NSF": "" }],
+    ["the value is only spaces", { "Employee CSG": "  ", "Employee NSF": " " }],
+  ])("treats them as absent, not as an error and not as 0, when %s", (_name, more) => {
+    const { rows, errors } = parse({ ...base, ...more });
+    expect(errors).toEqual([]);
+    expect(rows[0]?.extra).toEqual({});
+  });
+
+  it("accepts one without the other", () => {
+    const { rows, errors } = parse({ ...base, "Employee NSF": 186.35 });
+    expect(errors).toEqual([]);
+    expect(rows[0]?.extra).toEqual({ employee_nsf: 186.35 });
+  });
+
+  it("keeps a real 0: it is a figure, not a missing one", () => {
+    const { rows, errors } = parse({ ...base, "Employee CSG": 279.53, "Employee NSF": 0 });
+    expect(errors).toEqual([]);
+    expect(rows[0]?.extra).toEqual({ employee_csg: 279.53, employee_nsf: 0 });
+  });
+
+  it("refuses text, like the other money fields", () => {
+    expect(parse({ ...base, "Employee CSG": "279.53", "Employee NSF": "n/a" }).errors).toEqual([
+      { row: 1, field: "Employee CSG", message: "must be a number" },
+      { row: 1, field: "Employee NSF", message: "must be a number" },
+    ]);
+    expect(parse({ ...base, "Employee CSG": true }).errors).toEqual([
+      { row: 1, field: "Employee CSG", message: "must be a number" },
+    ]);
+  });
+
+  it("never rounds: more than 2 decimals is a row error", () => {
+    expect(parse({ ...base, "Employee CSG": 279.525 }).errors).toEqual([
+      { row: 1, field: "Employee CSG", message: "has more than 2 decimal places" },
+    ]);
+  });
+
+  it("refuses an unknown field that uses one of the reserved storage names", () => {
+    const { rows, errors } = parse({ ...base, employee_csg: 1 });
+    expect(rows).toEqual([]);
+    expect(errors).toEqual([
+      { row: 1, field: "employee_csg", message: "is a name the dashboard reserves" },
+    ]);
   });
 });
 
@@ -244,8 +305,26 @@ describe("sample files", () => {
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(6);
     expect(result.rows.map((r) => r.surname)).toContain("PALMYRE");
-    expect(result.rows.find((r) => r.surname === "FICTIF")?.extra).toEqual({ Bonus: 1500 });
+    expect(result.rows.find((r) => r.surname === "FICTIF")?.extra).toEqual({
+      Bonus: 1500,
+      employee_csg: 317.03,
+      employee_nsf: 186.35,
+    });
     expect(result.company?.brn).toBe("C1234567");
+  });
+
+  it("the valid sample has both employee figures on every row; the older one has neither", () => {
+    for (const row of parsePayrollFile(validSample).rows) {
+      expect(Object.keys(row.extra)).toEqual(
+        expect.arrayContaining(["employee_csg", "employee_nsf"]),
+      );
+    }
+    const older = parsePayrollFile(olderSample);
+    expect(older.errors).toEqual([]);
+    for (const row of older.rows) {
+      expect(row.extra).not.toHaveProperty("employee_csg");
+      expect(row.extra).not.toHaveProperty("employee_nsf");
+    }
   });
 
   it("the invalid sample produces a full error report", () => {
@@ -256,6 +335,7 @@ describe("sample files", () => {
       "3:ID",
       "4:Age 60+",
       "4:CSG",
+      "4:Employee NSF",
       "5:Surname",
       "5:Gross Pay",
     ]);

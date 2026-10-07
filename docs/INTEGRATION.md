@@ -128,6 +128,7 @@ What to build:
   ```
 
 - The rows have exactly the keys of the payroll export (`ID`, `Surname`, `Basic Salary`, …, `Company Name`, `BRN`), with strings trimmed.
+- `Employee CSG` and `Employee NSF` are optional numbers. A row has the key only when the saved run has that figure for that employee (runs imported from an older export do not). A missing figure is a missing key, never `""` and never `0`; a real `0` is sent as `0`. Treat a missing key as "not known" and say so, instead of assuming zero.
 
 Ready-to-paste task for Claude Code in the `pdf-form-filler` repo:
 

@@ -7,6 +7,10 @@
  *
  * A key that is NOT listed here is kept as-is in `payroll_entries.extra`, so a new field in the
  * payroll app never breaks an import.
+ *
+ * A field marked `inExtra` is known and checked like any other, but has no column of its own:
+ * its value lives in `payroll_entries.extra` under its `column` name, and only when the file had
+ * one. An absent value stays absent everywhere: it is never stored, shown or sent as "" or 0.
  */
 
 export const NUMERIC_COLUMNS = [
@@ -40,7 +44,7 @@ export type PayrollFieldType = "string" | "number" | "boolean";
 export interface PayrollField {
   /** Key exactly as the payroll app exports it. */
   jsonKey: string;
-  /** Column name in the target table. */
+  /** Column name in the target table; for an `inExtra` field, its key inside `extra`. */
   column: string;
   /** Which table the value belongs to. */
   target: "company" | "employee" | "entry";
@@ -50,6 +54,8 @@ export interface PayrollField {
   required: boolean;
   /** Masked in the grid until revealed; flagged when sent to another app. */
   sensitive: boolean;
+  /** Stored in `payroll_entries.extra` under `column`, not in a column of its own. */
+  inExtra?: true;
 }
 
 const money = (jsonKey: string, column: NumericColumn, label = jsonKey): PayrollField => ({
@@ -60,6 +66,18 @@ const money = (jsonKey: string, column: NumericColumn, label = jsonKey): Payroll
   type: "number",
   required: true,
   sensitive: true,
+});
+
+/** A money figure that older files and runs do not have. Kept in `extra`; never assumed to be 0. */
+const optionalMoney = (jsonKey: string, column: string, label = jsonKey): PayrollField => ({
+  jsonKey,
+  column,
+  target: "entry",
+  label,
+  type: "number",
+  required: false,
+  sensitive: true,
+  inExtra: true,
 });
 
 /** In the order the payroll app exports them, which is also the grid's column order. */
@@ -119,6 +137,8 @@ export const PAYROLL_FIELDS: readonly PayrollField[] = [
   money("CSG", "csg"),
   money("NSF", "nsf"),
   money("PAYE", "paye"),
+  optionalMoney("Employee CSG", "employee_csg"),
+  optionalMoney("Employee NSF", "employee_nsf"),
   money("Total deductions", "total_deductions"),
   money("Net Pay", "net_pay", "Net pay"),
   money("Levy", "levy"),
@@ -184,6 +204,23 @@ export function fieldForColumn(column: string): PayrollField | undefined {
   return FIELD_BY_COLUMN.get(column);
 }
 
+/** Keys inside `extra` that belong to a known field, so no unknown field may use them. */
+export const RESERVED_EXTRA_KEYS: ReadonlySet<string> = new Set(
+  PAYROLL_FIELDS.filter((field) => field.inExtra).map((field) => field.column),
+);
+
+/**
+ * The value of an `inExtra` field, or undefined when the row has none. Anything that is not a
+ * real number counts as absent: it is never turned into 0 or "".
+ */
+export function extraNumber(
+  row: Pick<PayrollRow, "extra">,
+  field: PayrollField,
+): number | undefined {
+  const value = row.extra[field.column];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 /** The per-employee fields, in export order: what a grid row shows. */
 export const ROW_FIELDS: readonly PayrollField[] = PAYROLL_FIELDS.filter(
   (field) => field.target !== "company",
@@ -198,13 +235,17 @@ export type PayrollRow = {
   other_names: string | null;
   employment_type: string | null;
   age_60_plus: boolean;
-  /** Fields this version of the dashboard does not know about, kept verbatim. */
+  /**
+   * Fields this version of the dashboard does not know about, kept verbatim, plus the known
+   * `inExtra` fields under their column names (see RESERVED_EXTRA_KEYS).
+   */
   extra: Record<string, unknown>;
 } & Record<NumericColumn, number>;
 
 /**
  * Turns a row back into the payroll app's own export shape (its keys, "Yes"/"No", company
  * details on every row). This is what apps that consume payroll results expect to receive.
+ * An `inExtra` field the row has no value for is left out, so the app can tell it is missing.
  */
 export function toExportRow(
   row: PayrollRow,
@@ -212,7 +253,10 @@ export function toExportRow(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of PAYROLL_FIELDS) {
-    if (field.target === "company") {
+    if (field.inExtra) {
+      const value = extraNumber(row, field);
+      if (value !== undefined) out[field.jsonKey] = value;
+    } else if (field.target === "company") {
       out[field.jsonKey] = company[field.column as CompanyColumn] ?? "";
     } else if (field.type === "boolean") {
       out[field.jsonKey] = row.age_60_plus ? "Yes" : "No";
@@ -222,7 +266,7 @@ export function toExportRow(
   }
   // Unknown fields travel along untouched, but never override a known one.
   for (const [key, value] of Object.entries(row.extra)) {
-    if (!(key in out)) out[key] = value;
+    if (!(key in out) && !RESERVED_EXTRA_KEYS.has(key)) out[key] = value;
   }
   return out;
 }

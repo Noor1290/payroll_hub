@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import sample from "../../samples/ABC Co Ltd-pdf-fill-2026-09.json?raw";
+import olderSample from "../../samples/ABC Co Ltd-pdf-fill-2026-10.json?raw";
 import { parsePayrollRows } from "@/features/import/parsePayroll";
 import { appOrigin, APPS, appsAccepting, getApp, PAYROLL_RESULT } from "./apps.config";
 import { HOSTING } from "./origins";
-import { PAYROLL_FIELDS, toExportRow } from "./payrollFields";
+import { PAYROLL_FIELDS, toExportRow, type PayrollRow } from "./payrollFields";
 
 describe("app registry", () => {
   it("uses the exact app URLs, with trailing slashes", () => {
@@ -65,5 +66,62 @@ describe("toExportRow", () => {
     const second = parsePayrollRows(exported);
     expect(second.errors).toEqual([]);
     expect(second.rows).toEqual(first.rows);
+  });
+});
+
+describe('toExportRow: "Employee CSG" and "Employee NSF"', () => {
+  const company = { name: "ABC Co Ltd", address: "Mauritius", brn: "C1234567", vat: "12%" };
+  const stored = (extra: Record<string, unknown>): PayrollRow => ({
+    ...parsePayrollRows(JSON.parse(olderSample)).rows[0]!,
+    extra,
+  });
+
+  it("returns them under the payroll app's own names, value for value", () => {
+    const row = toExportRow(stored({ employee_csg: 279.53, employee_nsf: 186.35 }), company);
+    expect(row["Employee CSG"]).toBe(279.53);
+    expect(row["Employee NSF"]).toBe(186.35);
+  });
+
+  it("never sends the storage names", () => {
+    const row = toExportRow(stored({ employee_csg: 279.53, employee_nsf: 186.35 }), company);
+    expect(row).not.toHaveProperty("employee_csg");
+    expect(row).not.toHaveProperty("employee_nsf");
+  });
+
+  it('leaves an absent figure out: no key, never "" and never 0', () => {
+    const older = parsePayrollRows(JSON.parse(olderSample));
+    for (const row of older.rows.map((r) => toExportRow(r, older.company!))) {
+      expect(row).not.toHaveProperty("Employee CSG");
+      expect(row).not.toHaveProperty("Employee NSF");
+    }
+    const one = toExportRow(stored({ employee_nsf: 186.35 }), company);
+    expect(one).not.toHaveProperty("Employee CSG");
+    expect(one["Employee NSF"]).toBe(186.35);
+  });
+
+  it("sends a real 0 as 0", () => {
+    const row = toExportRow(stored({ employee_csg: 279.53, employee_nsf: 0 }), company);
+    expect(row["Employee NSF"]).toBe(0);
+  });
+
+  it.each([null, "", "279.53", Number.NaN, { a: 1 }])(
+    "treats a stored %j as absent instead of sending it",
+    (value) => {
+      const row = toExportRow(stored({ employee_csg: value }), company);
+      expect(row).not.toHaveProperty("Employee CSG");
+      expect(row).not.toHaveProperty("employee_csg");
+    },
+  );
+
+  it("lists both as optional, sensitive numbers for the apps that take payroll results", () => {
+    for (const key of ["Employee CSG", "Employee NSF"]) {
+      expect(getApp("pdf-editor")!.expectedFields.find((f) => f.key === key)).toEqual({
+        key,
+        label: key,
+        type: "number",
+        required: false,
+        sensitive: true,
+      });
+    }
   });
 });
