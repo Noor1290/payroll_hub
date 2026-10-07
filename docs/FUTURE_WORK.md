@@ -210,7 +210,10 @@ Only if wanted later. A scheduled job needs somewhere that is always on, because
 - [ ] Confirm "Travelling" is the transport allowance; where Presence Bonus, Productivity Bonus, Advance, Absences and Lateness come from (new payroll columns?).
 - [ ] Confirm the employee CSG threshold and strict "above" against MRA; confirm half-up vs the payroll's rounding.
 - [ ] Is Advance an earning or a recovery?
-- [ ] Date of Employment: new column on hub employees (migration 0008), edited in the hub.
+- [x] Date of Employment: new column on hub employees (migration 0008), edited in the hub's Data explorer. Built on `feature/payslip-bridge-b`; the owner still has to run 0008.
+- [ ] Payslip templates cannot be deleted or archived yet (hub Stage B left it out on purpose). Follow-up, as its own migration and branch: an `archived_at` on `payslip_templates` set through a new admin-only function (never a delete: issued payslips will point at published versions, which must stay), an "archive" / "unarchive" action on `payslip-template` saves, archived templates left out of "list" unless asked for, and a decision on whether an archived template still counts towards the 50 per company and still holds its name.
+- [ ] A logo on a payslip: template bodies cannot contain images (the hub refuses a `data:` URI). Decide where a logo lives (a company detail, or its own small table with a size limit) before adding one.
+- [ ] Hub Database page: show `statutory_rates`, `payslip_templates` and `payslip_template_versions` as read-only tabs.
 - [ ] Payslip lookup (VLOOKUP/INDEX-MATCH) template: "coming soon".
 - [ ] Month-to-month comparison and bulk-approve (payslip Phase 5).
 - [ ] Check the GUST Font License once before real use.

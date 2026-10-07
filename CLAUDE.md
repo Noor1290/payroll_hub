@@ -47,6 +47,10 @@ Filter soft-deleted rows (`deleted_at is null`). New field? Put it in `extra` fi
 
 All data leaves through `deliver()` (src/features/workspace/deliver.ts): it writes the transfer log, enforces the password gate for saved-run data, and sends via the bridge. The log (src/features/transfer/transferLog.ts) holds no payroll values. Wizard logic is in src/features/transfer/mapping.ts (pure, tested).
 
+## Payslip app data (statutory-rates, payslip-template)
+
+Handlers in src/features/workspace/appData.ts, reads and saves in src/lib/supabase/statutoryRates.ts and payslipTemplates.ts (migrations 0009, 0010). Answered and saved with NO prompt and NO password gate (nothing per employee in them); every exchange goes through `answerRequest()` / `recordSave()` in deliver.ts: a log row without values, a toast per save. Saves carry the BRN and are refused unless it is the selected company's. The wire contract is docs/INTEGRATION.md: change both together. `payroll-result` keeps its prompt and gate; `payslip-issue` is not registered.
+
 ## Password gate
 
 Screens and actions that expose saved per-employee data sit behind `<PasswordGate>` / `useUnlock()` (src/features/unlock, state in src/lib/unlock.ts). Memory only, 10 minutes fixed (1 to 30 in Settings), independent of the login session. It is a convenience layer; RLS is the enforcement. New gated data: add its query key to `GATED_QUERY_KEYS` so locking wipes it.
@@ -72,4 +76,4 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 (Update this at the end of each phase.)
 
 - [x] Phase 1  - [x] Phase 2  - [x] Phase 3  - [x] Phase 4  - [x] Phase 5  - [x] Phase 6
-- Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [ ] Stage B, items 3 to 7, 9, 10 (start only when the owner says so)  - [ ] item 8
+- Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [x] Stage B, items 3 to 7, 9, 10 (on `feature/payslip-bridge-b`; migrations 0008 to 0010 are for the owner to run)  - [ ] item 8

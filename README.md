@@ -59,6 +59,9 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 5. `0005_company_details.sql`: the table behind the Company profile page. It also limits what the dashboard may change on a company to its name, address and VAT (not the BRN).
 6. `0006_company_links.sql`: the table behind the Links page.
 7. `0007_delete_company_any_runs.sql`: replaces the "Delete company" function so approved runs no longer block a deletion.
+8. `0008_employee_date_of_employment.sql`: an optional date of employment per employee, typed in the Data explorer.
+9. `0009_statutory_rates.sql`: the statutory rates the payslip app reads and saves through the dashboard. Replaces the "Delete company" function again.
+10. `0010_payslip_templates.sql`: payslip templates (a draft each, and published versions). Replaces the "Delete company" function again.
 
 Then:
 
