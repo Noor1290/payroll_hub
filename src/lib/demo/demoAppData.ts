@@ -270,16 +270,26 @@ export async function demoPublishTemplate(
   };
 }
 
+// ---------- issued payslips ----------
+
+/** Every revision ever issued in this session. Nothing is seeded: the mock app issues them. */
+const issued: { company_id: string }[] = [];
+
 /** Rows the demo company has here, for the delete-company preview. */
 export function demoAppDataCounts(companyId: string) {
   const own = (rows: { company_id: string }[]) =>
     rows.filter((row) => row.company_id === companyId).length;
-  return { rates: own(rates), templates: own(templates), templateVersions: own(versions) };
+  return {
+    rates: own(rates),
+    templates: own(templates),
+    templateVersions: own(versions),
+    issuedPayslips: own(issued),
+  };
 }
 
 /** Removes everything a deleted demo company had here. */
 export function demoForgetAppData(companyId: string): void {
-  for (const rows of [rates, templates, versions]) {
+  for (const rows of [rates, templates, versions, issued]) {
     for (let i = rows.length - 1; i >= 0; i--) {
       if (rows[i]!.company_id === companyId) rows.splice(i, 1);
     }

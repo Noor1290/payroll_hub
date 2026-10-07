@@ -60,8 +60,9 @@ const body = latest.sql.slice(start, latest.sql.indexOf("$$;", start));
 const position = (table: string) => body.search(new RegExp(`delete from public\\.${table}\\b`));
 
 describe("delete_company in the migrations", () => {
-  it("is defined last in 0010", () => {
-    expect(latest.name).toBe("0010_payslip_templates.sql");
+  it("is defined last in 0011, the file the dashboard names when the function is missing", () => {
+    expect(latest.name).toBe("0011_issued_payslips.sql");
+    expect(previewSource).toContain(`const MIGRATION = "${latest.name}";`);
     expect(body.length).toBeGreaterThan(500);
   });
 
@@ -72,6 +73,7 @@ describe("delete_company in the migrations", () => {
         "company_links",
         "company_members",
         "employees",
+        "issued_payslips",
         "payroll_entries",
         "payroll_runs",
         "payslip_template_versions",

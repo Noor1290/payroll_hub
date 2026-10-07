@@ -162,6 +162,7 @@ describe("fetchDeletePreview", () => {
       if (table === "statutory_rates") return { data: null, count: 5, error: null };
       if (table === "payslip_templates") return { data: null, count: 2, error: null };
       if (table === "payslip_template_versions") return { data: null, count: 9, error: null };
+      if (table === "issued_payslips") return { data: null, count: 24, error: null };
       if (has(own, "eq", "status", "approved")) return { data: null, count: 3, error: null };
       return { data: null, count: 7, error: null };
     };
@@ -178,6 +179,7 @@ describe("fetchDeletePreview", () => {
       rates: 5,
       templates: 2,
       templateVersions: 9,
+      issuedPayslips: 24,
       approvedRuns: 3,
     });
     // Nothing is filtered on deleted_at: soft-deleted rows, approved runs among them, are counted.
@@ -193,11 +195,16 @@ describe("fetchDeletePreview", () => {
     for (const write of ["insert", "update", "delete", "upsert", "rpc"])
       expect(used.has(write)).toBe(false);
     const scoped = db.state.calls.filter(([method, , value]) => method === "eq" && value === ABC);
-    expect(scoped).toHaveLength(10);
+    expect(scoped).toHaveLength(11);
   });
 
-  it("still works before migrations 0005, 0006, 0009 and 0010 are run: missing tables count as nothing", async () => {
-    const later = ["statutory_rates", "payslip_templates", "payslip_template_versions"];
+  it("still works before migrations 0005, 0006 and 0009 to 0011 are run: missing tables count as nothing", async () => {
+    const later = [
+      "statutory_rates",
+      "payslip_templates",
+      "payslip_template_versions",
+      "issued_payslips",
+    ];
     db.state.answer = (own) => {
       const table = own[0]![1];
       if (later.includes(table as string)) {
@@ -214,7 +221,12 @@ describe("fetchDeletePreview", () => {
     const preview = await fetchDeletePreview(VIEWER, ABC);
     expect(preview.details).toBe(0);
     expect(preview.links).toBe(0);
-    expect(preview).toMatchObject({ rates: 0, templates: 0, templateVersions: 0 });
+    expect(preview).toMatchObject({
+      rates: 0,
+      templates: 0,
+      templateVersions: 0,
+      issuedPayslips: 0,
+    });
     expect(preview.employees).toBe(2);
   });
 
@@ -286,10 +298,10 @@ describe("forgetCompany", () => {
 });
 
 describe("classifyDeleteCompanyError", () => {
-  it("asks for migration 0007 when the database still refuses approved runs", () => {
+  it("asks for the migrations, up to the newest, when the database still refuses approved runs", () => {
     const failure = classifyDeleteCompanyError({ code: "P0001", message: "PH_HAS_APPROVED_RUNS" });
     expect(failure.title).toBe("The database needs an update");
-    expect(failure.message).toContain("0007_delete_company_any_runs.sql");
+    expect(failure.message).toContain("in order, up to 0011_issued_payslips.sql");
     expect(failure.message).not.toMatch(/back to draft/);
   });
 
@@ -318,7 +330,9 @@ describe("classifyDeleteCompanyError", () => {
   it("says which migration to run when the function is missing", () => {
     const failure = classifyDeleteCompanyError({ code: "PGRST202", message: "not found" });
     expect(failure.title).toBe("Deleting companies isn't set up in the database yet");
-    expect(failure.message).toContain("0007_delete_company_any_runs.sql");
+    // Never an older file: it would put back a function that leaves the newer tables alone.
+    expect(failure.message).toContain("in order, up to 0011_issued_payslips.sql");
+    expect(failure.message).not.toContain("0007");
   });
 
   it("explains an unreachable or paused database", () => {

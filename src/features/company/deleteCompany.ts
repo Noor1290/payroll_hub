@@ -32,6 +32,8 @@ export interface DeletePreview {
   rates: number;
   templates: number;
   templateVersions: number;
+  /** Issued payslips, every revision (migration 0011). Zero if that table doesn't exist yet. */
+  issuedPayslips: number;
   /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
   approvedRuns: number;
 }
@@ -90,6 +92,7 @@ export async function fetchDeletePreview(
     rates,
     templates,
     templateVersions,
+    issuedPayslips,
   ] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
@@ -104,11 +107,12 @@ export async function fetchDeletePreview(
     db.from("statutory_rates").select("id", head).eq("company_id", companyId),
     db.from("payslip_templates").select("id", head).eq("company_id", companyId),
     db.from("payslip_template_versions").select("id", head).eq("company_id", companyId),
+    db.from("issued_payslips").select("id", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
-  // These tables come from later migrations (0005, 0006, 0009, 0010). Until they are run
+  // These tables come from later migrations (0005, 0006, 0009, 0010, 0011). Until they are run
   // there is nothing in them to delete, and deleting a company must keep working.
   const optional = (result: typeof details) => {
     if (result.error) {
@@ -128,6 +132,7 @@ export async function fetchDeletePreview(
     rates: optional(rates),
     templates: optional(templates),
     templateVersions: optional(templateVersions),
+    issuedPayslips: optional(issuedPayslips),
     approvedRuns: count.parse(approved.count),
   };
 }
@@ -179,8 +184,13 @@ export interface DeleteCompanyFailure extends DataFailure {
   nameField?: boolean;
 }
 
-/** The file that holds the current delete_company. Run on its own, it also installs the function. */
-const MIGRATION = "0007_delete_company_any_runs.sql";
+/**
+ * The file that holds the current delete_company. Each migration that adds a table belonging
+ * to a company replaces the function, so an older file must never be named here: run after
+ * the newer ones, it would put back a function that does not know their tables.
+ */
+const MIGRATION = "0011_issued_payslips.sql";
+const RUN_MIGRATIONS = `The owner needs to run the files in supabase/migrations that the database has not had yet, in order, up to ${MIGRATION}, in the Supabase SQL editor.`;
 
 const failure = (
   title: string,
@@ -214,14 +224,14 @@ export function classifyDeleteCompanyError(error: unknown): DeleteCompanyFailure
   if (code === "PGRST202" || code === "42883") {
     return failure(
       "Deleting companies isn't set up in the database yet",
-      `The owner needs to run supabase/migrations/${MIGRATION} once in the Supabase SQL editor. Nothing was deleted.`,
+      `${RUN_MIGRATIONS} Nothing was deleted.`,
     );
   }
   // Only the function from migration 0004 says this: the database has not had 0007 yet.
   if (text.includes("PH_HAS_APPROVED_RUNS")) {
     return failure(
       "The database needs an update",
-      `It still refuses companies with approved runs. The owner needs to run supabase/migrations/${MIGRATION} once in the Supabase SQL editor. Nothing was deleted.`,
+      `It still refuses companies with approved runs. ${RUN_MIGRATIONS} Nothing was deleted.`,
     );
   }
   if (text.includes("PH_NAME_MISMATCH")) {
