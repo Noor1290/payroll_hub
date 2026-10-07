@@ -10,8 +10,9 @@ import { z } from "zod";
  * response-data -> request-data), which is how the two sides match them up.
  *
  * Still version 1. Everything added for the payslip app is optional and additive: `params` on
- * a request, `result` and `code` on an acknowledgement, `brn` in `meta`, more refusal codes,
- * and an answer that may have no rows for the data types listed in DATA_RULES.
+ * a request, `result` and `code` on an acknowledgement, `brn` and `role` in `meta`, more
+ * refusal codes, `index` on a refused save (which payslip of a month was at fault), and an
+ * answer that may have no rows for the data types listed in DATA_RULES.
  */
 
 const MAX_ROWS = 10_000;
@@ -57,11 +58,18 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   "statutory-rates": { sendRows: 1, sendBytes: 4_096, answerRows: [0, 1_000] },
   // The body may be 150 KB (TEMPLATE_BODY_BYTES); the rest is the name and the ids around it.
   "payslip-template": { sendRows: 1, sendBytes: 160_000, answerRows: [0, 50] },
+  // One command holding a whole month (ISSUE_MAX_PAYSLIPS payslips of PAYSLIP_BYTES each at
+  // most). An answer has one row per employee.
+  "payslip-issue": { sendRows: 1, sendBytes: 4_000_000, answerRows: [0, 5_000] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 
 /** The largest template body the hub accepts, as JSON. The database's own limit is 256 KB. */
 export const TEMPLATE_BODY_BYTES = 150_000;
+/** How many payslips one save may issue. The database has the same limit. */
+export const ISSUE_MAX_PAYSLIPS = 1_000;
+/** The largest single payslip in a save, as JSON. */
+export const PAYSLIP_BYTES = 16_000;
 /** The largest `params` object on a request. */
 export const PARAMS_BYTES = 2_048;
 
@@ -69,6 +77,11 @@ export interface Refusal {
   ok: false;
   error: string;
   code: RefusalCode;
+  /**
+   * Which payslip of a refused month was at fault: its position in the `payslips` list the app
+   * sent, counted from 0. The app can name the employee from it; the dashboard never does.
+   */
+  index?: number;
 }
 
 /** Checks what an app sent against its data type's limits. Null when it is within them. */
@@ -133,6 +146,11 @@ const metaSchema = z
     label: z.string().max(120).optional(),
     /** The BRN of the company the answer is about, so the app can check it got the right one. */
     brn: z.string().max(50).optional(),
+    /**
+     * The signed-in user's role in that company, so an app can show read-only from the start.
+     * "member" is the database's "viewer". Only a hint: the database decides what is allowed.
+     */
+    role: z.enum(["admin", "member"]).optional(),
   })
   .optional();
 
@@ -149,7 +167,13 @@ export const receivedPayloadSchema = z.discriminatedUnion("ok", [
     /** What a save produced, e.g. the new revision number. Only on the dashboard's own replies. */
     result: z.record(z.string(), z.unknown()).optional(),
   }),
-  z.object({ ok: z.literal(false), error: z.string().max(300), code: codeSchema.optional() }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string().max(300),
+    code: codeSchema.optional(),
+    /** Position (from 0) of the payslip at fault in a refused month. See Refusal. */
+    index: z.number().int().min(0).optional(),
+  }),
 ]);
 export type ReceivedPayload = z.infer<typeof receivedPayloadSchema>;
 

@@ -15,7 +15,7 @@ import {
 } from "./protocol";
 
 const ORIGIN = "https://noor1290.github.io";
-const TYPES = ["payroll-result", "statutory-rates", "payslip-template"];
+const TYPES = ["payroll-result", "statutory-rates", "payslip-template", "payslip-issue"];
 const APPS: HubApp[] = [
   {
     id: "payslip",
@@ -176,6 +176,24 @@ describe("limits per data type", () => {
     expect(onData).toHaveBeenCalledTimes(1);
   });
 
+  it("takes a month of payslips as ONE row of at most 4 MB", async () => {
+    save("payslip-issue", [{ action: "issue" }, { action: "issue" }]);
+    expect(onData).not.toHaveBeenCalled();
+    expect(sent("received")[0]!.payload).toMatchObject({ ok: false, code: "invalid" });
+
+    post.mockClear();
+    const payslip = { lines: [{ pad: "x".repeat(15_000) }] };
+    save("payslip-issue", [{ action: "issue", payslips: Array(270).fill(payslip) }]);
+    expect(onData).not.toHaveBeenCalled();
+    expect(sent("received")[0]!.payload).toMatchObject({ ok: false, code: "too-large" });
+
+    post.mockClear();
+    save("payslip-issue", [{ action: "issue", payslips: Array(250).fill(payslip) }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onData).toHaveBeenCalledTimes(1);
+    expect(rulesFor("payslip-issue").answerRows).toEqual([0, 5_000]);
+  });
+
   it("keeps payroll results at one row or more, up to 10,000", () => {
     expect(rulesFor("payroll-result")).toEqual(rulesFor("something-new"));
     expect(checkSentData({ dataType: "payroll-result", rows: Array(10_000).fill({}) })).toBeNull();
@@ -256,6 +274,31 @@ describe("the payload schemas", () => {
     expect(receivedPayloadSchema.safeParse({ ok: false, error: "x", code: "nope" }).success).toBe(
       false,
     );
+  });
+
+  it("carry the position of the payslip at fault on a refused save, as a whole number from 0", () => {
+    const refusal = { ok: false, error: "x", code: "stale" };
+    expect(receivedPayloadSchema.parse({ ...refusal, index: 2 })).toEqual({ ...refusal, index: 2 });
+    expect(receivedPayloadSchema.parse({ ...refusal, index: 0 })).toEqual({ ...refusal, index: 0 });
+    for (const index of [-1, 1.5, "2"]) {
+      expect(receivedPayloadSchema.safeParse({ ...refusal, index }).success).toBe(false);
+    }
+  });
+
+  it("carry the user's role in an answer's meta: admin or member, nothing else", () => {
+    const answer = (role: unknown) =>
+      responseDataPayloadSchema.safeParse({
+        ok: true,
+        dataType: "statutory-rates",
+        rows: [],
+        meta: { label: "ABC Co Ltd", brn: "C1", role },
+      });
+    for (const role of ["admin", "member"]) {
+      const parsed = answer(role);
+      expect(parsed.success && parsed.data.ok && parsed.data.meta?.role).toBe(role);
+    }
+    expect(answer(undefined).success).toBe(true);
+    for (const role of ["viewer", "owner", "", 1]) expect(answer(role).success).toBe(false);
   });
 
   it("list exactly the agreed refusal codes", () => {
