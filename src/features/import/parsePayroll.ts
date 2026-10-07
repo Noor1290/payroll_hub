@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   fieldForJsonKey,
   PAYROLL_FIELDS,
+  RESERVED_EXTRA_KEYS,
   type CompanyColumn,
   type NumericColumn,
   type PayrollRow,
@@ -86,6 +87,21 @@ const moneySchema = z.unknown().transform((value, ctx): number => {
   return checked.value;
 });
 
+/**
+ * A money figure older files do not have. Absent, null and "" all mean "not in this file" and
+ * give undefined; anything else is checked exactly like a required figure (text is refused,
+ * nothing is rounded).
+ */
+const optionalMoneySchema = z.unknown().transform((value, ctx): number | undefined => {
+  if (isBlank(value)) return undefined;
+  const checked = checkMoney(value);
+  if (!checked.ok) {
+    ctx.addIssue({ code: "custom", message: checked.why });
+    return z.NEVER;
+  }
+  return checked.value;
+});
+
 const yesNoSchema = z.unknown().transform((value, ctx): boolean => {
   const parsed = isBlank(value) ? null : checkYesNo(value);
   if (parsed === null) {
@@ -118,7 +134,9 @@ const rowSchema = z.object(
     PAYROLL_FIELDS.map((field) => [
       field.jsonKey,
       field.type === "number"
-        ? moneySchema
+        ? field.required
+          ? moneySchema
+          : optionalMoneySchema
         : field.type === "boolean"
           ? yesNoSchema
           : textSchema(field.required),
@@ -184,6 +202,8 @@ export function parsePayrollRows(data: unknown): ParsedFile {
     for (const [key, value] of Object.entries(source)) {
       const field = fieldForJsonKey(key);
       if (field) known[field.jsonKey] = value;
+      // Where a known field is kept inside `extra`: an unknown field must not land on it.
+      else if (RESERVED_EXTRA_KEYS.has(key)) fail(key, "is a name the dashboard reserves");
       else extra[key] = value;
     }
 
@@ -205,7 +225,8 @@ export function parsePayrollRows(data: unknown): ParsedFile {
     for (const field of PAYROLL_FIELDS) {
       const value = parsed[field.jsonKey];
       if (value === undefined) continue;
-      if (field.type === "number") numbers[field.column as NumericColumn] = value as number;
+      if (field.inExtra) extra[field.column] = value;
+      else if (field.type === "number") numbers[field.column as NumericColumn] = value as number;
       else if (field.type === "boolean") age60Plus = value as boolean;
       else if (field.target === "company")
         company[field.column as CompanyColumn] = value as string | null;

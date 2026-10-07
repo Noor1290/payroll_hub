@@ -1,6 +1,6 @@
 # Connecting an app to Payroll Hub
 
-This is for whoever adds the bridge to an app (`payroll_sys`, `pdf-form-filler`, the future payslip app), including Claude Code working in that app's repository. It explains what to copy, what to wire up, and how to check it works.
+This is for whoever adds the bridge to an app (`payroll_sys`, `pdf-form-filler`, the payslip app), including Claude Code working in that app's repository. It explains what to copy, what to wire up, and how to check it works.
 
 ## The idea in one minute
 
@@ -128,14 +128,19 @@ What to build:
   ```
 
 - The rows have exactly the keys of the payroll export (`ID`, `Surname`, `Basic Salary`, …, `Company Name`, `BRN`), with strings trimmed.
+- `Employee CSG` and `Employee NSF` are optional numbers. A row has the key only when the saved run has that figure for that employee (runs imported from an older export do not). A missing figure is a missing key, never `""` and never `0`; a real `0` is sent as `0`. Treat a missing key as "not known" and say so, instead of assuming zero.
 
 Ready-to-paste task for Claude Code in the `pdf-form-filler` repo:
 
 > Read `docs/INTEGRATION.md` and `docs/bridge.js` from the payroll-hub repo (I will paste or copy them in). Copy bridge.js unchanged to `src/payrollHubBridge.js`, import it once in the entry file, and call `PayrollHubBridge.init({ appId: "pdf-editor", onData })` once in the root component. `onData` must pass `payload.rows` into the same code path the JSON file import uses after parsing (find it via the message "doesn't look like a valid JSON file"), and throw an Error with a clear message when the rows cannot be used. Add a "Get from dashboard" button shown only when `PayrollHubBridge.isEmbedded()`, using `requestData("payroll-result")`. Do not write the received data to localStorage, do not edit bridge.js, and make sure the app behaves exactly as before when opened on its own.
 
-## Future payslip app (app id: `payslip`)
+## Payslip app (app id: `payslip`)
 
-Same as `pdf-form-filler`: copy the file, `init({ appId: "payslip", onData })`, and import `payload.rows`. On the dashboard side, give the registry entry in `src/config/apps.config.ts` its URL and change `status` to `"active"`. Nothing else in the dashboard needs to change.
+Same as `pdf-form-filler`: copy the file, `init({ appId: "payslip", onData })`, and import `payload.rows`. A **Get from dashboard** button works the same way too: `requestData("payroll-result", "2026-09")`.
+
+The dashboard's registry entry is active and loads the app from `https://noor1290.github.io/payslip/` (keep the trailing slash). Today it is registered to receive `payroll-result` only; any other data type is answered with "not registered".
+
+The payslip needs each employee's `Employee CSG` and `Employee NSF`. They are optional in the rows (see the note in the `pdf-form-filler` section): when a key is missing, show that employee's figure as missing; do not use `0`.
 
 ## How to check it works
 

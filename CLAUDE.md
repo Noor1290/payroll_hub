@@ -19,7 +19,7 @@ monitors them, and transfers data between them. Full spec: **docs/BRIEF.md** (re
 
 - payroll: https://noor1290.github.io/payroll_sys/ (produces "payroll-result")
 - pdf-editor: https://noor1290.github.io/pdf-form-filler/ (accepts "payroll-result")
-- payslip: coming soon, no URL yet (accepts "payroll-result")
+- payslip: https://noor1290.github.io/payslip/ (accepts "payroll-result")
 
 Keep trailing slashes. Adding an app = one registry entry.
 Hosting origins live ONLY in src/config/origins.ts (and the `HUB_ORIGIN` line of docs/bridge.js; a test keeps them equal).
@@ -32,11 +32,12 @@ Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (in local `.env`, gitignored;
 Session in sessionStorage; all storage keys namespaced `payroll-hub:*` (use src/lib/storage.ts). Console output only via src/lib/logger.ts.
 Commands: `npm run dev` | `npm run dev:demo` (fake sign-in, dev only) | `npm run lint` | `npm run typecheck` | `npm test` | `npm run build`.
 Always run tests with `npm test` (it goes through scripts/vitest.mjs; calling vitest directly can fail on Windows).
+`npm run test:prove` (scripts/prove.mjs, needs a clean git tree) breaks one thing at a time and requires the matching test to fail. `baseline.test.tsx` holds recorded snapshots of what is stored and sent: read a difference before updating it.
 Production builds carry a CSP meta tag (src/config/csp.ts): no inline scripts, no eval, no external hosts. Deploy: .github/workflows/deploy.yml.
 
 ## Database (already created; see supabase/migrations/0001_initial_schema.sql)
 
-Imports are saved only through `import_payroll_run` (migration 0002, atomic, run by hand by the owner). Companies are created only through `create_company` (migration 0003, existing admins only) and deleted only through `delete_company` (migration 0007 replaces 0004's: admins of that company, typed name checked in the database, permanent, whatever its runs). A new table that references `companies` must be added to `delete_company` (a test checks). `deleteCompany.db.test.ts` runs the migrations in PGlite (dev dependency only; never import it from app code). Both are SECURITY DEFINER; never add an insert or delete policy or grant on `companies` or `company_members`. Field mapping lives in src/config/payrollFields.ts and nowhere else.
+Imports are saved only through `import_payroll_run` (migration 0002, atomic, run by hand by the owner). Companies are created only through `create_company` (migration 0003, existing admins only) and deleted only through `delete_company` (migration 0007 replaces 0004's: admins of that company, typed name checked in the database, permanent, whatever its runs). A new table that references `companies` must be added to `delete_company` (a test checks). `deleteCompany.db.test.ts` runs the migrations in PGlite (dev dependency only; never import it from app code). Both are SECURITY DEFINER; never add an insert or delete policy or grant on `companies` or `company_members`. Field mapping lives in src/config/payrollFields.ts and nowhere else. A field marked `inExtra` there ("Employee CSG", "Employee NSF") is known and checked but kept in `extra`; when absent it stays absent, never "" or 0.
 
 companies, company_members (read-only from app), employees, payroll_runs, payroll_entries (`extra jsonb` for new fields), company_details (migration 0005), company_links (migration 0006).
 On `companies` the app may update only name, address and vat (column grant in 0005); the BRN changes only in the SQL editor.
@@ -71,3 +72,4 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 (Update this at the end of each phase.)
 
 - [x] Phase 1  - [x] Phase 2  - [x] Phase 3  - [x] Phase 4  - [x] Phase 5  - [x] Phase 6
+- Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [ ] Stage B, items 3 to 7, 9, 10 (start only when the owner says so)  - [ ] item 8

@@ -32,7 +32,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/states";
-import { ROW_FIELDS, type PayrollRow } from "@/config/payrollFields";
+import {
+  extraNumber,
+  RESERVED_EXTRA_KEYS,
+  ROW_FIELDS,
+  type PayrollRow,
+} from "@/config/payrollFields";
 import { formatCount, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -57,7 +62,8 @@ function showExtra(value: unknown): string {
 function buildColumns(rows: readonly PayrollRow[]): ColumnDef<PayrollRow>[] {
   const known: ColumnDef<PayrollRow>[] = ROW_FIELDS.map((field) => ({
     id: field.column,
-    accessorFn: (row) => row[field.column as keyof PayrollRow],
+    accessorFn: (row) =>
+      field.inExtra ? extraNumber(row, field) : row[field.column as keyof PayrollRow],
     header: field.label,
     meta: {
       label: field.label,
@@ -66,6 +72,8 @@ function buildColumns(rows: readonly PayrollRow[]): ColumnDef<PayrollRow>[] {
     } satisfies ColumnMeta,
     cell: ({ getValue }) => {
       const value = getValue();
+      // A figure the run does not have is shown as nothing, never as Rs 0.00.
+      if (value === undefined) return "";
       if (field.type === "number") return formatMoney(value as number);
       if (field.type === "boolean") return value ? "Yes" : "No";
       return (value as string | null) ?? "";
@@ -74,7 +82,9 @@ function buildColumns(rows: readonly PayrollRow[]): ColumnDef<PayrollRow>[] {
   }));
 
   // Fields the payroll app added that this dashboard has no column for yet.
-  const extraKeys = [...new Set(rows.flatMap((row) => Object.keys(row.extra)))].sort();
+  const extraKeys = [...new Set(rows.flatMap((row) => Object.keys(row.extra)))]
+    .filter((key) => !RESERVED_EXTRA_KEYS.has(key))
+    .sort();
   const extras: ColumnDef<PayrollRow>[] = extraKeys.map((key) => ({
     id: `extra:${key}`,
     accessorFn: (row) => showExtra(row.extra[key]),
