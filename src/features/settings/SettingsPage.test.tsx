@@ -176,7 +176,8 @@ describe("Settings", () => {
       "Payslip Automationpayslip",
     ]);
     expect(within(table).getByText("https://noor1290.github.io/payroll_sys/")).toBeTruthy();
-    expect(within(table).getByText("Coming soon")).toBeTruthy();
+    expect(within(table).getByText("https://noor1290.github.io/payslip/")).toBeTruthy();
+    expect(within(table).queryByText("Coming soon")).toBeNull();
     expect(within(table).queryByRole("button")).toBeNull();
     expect(within(table).queryByRole("textbox")).toBeNull();
   });

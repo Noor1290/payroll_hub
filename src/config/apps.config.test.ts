@@ -10,18 +10,26 @@ describe("app registry", () => {
   it("uses the exact app URLs, with trailing slashes", () => {
     expect(getApp("payroll")?.url).toBe("https://noor1290.github.io/payroll_sys/");
     expect(getApp("pdf-editor")?.url).toBe("https://noor1290.github.io/pdf-form-filler/");
-    expect(getApp("payslip")?.url).toBe("");
+    expect(getApp("payslip")?.url).toBe("https://noor1290.github.io/payslip/");
+    for (const app of APPS) expect(app.url.endsWith("/")).toBe(true);
   });
 
   it("derives each app's origin from its URL", () => {
     expect(appOrigin(getApp("payroll")!)).toBe(HOSTING.apps);
     expect(appOrigin(getApp("pdf-editor")!)).toBe("https://noor1290.github.io");
-    expect(appOrigin(getApp("payslip")!)).toBeNull();
+    expect(appOrigin(getApp("payslip")!)).toBe(HOSTING.apps);
   });
 
-  it("has unique ids and a status for every app", () => {
+  it("has unique ids, and every app is active", () => {
     expect(new Set(APPS.map((app) => app.id)).size).toBe(APPS.length);
-    expect(getApp("payslip")?.status).toBe("coming-soon");
+    expect(APPS.map((app) => app.status)).toEqual(["active", "active", "active"]);
+  });
+
+  it("registers the payslip app to receive payroll results, and nothing else yet", () => {
+    const payslip = getApp("payslip")!;
+    expect(payslip.accepts).toEqual([PAYROLL_RESULT]);
+    expect(payslip.produces).toEqual([]);
+    expect(payslip.expectedFields).toEqual(getApp("pdf-editor")!.expectedFields);
   });
 
   it("builds Send-to destinations from `accepts`, leaving out the sender", () => {

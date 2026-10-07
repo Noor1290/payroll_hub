@@ -834,8 +834,8 @@ exports[`baseline: the app registry > lists these apps, with these data types an
     "name": "Payslip Automation",
     "produces": [],
     "protocolVersion": 1,
-    "status": "coming-soon",
-    "url": "",
+    "status": "active",
+    "url": "https://noor1290.github.io/payslip/",
   },
 ]
 `;
