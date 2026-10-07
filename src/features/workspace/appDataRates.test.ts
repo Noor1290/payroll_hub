@@ -81,7 +81,7 @@ describe("statutory-rates: a request", () => {
     expect(answer).toEqual({
       ok: true,
       dataType: "statutory-rates",
-      meta: { label: "ABC Co Ltd", brn: "C1234567" },
+      meta: { label: "ABC Co Ltd", brn: "C1234567", role: "admin" },
       rows: [
         expect.objectContaining({ effective_from: "2026-07", revision: 2, created_by_you: false }),
         {
@@ -163,6 +163,13 @@ describe("statutory-rates: a request", () => {
   it("is answered for a viewer too: members may read", async () => {
     signIn("viewer");
     expect(await request()).toMatchObject({ ok: true });
+  });
+
+  it("says in meta whether the user is an admin or a member, so the app can show read-only", async () => {
+    expect(await request()).toMatchObject({ meta: { role: "admin" } });
+    signIn("viewer");
+    // The database's "viewer" is "member" on the wire.
+    expect(await request()).toMatchObject({ meta: { role: "member" } });
   });
 });
 

@@ -197,13 +197,15 @@ function classifyRefusal(error: unknown, migration: string): Refusal {
   return refuse("unavailable", `${classifyDataError(error).title}.`);
 }
 
-/** The role as apps are told it: the database's "viewer" is "member" on the wire. */
-const wireRole = (membership: Membership) =>
-  membership.role === "admin" ? ("admin" as const) : ("member" as const);
-
-const meta = (company: Membership["company"]) => ({
+/**
+ * What every answer says about itself: the company it is about, and the signed-in user's role
+ * there, so an app can show read-only from the start instead of finding out from a refusal.
+ */
+const meta = ({ company, role }: Membership) => ({
   label: company.name.slice(0, 120),
   ...(company.brn ? { brn: company.brn } : {}),
+  // The database's "viewer" is "member" on the wire. A hint only: the database decides.
+  role: role === "admin" ? ("admin" as const) : ("member" as const),
 });
 
 // ---------- statutory-rates ----------
@@ -254,7 +256,7 @@ export async function answerRatesRequest(
         // Not the user's id: only whether it was the person now signed in.
         created_by_you: created_by !== null && created_by === current.viewer.id,
       })),
-      meta: meta(company),
+      meta: meta(current.membership),
     };
   } catch (error) {
     return refusalFor(error, RATES_MIGRATION);
@@ -365,7 +367,7 @@ export async function answerTemplateRequest(
     ok: true,
     dataType: PAYSLIP_TEMPLATE,
     rows,
-    meta: meta(company),
+    meta: meta(current.membership),
   });
 
   try {
@@ -577,7 +579,7 @@ async function loadIssued(brn: string, period: string): Promise<ResponseDataPayl
         // Not the user's id: only whether it was the person now signed in.
         issued_by_you: issued_by !== null && issued_by === viewer.id,
       })),
-      meta: { ...meta(company), period, role: wireRole(membership) },
+      meta: { ...meta(membership), period },
     };
   } catch (error) {
     if (!isUnlocked()) return READ_LOCKED;

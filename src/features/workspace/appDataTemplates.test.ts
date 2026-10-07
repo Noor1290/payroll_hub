@@ -85,7 +85,7 @@ describe("payslip-template: list", () => {
     expect(answer).toEqual({
       ok: true,
       dataType: "payslip-template",
-      meta: { label: "ABC Co Ltd", brn: "C1234567" },
+      meta: { label: "ABC Co Ltd", brn: "C1234567", role: "admin" },
       rows: [
         {
           template_id: T1,
@@ -126,6 +126,17 @@ describe("payslip-template: list", () => {
     fake.reset(() => ({ data: { ...summary(), draft_body: BODY } }));
     expect(await request({ action: "load", template_id: T1 })).toMatchObject({ ok: true });
   });
+
+  it("says in meta whether the user is an admin or a member, so the app can show read-only", async () => {
+    expect(await request({ action: "list" })).toMatchObject({ meta: { role: "admin" } });
+    signIn("viewer");
+    // The database's "viewer" is "member" on the wire.
+    expect(await request({ action: "list" })).toMatchObject({ meta: { role: "member" } });
+    fake.reset(() => ({ data: { ...summary(), draft_body: BODY } }));
+    expect(await request({ action: "load", template_id: T1 })).toMatchObject({
+      meta: { role: "member" },
+    });
+  });
 });
 
 describe("payslip-template: load", () => {
@@ -135,7 +146,7 @@ describe("payslip-template: load", () => {
     expect(answer).toEqual({
       ok: true,
       dataType: "payslip-template",
-      meta: { label: "ABC Co Ltd", brn: "C1234567" },
+      meta: { label: "ABC Co Ltd", brn: "C1234567", role: "admin" },
       rows: [
         {
           template_id: T1,
