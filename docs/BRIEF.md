@@ -99,7 +99,7 @@ Mapping to tables:
 - `ID` -> `employees.national_id`; `Surname` -> `surname`; `Other names` -> `other_names`; `Full time / Part time` -> `employment_type`.
 - All numeric fields -> `payroll_entries` columns (snake_case as above). `Age 60+` Yes/No -> boolean.
 - Any unknown extra keys -> `payroll_entries.extra` (jsonb), so new fields never break the import.
-- **Trim all strings** (values contain trailing spaces, e.g. `"Full Time "`, `"PALMYRE "`).
+- **Trim all strings** (values contain trailing spaces, e.g. `"Full Time "`, `"PLACEHOLDER "`).
 - Do **not** recalculate or "fix" payroll numbers. Store exactly what was exported.
 
 Keep the mapping in one typed module (single source of truth) used by import, grid labels, and the app registry.

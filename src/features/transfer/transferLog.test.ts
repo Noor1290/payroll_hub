@@ -26,7 +26,7 @@ const PAYLOAD: SendDataPayload = {
   dataType: "payroll-result",
   rows: [
     { ID: SECRET_ID, Surname: "DOE", "Net Pay": SECRET_PAY },
-    { ID: "X0000000000002", Surname: "PALMYRE", "Net Pay": 24500 },
+    { ID: "X0000000000002", Surname: "PLACEHOLDER", "Net Pay": 24500 },
   ],
   meta: { period: "2026-09", label: "ABC Co Ltd" },
 };
@@ -113,7 +113,7 @@ describe("transfer log", () => {
     expect(log).not.toContain(SECRET_ID);
     expect(log).not.toContain(String(SECRET_PAY));
     expect(log).not.toContain("DOE");
-    expect(log).not.toContain("PALMYRE");
+    expect(log).not.toContain("PLACEHOLDER");
   });
 
   it("is not written to browser storage", async () => {

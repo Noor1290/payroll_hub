@@ -79,12 +79,12 @@ describe("parsePayrollFile: mapping", () => {
   it("trims every string, including keys and values inside unknown fields", () => {
     const { rows, company } = parse({
       ...base,
-      Surname: "PALMYRE ",
+      Surname: "PLACEHOLDER ",
       "Other names": "  JEAN  ",
       " Note ": "  hello ",
       "Company Name": " ABC Co Ltd ",
     });
-    expect(rows[0]).toMatchObject({ surname: "PALMYRE", other_names: "JEAN" });
+    expect(rows[0]).toMatchObject({ surname: "PLACEHOLDER", other_names: "JEAN" });
     expect(rows[0]?.extra).toEqual({ Note: "hello" });
     expect(company?.name).toBe("ABC Co Ltd");
   });
@@ -328,7 +328,7 @@ describe("sample files", () => {
     expect(result.fatal).toBeNull();
     expect(result.errors).toEqual([]);
     expect(result.rows).toHaveLength(6);
-    expect(result.rows.map((r) => r.surname)).toContain("PALMYRE");
+    expect(result.rows.map((r) => r.surname)).toContain("PLACEHOLDER");
     expect(result.rows.find((r) => r.surname === "FICTIF")?.extra).toEqual({
       Bonus: 1500,
       employee_csg: 317.03,

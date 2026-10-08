@@ -47,7 +47,7 @@ describe("source tables", () => {
   it("turns received rows into a table, trimming strings and using known field details", () => {
     const table = tableFromReceived(original);
     expect(table.rows).toHaveLength(6);
-    expect(table.rows[1]!.values.Surname).toBe("PALMYRE");
+    expect(table.rows[1]!.values.Surname).toBe("PLACEHOLDER");
     expect(table.columns.find((c) => c.key === "ID")).toMatchObject({
       label: "National ID",
       sensitive: true,
