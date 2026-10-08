@@ -709,12 +709,12 @@ const BREAKS = [
     mustFail: "masks issued lines, rates and accepted differences",
   },
   {
-    what: "The Database page shows a statutory amount unmasked",
+    what: "The Database page shows an issued payslip's rates snapshot unmasked",
     file: "src/lib/supabase/database.ts",
-    find: '{ key: "nsf_ceiling", kind: "money", sensitive: true },',
-    replace: '{ key: "nsf_ceiling", kind: "money" },',
+    find: '{ key: "rates_snapshot", kind: "json", nullable: true, sensitive: true },',
+    replace: '{ key: "rates_snapshot", kind: "json", nullable: true },',
     test: "src/features/database/DatabasePage.test.tsx",
-    mustFail: "masks the statutory amounts until revealed",
+    mustFail: "masks issued lines, rates and accepted differences",
   },
   {
     what: "The Database page shows a template body unmasked",

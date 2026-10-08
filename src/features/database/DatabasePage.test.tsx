@@ -472,17 +472,16 @@ describe("the payslip tables", () => {
     }
   });
 
-  it("masks the statutory amounts until revealed, and shows a rate as stored", async () => {
+  it("shows the statutory figures as they are: company-wide, so nothing is masked", async () => {
     const { container } = render(<Page current={ADMIN} />);
     await open("statutory_rates");
 
+    // A rate is shown as stored, a ceiling or threshold as money.
     expect(container.textContent).toContain("1.0625");
-    expect(container.textContent).not.toContain("28,570");
-    expect(container.textContent).not.toContain("50,000");
-
-    fireEvent.click(screen.getByRole("button", { name: /nsf_ceiling is hidden/ }));
     expect(container.textContent).toContain("28,570");
-    expect(container.textContent).not.toContain("50,000");
+    expect(container.textContent).toContain("50,000");
+    expect(screen.queryByRole("button", { name: /is hidden/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reveal all" })).toBeNull();
   });
 
   it("shows a template body masked, then collapsed, and in full only in the JSON view", async () => {

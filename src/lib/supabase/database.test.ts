@@ -195,11 +195,12 @@ describe("the table list", () => {
     expect(DB_TABLE_NAMES.filter((name) => DB_TABLES[name].adminOnly)).toEqual(["issued_payslips"]);
   });
 
-  it("masks the amounts, template bodies and issued lines of the payslip tables", () => {
+  it("masks template bodies and everything on an issued payslip, but not the statutory figures", () => {
     const sensitive = (name: (typeof DB_TABLE_NAMES)[number]) =>
       DB_TABLES[name].columns.filter((c) => c.sensitive).map((c) => c.key);
 
-    expect(sensitive("statutory_rates")).toEqual(["nsf_ceiling", "csg_threshold"]);
+    // Company-wide figures set by law: nothing per employee in them.
+    expect(sensitive("statutory_rates")).toEqual([]);
     expect(sensitive("payslip_templates")).toEqual(["draft_body"]);
     expect(sensitive("payslip_template_versions")).toEqual(["body"]);
     expect(sensitive("issued_payslips")).toEqual([
