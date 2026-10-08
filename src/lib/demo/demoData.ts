@@ -10,7 +10,7 @@ import type {
   TableQuery,
 } from "@/lib/supabase/database";
 import type { ImportResult, Membership, RunStatus, RunSummary } from "@/lib/supabase/schemas";
-import { demoAppDataCounts, demoForgetAppData } from "./demoAppData";
+import { demoAppDataCounts, demoAppDataRows, demoForgetAppData } from "./demoAppData";
 import { demoCompanyDataRows, demoForgetCompanyData } from "./demoCompanyData";
 
 /**
@@ -532,6 +532,16 @@ function rawRows(table: DbTableName, companyId: string): Record<string, unknown>
     case "company_details":
     case "company_links":
       return demoCompanyDataRows(table, companyId);
+    case "statutory_rates":
+    case "payslip_templates":
+    case "payslip_template_versions":
+    case "issued_payslips":
+      return demoAppDataRows(
+        table,
+        companyId,
+        (nationalId) =>
+          employees.find((e) => e.companyId === companyId && e.national_id === nationalId)!.id,
+      );
     case "payroll_entries": {
       const companyRuns = new Map(
         runs.filter((r) => r.companyId === companyId).map((r) => [r.id, r]),
@@ -570,8 +580,8 @@ const isDeleted = (table: DbTableName, row: Record<string, unknown>) =>
 function matchesSearch(table: DbTable, row: Record<string, unknown>, search: string): boolean {
   const term = search.trim().toLowerCase();
   if (!term) return true;
-  if (table.name === "payroll_runs" && /^\d{4}-(0[1-9]|1[0-2])$/.test(term)) {
-    return row.period === `${term}-01`;
+  if (table.monthColumn && /^\d{4}-(0[1-9]|1[0-2])$/.test(term)) {
+    return row[table.monthColumn] === `${term}-01`;
   }
   const haystack =
     table.name === "payroll_entries"
@@ -593,7 +603,7 @@ export async function demoFetchTablePage(
   table: DbTable,
   companyId: string,
   query: TableQuery,
-  parse: (table: DbTable, raw: unknown) => DbRow,
+  parse: (raw: unknown) => DbRow,
 ): Promise<TablePage> {
   await pause(250);
   const matching = rawRows(table.name, companyId)
@@ -611,7 +621,7 @@ export async function demoFetchTablePage(
     });
   const from = query.page * query.pageSize;
   return {
-    rows: matching.slice(from, from + query.pageSize).map((raw) => parse(table, raw)),
+    rows: matching.slice(from, from + query.pageSize).map((raw) => parse(raw)),
     total: matching.length,
   };
 }
@@ -619,6 +629,7 @@ export async function demoFetchTablePage(
 export async function demoFetchTableCounts(
   companyId: string,
   showDeleted: boolean,
+  isAdmin: boolean,
 ): Promise<TableCounts> {
   await pause(200);
   const count = (table: DbTableName) =>
@@ -631,5 +642,9 @@ export async function demoFetchTableCounts(
     company_members: count("company_members"),
     company_details: count("company_details"),
     company_links: count("company_links"),
+    statutory_rates: count("statutory_rates"),
+    payslip_templates: count("payslip_templates"),
+    payslip_template_versions: count("payslip_template_versions"),
+    issued_payslips: isAdmin ? count("issued_payslips") : null,
   };
 }

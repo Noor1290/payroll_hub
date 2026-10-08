@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
@@ -35,6 +35,7 @@ import {
   DB_TABLES,
   fetchTableCounts,
   fetchTablePage,
+  isSortable,
   OPTIONAL_TABLES,
   PAGE_SIZES,
   type DbColumn,
@@ -296,7 +297,11 @@ function TablePanel({
       ? "Search by employee name or ID"
       : table.name === "payroll_runs"
         ? "Search status, or a month like 2026-09"
-        : "Search";
+        : !table.monthColumn
+          ? "Search"
+          : table.searchColumns.length > 0
+            ? "Search, or a month like 2026-09"
+            : "Search a month like 2026-09";
 
   const sortBy = (column: DbColumn) =>
     onView({
@@ -403,7 +408,7 @@ function TablePanel({
                 <tr>
                   {table.columns.map((column) => {
                     const sorted = view.sort.column === column.key;
-                    const sortable = column.kind !== "json";
+                    const sortable = isSortable(column);
                     const Icon = !sorted
                       ? ChevronsUpDown
                       : view.sort.ascending
@@ -573,7 +578,7 @@ function TablePanel({
  * everything in here (rows, what was revealed, search, page) is discarded when the gate locks
  * or the company changes.
  */
-function DatabaseViewer({ company }: { company: Company }) {
+export function DatabaseViewer({ company, isAdmin }: { company: Company; isAdmin: boolean }) {
   const { user } = useAuth();
   const seconds = useStore(refreshSeconds);
   const [active, setActive] = useState<DbTableName>("companies");
@@ -587,10 +592,10 @@ function DatabaseViewer({ company }: { company: Company }) {
   const [revealAll, setRevealAll] = useState(false);
 
   const counts = useQuery({
-    queryKey: ["db", "counts", company.id, user?.id, showDeleted],
+    queryKey: ["db", "counts", company.id, user?.id, showDeleted, isAdmin],
     queryFn: () =>
       whileUnlocked(() =>
-        fetchTableCounts({ id: user!.id, isDemo: user!.isDemo }, company.id, showDeleted),
+        fetchTableCounts({ id: user!.id, isDemo: user!.isDemo }, company.id, showDeleted, isAdmin),
       ),
     enabled: user !== null,
     placeholderData: keepPreviousData,
@@ -605,6 +610,8 @@ function DatabaseViewer({ company }: { company: Company }) {
     [active],
   );
   const select = setActive;
+  // A courtesy, like the one for the whole page: the database refuses the rows either way.
+  const adminsOnly = (name: DbTableName) => !isAdmin && !!DB_TABLES[name].adminOnly;
 
   return (
     <section className="glass flex min-h-0 flex-col overflow-hidden rounded-2xl">
@@ -646,14 +653,22 @@ function DatabaseViewer({ company }: { company: Company }) {
                 <span
                   className="rounded-full border border-line bg-surface px-1.5 text-[11px] text-muted"
                   aria-label={
-                    count === undefined
-                      ? "counting rows"
-                      : count === null
-                        ? "not set up yet"
-                        : `${count} rows`
+                    adminsOnly(name)
+                      ? "admins only"
+                      : count === undefined
+                        ? "counting rows"
+                        : count === null
+                          ? "not set up yet"
+                          : `${count} rows`
                   }
                 >
-                  {count === undefined ? "…" : count === null ? "–" : formatCount(count)}
+                  {adminsOnly(name)
+                    ? "–"
+                    : count === undefined
+                      ? "…"
+                      : count === null
+                        ? "–"
+                        : formatCount(count)}
                 </span>
               </button>
             );
@@ -668,38 +683,44 @@ function DatabaseViewer({ company }: { company: Company }) {
         </p>
       )}
 
-      <TablePanel
-        // A fresh panel per table: its revealed cells and open JSON panel don't carry over.
-        key={active}
-        table={DB_TABLES[active]}
-        company={company}
-        view={views[active]}
-        onView={onView}
-        showDeleted={showDeleted}
-        onShowDeleted={setShowDeleted}
-        revealAll={revealAll}
-        onRevealAll={setRevealAll}
-      />
+      {adminsOnly(active) ? (
+        // Nothing is read for this table: not its rows, not their number.
+        <div role="tabpanel" id={`db-panel-${active}`} aria-labelledby={`db-tab-${active}`}>
+          <AdminsOnly title={`${active} is for admins only`}>
+            It holds what was issued to each employee. Ask the owner if you need an admin role.
+          </AdminsOnly>
+        </div>
+      ) : (
+        <TablePanel
+          // A fresh panel per table: its revealed cells and open JSON panel don't carry over.
+          key={active}
+          table={DB_TABLES[active]}
+          company={company}
+          view={views[active]}
+          onView={onView}
+          showDeleted={showDeleted}
+          onShowDeleted={setShowDeleted}
+          revealAll={revealAll}
+          onRevealAll={setRevealAll}
+        />
+      )}
     </section>
   );
 }
 
-function AdminsOnly({ companyName }: { companyName: string }) {
+function AdminsOnly({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="glass rounded-2xl">
-      <EmptyState
-        illustration={
-          <span className="grid size-12 place-items-center rounded-full border border-warn/30 bg-warn/10">
-            <ShieldAlert className="size-5 text-warn" aria-hidden="true" />
-          </span>
-        }
-        title="The Database page is for admins only"
-        className="py-16"
-      >
-        You are a viewer of {companyName}. Ask the owner if you need an admin role. The Data
-        explorer and History are still available to you.
-      </EmptyState>
-    </div>
+    <EmptyState
+      illustration={
+        <span className="grid size-12 place-items-center rounded-full border border-warn/30 bg-warn/10">
+          <ShieldAlert className="size-5 text-warn" aria-hidden="true" />
+        </span>
+      }
+      title={title}
+      className="py-16"
+    >
+      {children}
+    </EmptyState>
   );
 }
 
@@ -716,11 +737,16 @@ export function DatabasePage() {
           {(current) =>
             // A courtesy check: what this account can actually read is decided by the database.
             current.role !== "admin" ? (
-              <AdminsOnly companyName={current.company.name} />
+              <div className="glass rounded-2xl">
+                <AdminsOnly title="The Database page is for admins only">
+                  You are a viewer of {current.company.name}. Ask the owner if you need an admin
+                  role. The Data explorer and History are still available to you.
+                </AdminsOnly>
+              </div>
             ) : (
               <PasswordGate what="The database viewer">
                 {/* Keyed by company: switching company starts again, with everything masked. */}
-                <DatabaseViewer key={current.company.id} company={current.company} />
+                <DatabaseViewer key={current.company.id} company={current.company} isAdmin />
               </PasswordGate>
             )
           }

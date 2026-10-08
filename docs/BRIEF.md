@@ -354,6 +354,11 @@ changed, what to test manually, and anything I need to do (env vars, Supabase se
 - Refresh: polling every 15 seconds by default (5 to 120 in Settings, key `payroll-hub:database-refresh-seconds`), paused while the tab is hidden or the page is locked; manual Refresh; "Updated HH:MM:SS". The previous rows stay on screen while a refresh is in flight. No Realtime.
 - Rows live in the query cache under the `["db"]` key, which is in `GATED_QUERY_KEYS`, so locking and signing out wipe them.
 - Demo mode has a fourth company, "Big Sample Ltd" (1,250 employees), to exercise paging past 1,000 rows, and a soft-deleted run and employee in "ABC Co Ltd".
+- Payslip tables (added 2026-10-08, branch `database-new-tables`): tabs for `statutory_rates`, `payslip_templates`, `payslip_template_versions` and `issued_payslips`, each scoped by `company_id` with no join. Before its migration is run a tab names the file (0009, 0010, 0011).
+  - Masked: `statutory_rates.nsf_ceiling` and `csg_threshold`; `draft_body` and `body`; `issued_payslips.rates_snapshot`, `lines` and `accepted_differences` (a line may carry a national ID). A revealed JSON cell is one short line; the whole value is in the JSON panel, masked there too until revealed. Masked columns are never searched.
+  - Who did it (`created_by`, `updated_by`, `published_by`, `issued_by`) is replaced as the row is read by "You" or "Another admin" (empty stays empty): no user id, not even shortened, and no sorting by it.
+  - `issued_payslips` is marked admin-only: for anyone who is not an admin the tab says so and neither its rows nor their number are asked for. Today only admins reach the page at all, so this is a second courtesy check; RLS is the enforcement.
+  - Search: a month like `2026-09` matches `effective_from` / `period`. `issued_payslips` has no text columns, so any other search there returns no rows without a request (it is not searched by employee).
 
 **Phase 6 notes**
 - Deploy: `.github/workflows/deploy.yml` lints, typechecks, tests and builds on every push and pull request, and publishes `main` to GitHub Pages. It reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from repository Variables (or Secrets), refuses to publish without them, and fails if demo-only code is found in the build.

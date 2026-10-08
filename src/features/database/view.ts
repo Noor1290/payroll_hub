@@ -16,7 +16,9 @@ export function cellText(column: DbColumn, value: unknown): string {
       return formatDateTime(String(value));
     case "boolean":
       return value ? "true" : "false";
-    case "json": {
+    case "json":
+    case "list": {
+      // Collapsed to one short line; the JSON panel has the whole value.
       const json = JSON.stringify(value);
       return json.length > 48 ? `${json.slice(0, 47)}…` : json;
     }

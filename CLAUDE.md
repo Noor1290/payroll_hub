@@ -65,7 +65,7 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 
 ## Database page
 
-`/database` (src/features/database, reads in src/lib/supabase/database.ts): admin-only, read-only raw table viewer behind the password gate. Reads only, one page at a time, scoped to the selected company, validated with Zod. Never add a write, a SQL box, Realtime, or a read of auth.users to it.
+`/database` (src/features/database, reads in src/lib/supabase/database.ts): admin-only, read-only raw table viewer behind the password gate. Reads only, one page at a time, scoped to the selected company, validated with Zod. Never add a write, a SQL box, Realtime, or a read of auth.users to it. A new table is one entry in `DB_TABLES`: mask amounts and app-written JSON (`sensitive`), use kind `actor` for who did it ("You" / "Another admin", never a user id), and `adminOnly` where RLS lets only admins read (`issued_payslips`).
 
 ## Working agreements
 

@@ -23,6 +23,10 @@ export const DB_TABLE_NAMES = [
   "company_members",
   "company_details",
   "company_links",
+  "statutory_rates",
+  "payslip_templates",
+  "payslip_template_versions",
+  "issued_payslips",
 ] as const;
 export type DbTableName = (typeof DB_TABLE_NAMES)[number];
 
@@ -33,13 +37,19 @@ export type DbColumnKind =
   | "id"
   /** A user's id. Only ever kept and shown in shortened form. */
   | "user"
+  /** Who did it. The id is replaced as it is read: "You" or "Another admin", nothing else. */
+  | "actor"
   | "money"
   /** A whole number that is not money (a position in a list). */
   | "number"
+  /** A number with decimals that is not money (a rate, in percent). Shown as stored. */
+  | "decimal"
   | "date"
   | "timestamp"
   | "boolean"
-  | "json";
+  | "json"
+  /** A JSON array, shown like "json". */
+  | "list";
 
 export interface DbColumn {
   key: string;
@@ -54,6 +64,10 @@ export interface DbTable {
   columns: readonly DbColumn[];
   /** Columns the search box looks in (text columns of this table). */
   searchColumns: readonly string[];
+  /** A date column holding the first day of a month: a search like "2026-09" finds that month. */
+  monthColumn?: string;
+  /** Only admins of the company may read it. Row-level security enforces that; the page says so. */
+  adminOnly?: boolean;
   /** Whether rows can be soft-deleted (directly, or through their run). */
   canBeDeleted: boolean;
   defaultSort: { column: string; ascending: boolean };
@@ -69,6 +83,9 @@ const text = (key: string, more: Partial<DbColumn> = {}): DbColumn => ({
   ...more,
 });
 const stamp = (key: string, nullable = false): DbColumn => ({ key, kind: "timestamp", nullable });
+const count = (key: string): DbColumn => ({ key, kind: "number" });
+// Empty when that user account was removed.
+const actor = (key: string): DbColumn => ({ key, kind: "actor", nullable: true });
 
 export const DB_TABLES: Record<DbTableName, DbTable> = {
   companies: {
@@ -115,6 +132,7 @@ export const DB_TABLES: Record<DbTableName, DbTable> = {
       stamp("deleted_at", true),
     ],
     searchColumns: ["status"],
+    monthColumn: "period",
     canBeDeleted: true,
     defaultSort: { column: "period", ascending: false },
     keyColumns: ["id"],
@@ -198,12 +216,100 @@ export const DB_TABLES: Record<DbTableName, DbTable> = {
     defaultSort: { column: "sort_order", ascending: true },
     keyColumns: ["id"],
   },
+  statutory_rates: {
+    name: "statutory_rates",
+    columns: [
+      id("id"),
+      id("company_id"),
+      { key: "effective_from", kind: "date" },
+      count("revision"),
+      { key: "nsf_employee_rate", kind: "decimal" },
+      { key: "nsf_ceiling", kind: "money", sensitive: true },
+      { key: "nsf_exempt_at_60", kind: "boolean" },
+      { key: "csg_employee_rate_low", kind: "decimal" },
+      { key: "csg_employee_rate_high", kind: "decimal" },
+      { key: "csg_threshold", kind: "money", sensitive: true },
+      text("source_note"),
+      actor("created_by"),
+      stamp("created_at"),
+    ],
+    searchColumns: ["source_note"],
+    monthColumn: "effective_from",
+    canBeDeleted: false,
+    defaultSort: { column: "effective_from", ascending: false },
+    keyColumns: ["id"],
+  },
+  payslip_templates: {
+    name: "payslip_templates",
+    columns: [
+      id("id"),
+      id("company_id"),
+      text("name", { nullable: false }),
+      // Whatever the payslip app put in it. Unknown, so treated as sensitive.
+      { key: "draft_body", kind: "json", sensitive: true },
+      count("draft_revision"),
+      actor("created_by"),
+      stamp("created_at"),
+      actor("updated_by"),
+      stamp("updated_at"),
+    ],
+    searchColumns: ["name"],
+    canBeDeleted: false,
+    defaultSort: { column: "name", ascending: true },
+    keyColumns: ["id"],
+  },
+  payslip_template_versions: {
+    name: "payslip_template_versions",
+    columns: [
+      id("id"),
+      id("template_id"),
+      id("company_id"),
+      count("version"),
+      text("name", { nullable: false }),
+      { key: "body", kind: "json", sensitive: true },
+      actor("published_by"),
+      stamp("published_at"),
+    ],
+    searchColumns: ["name"],
+    canBeDeleted: false,
+    defaultSort: { column: "published_at", ascending: false },
+    keyColumns: ["id"],
+  },
+  issued_payslips: {
+    name: "issued_payslips",
+    columns: [
+      id("id"),
+      id("company_id"),
+      id("employee_id"),
+      { key: "period", kind: "date" },
+      count("revision"),
+      id("template_id"),
+      count("template_version"),
+      // Amounts, and whatever else the payslip app put on the payslip (it may be a national ID).
+      { key: "rates_snapshot", kind: "json", nullable: true, sensitive: true },
+      { key: "lines", kind: "list", sensitive: true },
+      { key: "accepted_differences", kind: "list", sensitive: true },
+      actor("issued_by"),
+      stamp("issued_at"),
+    ],
+    // Nothing here is text: only a month can be searched for.
+    searchColumns: [],
+    monthColumn: "period",
+    adminOnly: true,
+    canBeDeleted: false,
+    defaultSort: { column: "issued_at", ascending: false },
+    keyColumns: ["id"],
+  },
 };
 
-/** Tables added by a later migration (0005, 0006). The page still works before they exist. */
+/** Tables added by a later migration (0005 onwards). The page still works before they exist. */
 export const OPTIONAL_TABLES: Partial<Record<DbTableName, string>> = {
   company_details: "0005_company_details.sql",
   company_links: "0006_company_links.sql",
+  statutory_rates: "0009_statutory_rates.sql",
+  payslip_templates: "0010_payslip_templates.sql",
+  payslip_template_versions: "0010_payslip_templates.sql",
+  issued_payslips: "0011_issued_payslips.sql",
 };
 
 /** A row as the page holds it: validated values plus two derived fields. */
@@ -229,7 +335,10 @@ export interface TablePage {
   total: number;
 }
 
-/** Rows per table. Null means the table is not in the database yet (its migration was not run). */
+/**
+ * Rows per table. Null means there is no count: the table is not in the database yet (its
+ * migration was not run), or it is admin-only and was not asked about.
+ */
 export type TableCounts = Record<DbTableName, number | null>;
 
 export const PAGE_SIZES = [25, 50, 100] as const;
@@ -254,13 +363,25 @@ const kindSchema: Record<DbColumnKind, z.ZodType> = {
   id: z.uuid(),
   // Shortened as it is read, so a full user id is never held by the page.
   user: z.uuid().transform(shortId),
+  // Checked here; parseRow then replaces it, so the id is never held by the page either.
+  actor: z.uuid(),
   money: moneySchema,
   number: z.number().int(),
+  decimal: z.number(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timestamp: z.string().min(1),
   boolean: z.boolean(),
   json: z.record(z.string(), z.unknown()),
+  list: z.array(z.unknown()),
 };
+
+/** The words shown in place of a user id, as the bridge tells apps "was it you". */
+export const ACTOR_YOU = "You";
+export const ACTOR_OTHER = "Another admin";
+
+/** Whether the table can be sorted by this column (not by JSON, and not by who did it). */
+export const isSortable = (column: DbColumn) =>
+  column.kind !== "json" && column.kind !== "list" && column.kind !== "actor";
 
 function rowSchema(table: DbTable) {
   return z.object(
@@ -282,9 +403,16 @@ const entryJoinSchema = z.object({
   payroll_runs: z.object({ company_id: z.uuid(), deleted_at: z.string().nullable() }),
 });
 
-/** Validates one row from the API and adds its key and deleted flag. Throws on any mismatch. */
-export function parseRow(table: DbTable, raw: unknown): DbRow {
+/**
+ * Validates one row from the API and adds its key and deleted flag. Throws on any mismatch.
+ * `viewerId` is the signed-in user: it decides who is "You", and is not kept.
+ */
+export function parseRow(table: DbTable, raw: unknown, viewerId?: string): DbRow {
   const values = ROW_SCHEMAS[table.name].parse(raw) as Record<string, unknown>;
+  for (const column of table.columns) {
+    if (column.kind !== "actor" || values[column.key] === null) continue;
+    values[column.key] = values[column.key] === viewerId ? ACTOR_YOU : ACTOR_OTHER;
+  }
   const deleted =
     table.name === "payroll_entries"
       ? entryJoinSchema.parse(raw).payroll_runs.deleted_at !== null
@@ -340,6 +468,10 @@ function scope(query: Builder, table: DbTable, companyId: string, showDeleted: b
     case "company_members":
     case "company_details":
     case "company_links":
+    case "statutory_rates":
+    case "payslip_templates":
+    case "payslip_template_versions":
+    case "issued_payslips":
       return query.eq("company_id", companyId);
     case "employees":
     case "payroll_runs": {
@@ -353,6 +485,18 @@ function scope(query: Builder, table: DbTable, companyId: string, showDeleted: b
   }
 }
 
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * True when a search has nothing it could match: the table has no text to look in, and the
+ * term is not a month it could look up. The answer is then no rows, without asking.
+ */
+export function searchCannotMatch(table: DbTable, search: string): boolean {
+  const term = search.trim();
+  if (!term || table.name === "payroll_entries" || table.searchColumns.length > 0) return false;
+  return !(table.monthColumn && MONTH.test(term));
+}
+
 function applySearch(query: Builder, table: DbTable, search: string): Builder {
   const term = search.trim();
   if (!term) return query;
@@ -360,16 +504,16 @@ function applySearch(query: Builder, table: DbTable, search: string): Builder {
   if (table.name === "payroll_entries") {
     return query.or(likeFilter(ENTRY_EMPLOYEE_SEARCH, term), { referencedTable: "employees" });
   }
-  // A month like "2026-09" finds that period's run (the period column is a date, not text).
-  if (table.name === "payroll_runs" && /^\d{4}-(0[1-9]|1[0-2])$/.test(term)) {
-    return query.eq("period", `${term}-01`);
+  // A month like "2026-09" finds that month's rows (the column is a date, not text).
+  if (table.monthColumn && MONTH.test(term)) {
+    return query.eq(table.monthColumn, `${term}-01`);
   }
   return table.searchColumns.length > 0 ? query.or(likeFilter(table.searchColumns, term)) : query;
 }
 
 /** The sort to use: the requested column if this table has it, otherwise the table's default. */
 export function safeSort(table: DbTable, sort: TableQuery["sort"]): TableQuery["sort"] {
-  return table.columns.some((column) => column.key === sort.column && column.kind !== "json")
+  return table.columns.some((column) => column.key === sort.column && isSortable(column))
     ? sort
     : table.defaultSort;
 }
@@ -386,9 +530,12 @@ export async function fetchTablePage(
   const pageSize = Math.min(Math.max(1, Math.trunc(query.pageSize)), 100);
   const from = Math.max(0, Math.trunc(query.page)) * pageSize;
 
+  const parse = (raw: unknown) => parseRow(table, raw, viewer.id);
+
   if (import.meta.env.DEV && viewer.isDemo) {
-    return demoFetchTablePage(table, companyId, { ...query, sort, pageSize }, parseRow);
+    return demoFetchTablePage(table, companyId, { ...query, sort, pageSize }, parse);
   }
+  if (searchCannotMatch(table, query.search)) return { rows: [], total: 0 };
 
   let request: Builder = client().from(table.name).select(selectFor(table), { count: "exact" });
   request = scope(request, table, companyId, query.showDeleted);
@@ -405,25 +552,29 @@ export async function fetchTablePage(
     throw error;
   }
   return {
-    rows: z
-      .array(z.unknown())
-      .parse(data)
-      .map((raw) => parseRow(table, raw)),
+    rows: z.array(z.unknown()).parse(data).map(parse),
     total: z.number().int().nonnegative().parse(count),
   };
 }
 
-/** How many rows each table has for the company (without a search), for the tab labels. */
+/**
+ * How many rows each table has for the company (without a search), for the tab labels.
+ * An admin-only table is not asked about unless `isAdmin`.
+ */
 export async function fetchTableCounts(
   viewer: Viewer,
   companyId: string,
   showDeleted: boolean,
+  isAdmin = true,
 ): Promise<TableCounts> {
-  if (import.meta.env.DEV && viewer.isDemo) return demoFetchTableCounts(companyId, showDeleted);
+  if (import.meta.env.DEV && viewer.isDemo) {
+    return demoFetchTableCounts(companyId, showDeleted, isAdmin);
+  }
 
   const counts = await Promise.all(
     DB_TABLE_NAMES.map(async (name) => {
       const table = DB_TABLES[name];
+      if (table.adminOnly && !isAdmin) return [name, null] as const;
       const columns =
         name === "payroll_entries"
           ? "id, payroll_runs!inner(company_id, deleted_at)"

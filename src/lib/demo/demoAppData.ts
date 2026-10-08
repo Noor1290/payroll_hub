@@ -373,6 +373,46 @@ export async function demoIssuePayslips(
   };
 }
 
+/**
+ * These tables as the API would return them, for the read-only Database page. The stores above
+ * keep no row ids, so each row gets a made-up one from its position; an issued payslip is
+ * turned back into its employee's id with `employeeIdOf`.
+ */
+export function demoAppDataRows(
+  table: "statutory_rates" | "payslip_templates" | "payslip_template_versions" | "issued_payslips",
+  companyId: string,
+  employeeIdOf: (nationalId: string) => string,
+): Record<string, unknown>[] {
+  const rowId = (prefix: string, index: number) =>
+    `${prefix}000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
+  const own = <T extends { company_id: string }>(rows: T[]) =>
+    rows.map((row, index) => ({ row, index })).filter(({ row }) => row.company_id === companyId);
+
+  switch (table) {
+    case "statutory_rates":
+      return own(rates).map(({ row, index }) => ({ id: rowId("a1", index), ...row }));
+    case "payslip_templates":
+      return own(templates).map(({ row }) => ({
+        ...row,
+        created_by: row.updated_by,
+        created_at: row.updated_at,
+      }));
+    case "payslip_template_versions":
+      return own(versions).map(({ row, index }) => ({ id: rowId("a2", index), ...row }));
+    case "issued_payslips": {
+      // Admins only, like the read policy.
+      const role = demoMemberships.find((m) => m.company.id === companyId)?.role;
+      if (role !== "admin") return [];
+      return own(issued).map(({ row: { national_id, rates: snapshot, ...row }, index }) => ({
+        id: rowId("a3", index),
+        employee_id: employeeIdOf(national_id),
+        rates_snapshot: snapshot,
+        ...row,
+      }));
+    }
+  }
+}
+
 /** Rows the demo company has here, for the delete-company preview. */
 export function demoAppDataCounts(companyId: string) {
   const own = (rows: { company_id: string }[]) =>
