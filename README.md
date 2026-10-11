@@ -21,7 +21,7 @@ So: **only embed apps you control, and treat every site under that account as pa
 ```bash
 npm install
 cp .env.example .env    # then fill in the two Supabase values
-npm run dev             # http://localhost:5173/payroll-hub/
+npm run dev             # http://localhost:5176/payroll-hub/ (fixed port; see vite.config.ts)
 ```
 
 | Command             | What it does                                                                |
