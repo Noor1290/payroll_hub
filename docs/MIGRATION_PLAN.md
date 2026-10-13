@@ -535,6 +535,17 @@ On the branch `migration-phase-1` in `payroll_hub` and `PDF Editor`; not merged,
 - Dropping the PDF text from the browser's copy after an import (plan 5.6, step 6). The browser's copy is left exactly as it is.
 - Grouping one person's saves within 30 minutes in a history list (there is no list yet).
 
+**Tested against the real database (13 October 2026), after 0012 was run** (all 14 columns of its check true). The two branch builds were served in place of the live sites inside one browser window, so the real bridge and the real project were used with nothing deployed; the owner signed in by hand. Only the company "TEST Co Ltd" was written to, and what the test made was removed at the end. 18 of 18 checks passed on the second run:
+- a new template is stored at revision 1, its PDF is in the bucket under its hash and downloads back byte for byte;
+- a drawn field and a rename are revisions 2 and 3, and all three are kept; after a reload everything comes back from the database and the bucket;
+- a value typed into the form is not sent; a save with an old revision is refused, and so is a template whose PDF is not in the bucket;
+- the import stores a browser template, checks it, leaves out the People list, and leaves the browser's copy as it was;
+- after the clean-up the company holds no template, no file and no kept revision of the test.
+
+The first run found one fault: the import refused a template that had been stored correctly, because the database returns a JSON object's properties in its own order and the check compared text. Fixed in the PDF form filler (comparison by content), and the stand-in dashboard of its tests now reorders properties the same way.
+
+Not tested against the real database: the copy to another company itself (it would have written to a company other than the test one; only the list of companies was opened), two people saving at once (an old revision was sent instead), someone who is not an admin, a PDF near 5 MB, and deleting a company that has PDF files.
+
 ## 6. Risks and things to check first
 
 - **The Supabase plan.** `FUTURE_WORK.md` already notes that the free plan pauses a project after a week without use and has no daily backups. File storage on it is limited too (1 GB when I last knew; please check the current figure). A paused project means every save answers `unavailable`. Real data belongs in the separate production project described in `FUTURE_WORK.md` section 6.
