@@ -15,6 +15,7 @@ Covers `Payroll_sys` (payroll), `PDF Editor` (PDF form filler), `payslip` and `p
 - **Tested:** typing inside an app's frame did NOT stop the dashboard's sign-out for inactivity. The fix is the `activity` message (section 5.8, step 0c).
 - **The password gate (decided 13 October):** it locks after 10 minutes without activity (up to 30 in Settings), not 10 minutes after unlocking, and work inside an app counts as activity (section 5.8).
 - **Nothing is left to confirm.** Every decision is in section 4.
+- **Phase 0 is built** (13 October 2026): the backup files, the storage interfaces, the `activity` message and the gate. What was built, and what it leaves for Phase 1, is in section 5.11. No migration was needed.
 
 ## 1. Where each app saves its data today
 
@@ -465,15 +466,44 @@ Each step ends with tests passing and a stop for your review. Each migration is 
 
 | Step | Where | What |
 |---|---|---|
-| 0a | PDF Editor, Payroll_sys | A full backup file, export and import, in each app. Useful by itself (audit risk R3) and needed by every import |
-| 0b | PDF Editor, Payroll_sys | The storage interface, with no change in behaviour |
-| 0c | payroll_hub, then the three apps | The `activity` message, so working in an app keeps the session alive, and the password gate locking after inactivity on the same signal (D5 as changed on 13 October). Done in Phase 0 because automatic saving makes a sign-out in the middle of work matter from Phase 1 |
+| 0a | PDF Editor, Payroll_sys | A full backup file, export and import, in each app. Useful by itself (audit risk R3) and needed by every import. **Done 13 Oct 2026** |
+| 0b | PDF Editor, Payroll_sys | The storage interface, with no change in behaviour. **Done 13 Oct 2026** |
+| 0c | payroll_hub, then the three apps | The `activity` message, so working in an app keeps the session alive, and the password gate locking after inactivity on the same signal (D5 as changed on 13 October). Done in Phase 0 because automatic saving makes a sign-out in the middle of work matter from Phase 1. **Done 13 Oct 2026** |
 | 1a | payroll_hub | Migration 0012, the bucket, `pdf-template` and `pdf-file`, mock app |
 | 1b | PDF Editor | Templates and files in the dashboard, automatic saving, the import |
 | 2a | payroll_hub | Migration 0013, `payroll-setup`, mock app |
 | 2b | Payroll_sys | Company link by BRN, the shared setup and company columns in the dashboard, the import |
 | 3a | payroll_hub | Migration 0014, `payroll-month` behind the gate, the change-of-key function, mock app |
 | 3b | Payroll_sys | Monthly data in the dashboard, the import |
+
+### 5.11 Phase 0 as built (13 October 2026)
+
+Committed on each folder's own branch, not pushed. No migration file: Phase 0 changes nothing in the database.
+
+**0a, the backup files.**
+
+| | Payroll | PDF form filler |
+|---|---|---|
+| Where | "Back up" and "Restore" at the foot of the company list | "Back up" and "Restore" on the template list |
+| File | `payroll-backup-YYYY-MM-DD.json` | `pdf-form-filler-backup-YYYY-MM-DD.json` |
+| Holds | The setup, every company, every saved month of every company | Every template with its PDF, fields, company details, the values last typed and the People list; the older company details |
+| Does not hold | The theme | The theme |
+
+- A backup holds what is stored, exactly: nothing is recalculated, rounded or filled in. Stored text that cannot be read is carried along as it is.
+- Restore first shows what is in the file and what is in the browser, and replaces nothing until "Replace with this backup". It replaces everything that app keeps in the browser, all or nothing: if the browser refuses a write, what was there is put back and the app says "The backup was NOT restored".
+- A file that is not a usable backup (another kind of file, another version, damaged, empty) is refused in plain words and nothing is changed.
+- A backup file holds real figures and people's details. It belongs where the payroll is kept, never in a repository.
+
+**0b, the storage interfaces.** `Payroll_sys/src/lib/dataStore.js` and `PDF Editor/src/lib/templateStore.ts`. Every screen reads and saves through them; a test in each app fails if a screen reaches past them to the browser's storage. The one store today is the browser, so nothing behaves differently.
+- Left for Phase 1b and 2b: the operations answer at once, as the browser does. A store that saves through the dashboard answers later, so those phases add the "Saving / Saved / NOT saved" states at the interface and the screens that show them. Phase 0 did not change how any screen saves.
+
+**0c, `activity` and the gate.** As section 5.8, with two details settled while building:
+- `bridge.js` reports the first thing done at once and then at most once every 30 seconds; something done in between is reported when its turn comes, so the dashboard never thinks work stopped earlier than it did.
+- The dashboard counts an app's `activity` at most once every 5 seconds, whatever the app sends, and only from the app that is showing in a visible tab.
+- Order of deployment: the dashboard first, then the apps. A dashboard that does not know `activity` drops it and writes a warning to its console each time.
+- Checked in a real browser in demo mode, idle time 1 minute, outside requests blocked (0 attempted): 100 seconds of a click and a key every 3 seconds inside the app's frame, still signed in, 4 `activity` messages; then nothing, signed out with the usual notice.
+
+**Found on the way, not fixed** (each in its folder's `docs/KNOWN_ISSUES.md`): the dashboard's whole test run times out on a busy machine, also on the code before Phase 0 (`npm test -- --maxWorkers=4` passes); in the PDF form filler, a reload in the same instant as a key can store a listed person without that key.
 
 ## 6. Risks and things to check first
 

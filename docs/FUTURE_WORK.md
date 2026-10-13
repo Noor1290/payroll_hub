@@ -99,9 +99,9 @@ Decisions made (12 and 13 Oct 2026; nothing is left to confirm):
 Found on 12 Oct 2026, to fix before the monthly-data phase at the latest: typing inside an app's frame does not count as activity for the dashboard's sign-out (src/lib/idle.ts listens on the dashboard's own window only). Tested in demo mode with the idle time at 1 minute: a click and a key every 3 seconds inside the frame, signed out after about 75 seconds. Planned fix: a new bridge message, `activity`, sent by bridge.js at most once every 30 seconds while the user works in the app, treated by the dashboard like its own activity. Addition to protocol version 1; the new bridge.js is then copied into the three apps.
 
 Order of work (each step stops for review; each migration is run by hand before the code that needs it is deployed):
-- [ ] 0a. Full backup file (export and import) in pdf-form-filler and payroll_sys.
-- [ ] 0b. A storage interface in both apps, with no change in behaviour.
-- [x] 0c. The `activity` bridge message, and the password gate locking after inactivity on the same signal. Dashboard side done 13 Oct 2026 (src/lib/activity.ts); the new bridge.js is copied into the three apps.
+- [x] 0a. Full backup file (export and import) in pdf-form-filler and payroll_sys. Done 13 Oct 2026: "Back up" and "Restore" in each app.
+- [x] 0b. A storage interface in both apps, with no change in behaviour. Done 13 Oct 2026.
+- [x] 0c. The `activity` bridge message, and the password gate locking after inactivity on the same signal. Done 13 Oct 2026 (src/lib/activity.ts); the new bridge.js is in the three apps. Deploy the dashboard before the apps.
 - [ ] 1. Migration 0012 (pdf_templates, pdf_template_history, bucket `pdf-forms`), data types `pdf-template` and `pdf-file`, then pdf-form-filler.
 - [ ] 2. Migration 0013 (payroll_shared_setups, payroll_company_setups, their history), data type `payroll-setup`, then payroll_sys.
 - [ ] 3. Migration 0014 (payroll_months), data type `payroll-month` behind the gate, then payroll_sys.

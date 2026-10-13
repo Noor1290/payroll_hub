@@ -81,3 +81,4 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 
 - [x] Phase 1  - [x] Phase 2  - [x] Phase 3  - [x] Phase 4  - [x] Phase 5  - [x] Phase 6
 - Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [x] Stage B, items 3 to 7, 9, 10 (merged and deployed; migrations 0008 to 0010 run)  - [x] Stage C, item 8 (on `feature/payslip-issue`; migration 0011 is for the owner to run)
+- Moving app data into Supabase (docs/MIGRATION_PLAN.md): [x] Phase 0 (backup files and storage interfaces in the apps, the `activity` message, the gate locks after inactivity; no migration)  - [ ] Phase 1  - [ ] Phase 2  - [ ] Phase 3
