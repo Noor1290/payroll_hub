@@ -542,9 +542,13 @@ describe("the PDF template tables", () => {
   it("are read-only: nothing on them edits, deletes or saves", async () => {
     render(<Page current={ADMIN} />);
     await open("pdf_templates");
-    expect(screen.queryByRole("button", { name: /^(delete|edit|save|restore|rename|upload)b/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^(delete|edit|save|restore|rename|upload)\b/i }),
+    ).toBeNull();
     await open("pdf_template_history");
-    expect(screen.queryByRole("button", { name: /^(delete|edit|save|restore|rename|upload)b/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^(delete|edit|save|restore|rename|upload)\b/i }),
+    ).toBeNull();
   });
 
   it("name the migration to run when the tables are not in the database yet", async () => {
