@@ -27,6 +27,8 @@ export const DB_TABLE_NAMES = [
   "payslip_templates",
   "payslip_template_versions",
   "issued_payslips",
+  "pdf_templates",
+  "pdf_template_history",
 ] as const;
 export type DbTableName = (typeof DB_TABLE_NAMES)[number];
 
@@ -301,6 +303,51 @@ export const DB_TABLES: Record<DbTableName, DbTable> = {
     defaultSort: { column: "issued_at", ascending: false },
     keyColumns: ["id"],
   },
+  // PDF form templates (migration 0012). The PDF files themselves are in the Storage bucket
+  // and are never read here: a row names its file by hash, name, size and pages only.
+  pdf_templates: {
+    name: "pdf_templates",
+    columns: [
+      id("id"),
+      id("company_id"),
+      text("name", { nullable: false }),
+      count("revision"),
+      // The fields drawn on the form and the template's company details: written by the app.
+      { key: "body", kind: "json", sensitive: true },
+      text("pdf_file_name", { nullable: false }),
+      count("pdf_bytes"),
+      count("pdf_pages"),
+      text("pdf_sha256", { nullable: false }),
+      actor("created_by"),
+      stamp("created_at"),
+      actor("updated_by"),
+      stamp("updated_at"),
+    ],
+    searchColumns: ["name", "pdf_file_name"],
+    canBeDeleted: false,
+    defaultSort: { column: "updated_at", ascending: false },
+    keyColumns: ["id"],
+  },
+  pdf_template_history: {
+    name: "pdf_template_history",
+    columns: [
+      id("template_id"),
+      id("company_id"),
+      count("revision"),
+      text("name", { nullable: false }),
+      { key: "body", kind: "json", sensitive: true },
+      text("pdf_file_name", { nullable: false }),
+      count("pdf_bytes"),
+      count("pdf_pages"),
+      text("pdf_sha256", { nullable: false }),
+      actor("saved_by"),
+      stamp("saved_at"),
+    ],
+    searchColumns: ["name", "pdf_file_name"],
+    canBeDeleted: false,
+    defaultSort: { column: "saved_at", ascending: false },
+    keyColumns: ["template_id", "revision"],
+  },
 };
 
 /** Tables added by a later migration (0005 onwards). The page still works before they exist. */
@@ -311,6 +358,8 @@ export const OPTIONAL_TABLES: Partial<Record<DbTableName, string>> = {
   payslip_templates: "0010_payslip_templates.sql",
   payslip_template_versions: "0010_payslip_templates.sql",
   issued_payslips: "0011_issued_payslips.sql",
+  pdf_templates: "0012_pdf_templates.sql",
+  pdf_template_history: "0012_pdf_templates.sql",
 };
 
 /** A row as the page holds it: validated values plus two derived fields. */
@@ -473,6 +522,8 @@ function scope(query: Builder, table: DbTable, companyId: string, showDeleted: b
     case "payslip_templates":
     case "payslip_template_versions":
     case "issued_payslips":
+    case "pdf_templates":
+    case "pdf_template_history":
       return query.eq("company_id", companyId);
     case "employees":
     case "payroll_runs": {

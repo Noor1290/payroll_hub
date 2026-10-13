@@ -121,6 +121,52 @@ const templateVersion = () =>
     ME,
   );
 
+const PDF_TEMPLATE = "90000000-0000-4000-8000-000000000001";
+const PDF_BODY = {
+  boxes: [{ id: "b1", name: "Surname", page: 1, x: 10, y: 20 }],
+  employerFields: [{ id: "tan", label: "TAN", value: "T7654321" }],
+};
+const pdfFile = {
+  pdf_file_name: "statement-of-emoluments.pdf",
+  pdf_bytes: 245_760,
+  pdf_pages: 2,
+  pdf_sha256: "a".repeat(64),
+};
+
+const pdfTemplate = () =>
+  parseRow(
+    DB_TABLES.pdf_templates,
+    {
+      id: PDF_TEMPLATE,
+      company_id: ABC,
+      name: "Statement of Emoluments",
+      revision: 2,
+      body: PDF_BODY,
+      ...pdfFile,
+      created_by: OTHER_ADMIN,
+      created_at: NOW,
+      updated_by: ME,
+      updated_at: NOW,
+    },
+    ME,
+  );
+
+const pdfRevision = (revision: number, savedBy: string | null) =>
+  parseRow(
+    DB_TABLES.pdf_template_history,
+    {
+      template_id: PDF_TEMPLATE,
+      company_id: ABC,
+      revision,
+      name: "Statement of Emoluments",
+      body: PDF_BODY,
+      ...pdfFile,
+      saved_by: savedBy,
+      saved_at: NOW,
+    },
+    ME,
+  );
+
 const issued = (n: number, issuedBy: string | null) =>
   parseRow(
     DB_TABLES.issued_payslips,
@@ -214,6 +260,8 @@ beforeEach(() => {
     payslip_templates: 1,
     payslip_template_versions: 1,
     issued_payslips: 3,
+    pdf_templates: 1,
+    pdf_template_history: 2,
   });
   fetchPage
     .mockReset()
@@ -232,6 +280,10 @@ beforeEach(() => {
           return { rows: [templateVersion()], total: 1 };
         case "issued_payslips":
           return { rows: [issued(1, ME), issued(2, OTHER_ADMIN), issued(3, null)], total: 3 };
+        case "pdf_templates":
+          return { rows: [pdfTemplate()], total: 1 };
+        case "pdf_template_history":
+          return { rows: [pdfRevision(2, ME), pdfRevision(1, OTHER_ADMIN)], total: 2 };
         default:
           return {
             rows: [company(companyId, companyId === ABC ? "ABC Co Ltd" : "XYZ Trading Ltd")],
@@ -322,6 +374,8 @@ describe("what it shows", () => {
       "payslip_templates1",
       "payslip_template_versions1",
       "issued_payslips3",
+      "pdf_templates1",
+      "pdf_template_history2",
     ]);
   });
 
@@ -450,6 +504,55 @@ describe("masking", () => {
     expect(screen.getByRole("button", { name: "Reveal all" })).toBeTruthy();
     expect(lastQuery("employees")).toBeDefined();
     expect(pageCalls("employees").at(-1)![2]).toBe(XYZ);
+  });
+});
+
+describe("the PDF template tables", () => {
+  it("show a template's name, revision, file name, size and pages, who and when, for the selected company only", async () => {
+    const { container } = render(<Page current={ADMIN} />);
+    await open("pdf_templates");
+
+    expect(pageCalls("pdf_templates").every((call) => call[2] === ABC)).toBe(true);
+    const text = container.textContent ?? "";
+    for (const shown of [
+      "Statement of Emoluments",
+      "statement-of-emoluments.pdf",
+      "245760",
+      "You",
+    ]) {
+      expect(text, shown).toContain(shown);
+    }
+    // What the app wrote in the template is masked; a user id is never shown.
+    expect(text).not.toContain("T7654321");
+    expect(text).not.toContain("Surname");
+    expect(text).not.toContain(OTHER_ADMIN);
+  });
+
+  it("list every kept revision, with who saved it as You or Another admin", async () => {
+    const { container } = render(<Page current={ADMIN} />);
+    await open("pdf_template_history");
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("You");
+    expect(text).toContain("Another admin");
+    expect(text).not.toContain("T7654321");
+    expect(text).not.toContain(ME);
+  });
+
+  it("are read-only: nothing on them edits, deletes or saves", async () => {
+    render(<Page current={ADMIN} />);
+    await open("pdf_templates");
+    expect(screen.queryByRole("button", { name: /^(delete|edit|save|restore|rename|upload)b/i })).toBeNull();
+    await open("pdf_template_history");
+    expect(screen.queryByRole("button", { name: /^(delete|edit|save|restore|rename|upload)b/i })).toBeNull();
+  });
+
+  it("name the migration to run when the tables are not in the database yet", async () => {
+    fetchPage.mockRejectedValue({ code: "PGRST205", message: "not found" });
+    render(<Page current={ADMIN} />);
+    await open("pdf_template_history");
+    expect(screen.getByText("pdf_template_history isn't in the database yet")).toBeTruthy();
+    expect(screen.getByText(/0012_pdf_templates\.sql/)).toBeTruthy();
   });
 });
 

@@ -162,6 +162,7 @@ What is NOT sent to the dashboard: the values last typed into a form and the Peo
 | --- | --- | --- |
 | request | `params: { action: "list", brn? }` | a row per template, no bodies: `{ template_id, name, revision, pdf_sha256, pdf_file_name, pdf_bytes, pdf_pages, updated_at, updated_by_you }`. May be none |
 | request | `params: { action: "load", template_id, brn? }` | one row: the same, plus `body` |
+| request | `params: { action: "load", template_id, revision, brn? }` | one kept revision as it was saved: `{ template_id, revision, name, body, pdf_sha256, pdf_file_name, pdf_bytes, pdf_pages, saved_at, saved_by_you }`, or `not-found`. Reading it changes nothing |
 | request | `params: { action: "history", template_id, brn? }` | a row per kept revision, newest first: `{ revision, name, saved_at, saved_by_you }` |
 | request | `params: { action: "companies", brn? }` | the user's OTHER companies they are an admin of: `{ brn, name }` |
 | save | `{ action: "save", brn, template_id, name, body, expected_revision, pdf_sha256, pdf_file_name, pdf_bytes, pdf_pages }` | `result: { action, template_id, name, revision, updated_at }` |

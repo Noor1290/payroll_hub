@@ -6,6 +6,7 @@ import {
   demoDownloadPdfFile,
   demoFetchPdfTemplate,
   demoFetchPdfTemplateHistory,
+  demoFetchPdfTemplateRevision,
   demoFetchPdfTemplates,
   demoListPdfFiles,
   demoPdfFileExists,
@@ -290,6 +291,39 @@ export async function fetchPdfTemplateHistory(
     .range(0, MAX_HISTORY - 1);
   if (error) throw error;
   return z.array(revisionSchema).parse(data);
+}
+
+const keptRevisionSchema = revisionSchema.extend({
+  body: bodySchema,
+  pdf_sha256: sha256Schema,
+  pdf_file_name: z.string(),
+  pdf_bytes: z.number().int().min(1),
+  pdf_pages: z.number().int().min(1),
+});
+export type KeptPdfTemplateRevision = z.infer<typeof keptRevisionSchema>;
+
+/** One kept revision, body and file included. Null when this company has no such revision. */
+export async function fetchPdfTemplateRevision(
+  viewer: Viewer,
+  companyId: string,
+  templateId: string,
+  revision: number,
+): Promise<KeptPdfTemplateRevision | null> {
+  if (import.meta.env.DEV && viewer.isDemo) {
+    const found = await demoFetchPdfTemplateRevision(companyId, templateId, revision);
+    return found ? keptRevisionSchema.parse(found) : null;
+  }
+  const { data, error } = await client()
+    .from("pdf_template_history")
+    .select(
+      "revision, name, saved_by, saved_at, body, pdf_sha256, pdf_file_name, pdf_bytes, pdf_pages",
+    )
+    .eq("company_id", companyId)
+    .eq("template_id", templateId)
+    .eq("revision", revision)
+    .maybeSingle();
+  if (error) throw error;
+  return keptRevisionSchema.nullable().parse(data);
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   downloadPdfFile,
   fetchPdfTemplate,
   fetchPdfTemplateHistory,
+  fetchPdfTemplateRevision,
   fetchPdfTemplates,
   PDF_FILE_BYTES,
   PDF_TEMPLATES_MIGRATION,
@@ -190,6 +191,8 @@ const templateParamsSchema = z.discriminatedUnion("action", [
     action: z.literal("load"),
     brn: brnSchema.optional(),
     template_id: templateIdSchema,
+    /** A kept revision; absent = the template as it is now. */
+    revision: z.number().int().min(1).optional(),
   }),
   z.strictObject({
     action: z.literal("history"),
@@ -273,6 +276,19 @@ export async function answerPdfTemplateRequest(
         );
       }
       case "load": {
+        if (params.data.revision !== undefined) {
+          const kept = await fetchPdfTemplateRevision(
+            viewer,
+            companyId,
+            params.data.template_id,
+            params.data.revision,
+          );
+          if (!kept) return refuse("not-found", "This PDF template has no such revision.");
+          const { saved_by, ...revision } = kept;
+          return answer([
+            { template_id: params.data.template_id, ...revision, saved_by_you: you(saved_by) },
+          ]);
+        }
         const template = await fetchPdfTemplate(viewer, companyId, params.data.template_id);
         if (!template) return refuse("not-found", "This company has no such PDF template.");
         const { id, updated_by, ...rest } = template;

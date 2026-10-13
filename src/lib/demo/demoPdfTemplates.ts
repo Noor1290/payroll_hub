@@ -338,6 +338,34 @@ export async function demoDeletePdfTemplate(
   };
 }
 
+/** These tables as the API would return them, for the read-only Database page. */
+export function demoPdfTemplateRows(
+  table: "pdf_templates" | "pdf_template_history",
+  companyId: string,
+): Record<string, unknown>[] {
+  if (roleIn(companyId) === null) return [];
+  if (table === "pdf_templates") {
+    return templates
+      .filter((t) => t.company_id === companyId)
+      .map((t) => ({ ...t, created_by: t.updated_by, created_at: t.updated_at }));
+  }
+  return history.filter((h) => h.company_id === companyId).map((h) => ({ ...h }));
+}
+
+/** One kept revision with its body and file, or null. */
+export async function demoFetchPdfTemplateRevision(
+  companyId: string,
+  templateId: string,
+  revision: number,
+): Promise<StoredRevision | null> {
+  await pause(100);
+  if (roleIn(companyId) === null) return null;
+  const found = history.find(
+    (h) => h.company_id === companyId && h.template_id === templateId && h.revision === revision,
+  );
+  return found ? structuredClone(found) : null;
+}
+
 /** Rows the demo company has here, for the delete-company preview. */
 export function demoPdfTemplateCounts(companyId: string) {
   return {

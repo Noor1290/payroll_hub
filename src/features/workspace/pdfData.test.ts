@@ -533,3 +533,72 @@ describe("the production build", () => {
     expect(source).not.toMatch(/=>\s*import\.meta\.env\.DEV/);
   });
 });
+
+describe("pdf-template: one kept revision", () => {
+  beforeEach(async () => {
+    await upload(uploadRow());
+    await send(saveRow());
+    await send(saveRow({ expected_revision: 1, name: "Second name", body: { boxes: [] } }));
+  });
+
+  it("returns an earlier revision as it was saved, with its file, and changes nothing", async () => {
+    const first = await request({ action: "load", template_id: T1, revision: 1 });
+    expect(first).toMatchObject({
+      ok: true,
+      rows: [
+        {
+          template_id: T1,
+          revision: 1,
+          name: "Statement of Emoluments",
+          body: BODY,
+          pdf_sha256: SHA,
+          pdf_file_name: "form.pdf",
+          pdf_pages: 1,
+          saved_by_you: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(first)).not.toContain(ME);
+    // Looking at it restored nothing: the template is still at revision 2.
+    expect(await request({ action: "load", template_id: T1 })).toMatchObject({
+      rows: [{ revision: 2, name: "Second name" }],
+    });
+    expect(await request({ action: "history", template_id: T1 })).toMatchObject({
+      rows: [{ revision: 2 }, { revision: 1 }],
+    });
+  });
+
+  it("says not-found for a revision that was never kept, and for another company's template", async () => {
+    expect(await request({ action: "load", template_id: T1, revision: 9 })).toMatchObject({
+      ok: false,
+      code: "not-found",
+    });
+    expect(await request({ action: "load", template_id: T1, revision: 0 })).toMatchObject({
+      ok: false,
+      code: "invalid",
+    });
+    signIn(NEW);
+    expect(await request({ action: "load", template_id: T1, revision: 1 })).toMatchObject({
+      ok: false,
+      code: "not-found",
+    });
+  });
+
+  it("can be read by someone who is not an admin, who still cannot restore it", async () => {
+    // XYZ is the company this user only views; give it a template through the demo store's own rules.
+    signIn(XYZ);
+    expect(await request({ action: "history", template_id: T1 })).toMatchObject({
+      ok: true,
+      rows: [],
+    });
+    expect(
+      await send({
+        action: "restore",
+        brn: "C7654321",
+        template_id: T1,
+        revision: 1,
+        expected_revision: 2,
+      }),
+    ).toMatchObject({ ok: false, code: "forbidden" });
+  });
+});

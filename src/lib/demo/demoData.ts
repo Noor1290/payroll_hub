@@ -12,7 +12,11 @@ import type {
 import type { ImportResult, Membership, RunStatus, RunSummary } from "@/lib/supabase/schemas";
 import { demoAppDataCounts, demoAppDataRows, demoForgetAppData } from "./demoAppData";
 import { demoCompanyDataRows, demoForgetCompanyData } from "./demoCompanyData";
-import { demoForgetPdfTemplates, demoPdfTemplateCounts } from "./demoPdfTemplates";
+import {
+  demoForgetPdfTemplates,
+  demoPdfTemplateCounts,
+  demoPdfTemplateRows,
+} from "./demoPdfTemplates";
 
 /**
  * FAKE in-memory database for dev-only demo mode. Every name, number and id here is invented.
@@ -545,6 +549,9 @@ function rawRows(table: DbTableName, companyId: string): Record<string, unknown>
         (nationalId) =>
           employees.find((e) => e.companyId === companyId && e.national_id === nationalId)!.id,
       );
+    case "pdf_templates":
+    case "pdf_template_history":
+      return demoPdfTemplateRows(table, companyId);
     case "payroll_entries": {
       const companyRuns = new Map(
         runs.filter((r) => r.companyId === companyId).map((r) => [r.id, r]),
@@ -649,5 +656,7 @@ export async function demoFetchTableCounts(
     payslip_templates: count("payslip_templates"),
     payslip_template_versions: count("payslip_template_versions"),
     issued_payslips: isAdmin ? count("issued_payslips") : null,
+    pdf_templates: count("pdf_templates"),
+    pdf_template_history: count("pdf_template_history"),
   };
 }

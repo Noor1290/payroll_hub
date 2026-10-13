@@ -179,6 +179,8 @@ describe("the table list", () => {
       "payslip_templates",
       "payslip_template_versions",
       "issued_payslips",
+      "pdf_templates",
+      "pdf_template_history",
     ]);
   });
 
@@ -227,6 +229,96 @@ describe("the table list", () => {
     expect(actors("payslip_templates")).toEqual(["created_by", "updated_by"]);
     expect(actors("payslip_template_versions")).toEqual(["published_by"]);
     expect(actors("issued_payslips")).toEqual(["issued_by"]);
+  });
+
+  it("shows a PDF template's name, revision, file name, size and pages, and masks what the app wrote in it", () => {
+    for (const name of ["pdf_templates", "pdf_template_history"] as const) {
+      const table = DB_TABLES[name];
+      const keys = table.columns.map((c) => c.key);
+      expect(keys).toEqual(
+        expect.arrayContaining([
+          "company_id",
+          "name",
+          "revision",
+          "pdf_file_name",
+          "pdf_bytes",
+          "pdf_pages",
+        ]),
+      );
+      // The fields and company details are the app's: masked, and never searched.
+      expect(table.columns.filter((c) => c.sensitive).map((c) => c.key)).toEqual(["body"]);
+      expect(table.searchColumns).toEqual(["name", "pdf_file_name"]);
+      // Who did it is "You" or "Another admin", never a user id.
+      expect(table.columns.filter((c) => c.kind === "user")).toEqual([]);
+      // Read-only like every table here, for members as well as admins, as its policy says.
+      expect(table.adminOnly).toBeUndefined();
+      expect(table.canBeDeleted).toBe(false);
+      expect(OPTIONAL_TABLES[name]).toBe("0012_pdf_templates.sql");
+    }
+    const actors = (name: (typeof DB_TABLE_NAMES)[number]) =>
+      DB_TABLES[name].columns.filter((c) => c.kind === "actor").map((c) => c.key);
+    expect(actors("pdf_templates")).toEqual(["created_by", "updated_by"]);
+    expect(actors("pdf_template_history")).toEqual(["saved_by"]);
+    // A kept revision has no id of its own: the template and the revision number name it.
+    expect(DB_TABLES.pdf_template_history.keyColumns).toEqual(["template_id", "revision"]);
+  });
+
+  it("reads a PDF template row as it is stored: no file content is in it, only the file's hash and size", () => {
+    const row = {
+      id: "90000000-0000-4000-8000-000000000001",
+      company_id: COMPANY,
+      name: "Statement of Emoluments",
+      revision: 3,
+      body: { boxes: [{ id: "b1", name: "Surname" }], employerFields: [] },
+      pdf_file_name: "form.pdf",
+      pdf_bytes: 983,
+      pdf_pages: 1,
+      pdf_sha256: "a".repeat(64),
+      created_by: VIEWER.id,
+      created_at: NOW,
+      updated_by: OTHER_USER,
+      updated_at: NOW,
+    };
+    const parsed = parseRow(DB_TABLES.pdf_templates, row, VIEWER.id);
+    expect(parsed).toMatchObject({
+      name: "Statement of Emoluments",
+      revision: 3,
+      pdf_file_name: "form.pdf",
+      pdf_bytes: 983,
+      pdf_pages: 1,
+      created_by: "You",
+      updated_by: "Another admin",
+    });
+    const kept = parseRow(
+      DB_TABLES.pdf_template_history,
+      {
+        template_id: row.id,
+        company_id: COMPANY,
+        revision: 2,
+        name: row.name,
+        body: row.body,
+        pdf_file_name: row.pdf_file_name,
+        pdf_bytes: row.pdf_bytes,
+        pdf_pages: row.pdf_pages,
+        pdf_sha256: row.pdf_sha256,
+        saved_by: null,
+        saved_at: NOW,
+      },
+      VIEWER.id,
+    );
+    expect(kept.__key).toBe(`${row.id}:2`);
+    expect(JSON.stringify([parsed, kept])).not.toContain(OTHER_USER);
+  });
+
+  it("reads both PDF template tables for the selected company only", async () => {
+    for (const name of ["pdf_templates", "pdf_template_history"] as const) {
+      db.state.calls.length = 0;
+      db.state.result = { data: [], count: 0, error: null };
+      await fetchTablePage(VIEWER, name, COMPANY, query());
+      expect(calls("from").map((call) => call[1])).toEqual([name]);
+      expect(calls("eq")).toContainEqual(["eq", "company_id", COMPANY]);
+      expect(String(calls("select")[0]![1])).not.toContain("*");
+    }
   });
 
   it("masks every company detail value, and never searches inside them", () => {
@@ -608,6 +700,8 @@ describe("fetchTableCounts", () => {
       payslip_templates: 1250,
       payslip_template_versions: 1250,
       issued_payslips: 1250,
+      pdf_templates: 1250,
+      pdf_template_history: 1250,
     });
     for (const call of calls("select")) expect(call[2]).toEqual({ count: "exact", head: true });
     expect(calls("range")).toEqual([]);
