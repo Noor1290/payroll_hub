@@ -44,6 +44,14 @@ const db = vi.hoisted(() => {
   };
 });
 vi.mock("@/lib/supabase/client", () => ({ supabase: db.client }));
+// The company's PDF files go first, through Storage, which this test's client does not have.
+const removeFiles = vi.hoisted(() =>
+  vi.fn<(viewer: unknown, companyId: string) => Promise<number>>(async () => 0),
+);
+vi.mock("@/lib/supabase/pdfTemplates", async (original) => ({
+  ...(await original<typeof import("@/lib/supabase/pdfTemplates")>()),
+  removeAllPdfFiles: removeFiles,
+}));
 
 const {
   classifyDeleteCompanyError,
@@ -118,6 +126,33 @@ describe("deleteCompany", () => {
     expect(db.state.calls.some(([method]) => method === "delete" || method === "from")).toBe(false);
   });
 
+  it("removes the company's PDF files from the bucket first, and only once the checks here pass", async () => {
+    removeFiles.mockClear();
+    await expect(deleteCompany(VIEWER, COMPANY, "wrong name")).rejects.toBeInstanceOf(
+      NameMismatchError,
+    );
+    await expect(deleteCompany(VIEWER, COMPANY, "ABC Co Ltd")).rejects.toBeInstanceOf(LockedError);
+    expect(removeFiles).not.toHaveBeenCalled();
+
+    grantUnlock(10);
+    removeFiles.mockImplementationOnce(async () => {
+      // The files go while the company, and the caller's admin role in it, still exist.
+      expect(rpcCalls()).toEqual([]);
+      return 2;
+    });
+    await deleteCompany(VIEWER, COMPANY, "ABC Co Ltd");
+    expect(removeFiles).toHaveBeenCalledTimes(1);
+    expect(removeFiles.mock.calls[0]).toEqual([VIEWER, ABC]);
+    expect(rpcCalls()).toHaveLength(1);
+  });
+
+  it("deletes nothing when the files cannot be removed", async () => {
+    grantUnlock(10);
+    removeFiles.mockRejectedValueOnce(new Error("storage is down"));
+    await expect(deleteCompany(VIEWER, COMPANY, "ABC Co Ltd")).rejects.toThrow("storage is down");
+    expect(rpcCalls()).toEqual([]);
+  });
+
   it("passes the database's refusal on (a viewer calling it is refused there)", async () => {
     grantUnlock(10);
     db.state.rpc = () => ({ data: null, error: { code: "42501", message: "PH_NOT_ADMIN" } });
@@ -163,6 +198,8 @@ describe("fetchDeletePreview", () => {
       if (table === "payslip_templates") return { data: null, count: 2, error: null };
       if (table === "payslip_template_versions") return { data: null, count: 9, error: null };
       if (table === "issued_payslips") return { data: null, count: 24, error: null };
+      if (table === "pdf_templates") return { data: null, count: 3, error: null };
+      if (table === "pdf_template_history") return { data: null, count: 11, error: null };
       if (has(own, "eq", "status", "approved")) return { data: null, count: 3, error: null };
       return { data: null, count: 7, error: null };
     };
@@ -180,6 +217,8 @@ describe("fetchDeletePreview", () => {
       templates: 2,
       templateVersions: 9,
       issuedPayslips: 24,
+      pdfTemplates: 3,
+      pdfTemplateRevisions: 11,
       approvedRuns: 3,
     });
     // Nothing is filtered on deleted_at: soft-deleted rows, approved runs among them, are counted.
@@ -195,15 +234,17 @@ describe("fetchDeletePreview", () => {
     for (const write of ["insert", "update", "delete", "upsert", "rpc"])
       expect(used.has(write)).toBe(false);
     const scoped = db.state.calls.filter(([method, , value]) => method === "eq" && value === ABC);
-    expect(scoped).toHaveLength(11);
+    expect(scoped).toHaveLength(13);
   });
 
-  it("still works before migrations 0005, 0006 and 0009 to 0011 are run: missing tables count as nothing", async () => {
+  it("still works before migrations 0005, 0006 and 0009 to 0012 are run: missing tables count as nothing", async () => {
     const later = [
       "statutory_rates",
       "payslip_templates",
       "payslip_template_versions",
       "issued_payslips",
+      "pdf_templates",
+      "pdf_template_history",
     ];
     db.state.answer = (own) => {
       const table = own[0]![1];
@@ -226,6 +267,8 @@ describe("fetchDeletePreview", () => {
       templates: 0,
       templateVersions: 0,
       issuedPayslips: 0,
+      pdfTemplates: 0,
+      pdfTemplateRevisions: 0,
     });
     expect(preview.employees).toBe(2);
   });
@@ -301,7 +344,7 @@ describe("classifyDeleteCompanyError", () => {
   it("asks for the migrations, up to the newest, when the database still refuses approved runs", () => {
     const failure = classifyDeleteCompanyError({ code: "P0001", message: "PH_HAS_APPROVED_RUNS" });
     expect(failure.title).toBe("The database needs an update");
-    expect(failure.message).toContain("in order, up to 0011_issued_payslips.sql");
+    expect(failure.message).toContain("in order, up to 0012_pdf_templates.sql");
     expect(failure.message).not.toMatch(/back to draft/);
   });
 
@@ -331,7 +374,7 @@ describe("classifyDeleteCompanyError", () => {
     const failure = classifyDeleteCompanyError({ code: "PGRST202", message: "not found" });
     expect(failure.title).toBe("Deleting companies isn't set up in the database yet");
     // Never an older file: it would put back a function that leaves the newer tables alone.
-    expect(failure.message).toContain("in order, up to 0011_issued_payslips.sql");
+    expect(failure.message).toContain("in order, up to 0012_pdf_templates.sql");
     expect(failure.message).not.toContain("0007");
   });
 

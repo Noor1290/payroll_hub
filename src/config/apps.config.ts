@@ -44,6 +44,10 @@ export const STATUTORY_RATES = "statutory-rates";
 export const PAYSLIP_TEMPLATE = "payslip-template";
 /** Payslips as they were issued, a month at a time, in numbered revisions (migration 0011). */
 export const PAYSLIP_ISSUE = "payslip-issue";
+/** A company's PDF form templates: fields and company details, every revision kept (migration 0012). */
+export const PDF_TEMPLATE = "pdf-template";
+/** The blank PDF forms themselves, in the Storage bucket under the hash of their content (migration 0012). */
+export const PDF_FILE = "pdf-file";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -92,8 +96,8 @@ export const APPS: readonly AppConfig[] = [
     icon: FileText,
     accentColor: "var(--glow)",
     status: "active",
-    accepts: [PAYROLL_RESULT],
-    produces: [],
+    accepts: [PAYROLL_RESULT, PDF_TEMPLATE, PDF_FILE],
+    produces: [PDF_TEMPLATE, PDF_FILE],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,
   },

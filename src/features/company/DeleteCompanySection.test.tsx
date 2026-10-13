@@ -13,6 +13,12 @@ const rpc = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/supabase/client", () => ({ supabase: { rpc } }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), dismiss: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
+// The company's PDF files go first, through Storage, which this test's client does not have.
+const removeFiles = vi.hoisted(() => vi.fn(async () => 0));
+vi.mock("@/lib/supabase/pdfTemplates", async (original) => ({
+  ...(await original<typeof import("@/lib/supabase/pdfTemplates")>()),
+  removeAllPdfFiles: removeFiles,
+}));
 const verify = vi.hoisted(() => vi.fn());
 vi.mock("@/features/unlock/verifyPassword", () => ({ verifyPassword: verify }));
 
@@ -36,6 +42,8 @@ const CLEAR: DeletePreview = {
   templates: 0,
   templateVersions: 0,
   issuedPayslips: 0,
+  pdfTemplates: 0,
+  pdfTemplateRevisions: 0,
   approvedRuns: 0,
 };
 /** Two of its runs are approved; one of those is soft-deleted (the count includes it). */
@@ -446,7 +454,7 @@ describe("confirming", () => {
 
     const alert = await within(dialog()).findByRole("alert");
     expect(alert.textContent).toContain("The database needs an update");
-    expect(alert.textContent).toContain("up to 0011_issued_payslips.sql");
+    expect(alert.textContent).toContain("up to 0012_pdf_templates.sql");
     expect(alert.textContent).not.toContain("0007");
     expect(select).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();

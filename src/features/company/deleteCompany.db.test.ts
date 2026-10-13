@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { PGlite } from "@electric-sql/pglite";
+import { STORAGE_STAND_IN } from "@/test/storageStandIn";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -54,6 +55,7 @@ const SUPABASE_STAND_INS = `
   grant usage on schema auth to anon, authenticated, migration_owner;
   grant references on auth.users to migration_owner;
   alter schema public owner to migration_owner;
+  ${STORAGE_STAND_IN}
 `;
 
 /**

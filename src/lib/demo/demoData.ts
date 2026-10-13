@@ -12,6 +12,7 @@ import type {
 import type { ImportResult, Membership, RunStatus, RunSummary } from "@/lib/supabase/schemas";
 import { demoAppDataCounts, demoAppDataRows, demoForgetAppData } from "./demoAppData";
 import { demoCompanyDataRows, demoForgetCompanyData } from "./demoCompanyData";
+import { demoForgetPdfTemplates, demoPdfTemplateCounts } from "./demoPdfTemplates";
 
 /**
  * FAKE in-memory database for dev-only demo mode. Every name, number and id here is invented.
@@ -446,6 +447,7 @@ export async function demoFetchDeletePreview(companyId: string) {
     details: demoCompanyDataRows("company_details", companyId).length,
     links: demoCompanyDataRows("company_links", companyId).length,
     ...demoAppDataCounts(companyId),
+    ...demoPdfTemplateCounts(companyId),
     approvedRuns: companyRuns.filter((run) => run.status === "approved").length,
   };
 }
@@ -481,6 +483,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
   removeWhere(demoMemberships, (m) => m.company.id === companyId);
   demoForgetCompanyData(companyId);
   demoForgetAppData(companyId);
+  demoForgetPdfTemplates(companyId);
   return result;
 }
 

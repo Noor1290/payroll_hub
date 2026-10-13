@@ -3,6 +3,7 @@ import { demoDeleteCompany, demoFetchDeletePreview } from "@/lib/demo/demoData";
 import { queryClient } from "@/lib/queryClient";
 import { preferenceStorage } from "@/lib/storage";
 import { supabase } from "@/lib/supabase/client";
+import { removeAllPdfFiles } from "@/lib/supabase/pdfTemplates";
 import {
   classifyDataError,
   isMissingTable,
@@ -34,6 +35,12 @@ export interface DeletePreview {
   templateVersions: number;
   /** Issued payslips, every revision (migration 0011). Zero if that table doesn't exist yet. */
   issuedPayslips: number;
+  /**
+   * PDF form templates and their kept revisions (migration 0012). Their PDF files are removed
+   * from the bucket with them. Zero if those tables don't exist yet.
+   */
+  pdfTemplates: number;
+  pdfTemplateRevisions: number;
   /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
   approvedRuns: number;
 }
@@ -93,6 +100,8 @@ export async function fetchDeletePreview(
     templates,
     templateVersions,
     issuedPayslips,
+    pdfTemplates,
+    pdfTemplateRevisions,
   ] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
@@ -108,13 +117,15 @@ export async function fetchDeletePreview(
     db.from("payslip_templates").select("id", head).eq("company_id", companyId),
     db.from("payslip_template_versions").select("id", head).eq("company_id", companyId),
     db.from("issued_payslips").select("id", head).eq("company_id", companyId),
+    db.from("pdf_templates").select("id", head).eq("company_id", companyId),
+    db.from("pdf_template_history").select("revision", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
-  // These tables come from later migrations (0005, 0006, 0009, 0010, 0011). Until they are run
+  // These tables come from later migrations (0005, 0006, 0009 to 0012). Until they are run
   // there is nothing in them to delete, and deleting a company must keep working.
-  const optional = (result: typeof details) => {
+  const optional = (result: { error: unknown; count: number | null }) => {
     if (result.error) {
       if (isMissingTable(result.error)) return 0;
       throw result.error;
@@ -133,6 +144,8 @@ export async function fetchDeletePreview(
     templates: optional(templates),
     templateVersions: optional(templateVersions),
     issuedPayslips: optional(issuedPayslips),
+    pdfTemplates: optional(pdfTemplates),
+    pdfTemplateRevisions: optional(pdfTemplateRevisions),
     approvedRuns: count.parse(approved.count),
   };
 }
@@ -153,6 +166,10 @@ export async function deleteCompany(
 
   if (import.meta.env.DEV && viewer.isDemo) return demoDeleteCompany(company.id, typedName);
   if (!supabase) throw new NotConfiguredError();
+
+  // The company's PDF forms are files in the Storage bucket, which the database function
+  // cannot reach: they go first, while the caller is still an admin of the company.
+  await removeAllPdfFiles(viewer, company.id);
 
   const { data, error } = await supabase.rpc("delete_company", {
     p_company_id: company.id,
@@ -189,7 +206,7 @@ export interface DeleteCompanyFailure extends DataFailure {
  * to a company replaces the function, so an older file must never be named here: run after
  * the newer ones, it would put back a function that does not know their tables.
  */
-const MIGRATION = "0011_issued_payslips.sql";
+const MIGRATION = "0012_pdf_templates.sql";
 const RUN_MIGRATIONS = `The owner needs to run the files in supabase/migrations that the database has not had yet, in order, up to ${MIGRATION}, in the Supabase SQL editor.`;
 
 const failure = (

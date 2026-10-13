@@ -30,6 +30,8 @@ import { isUnlocked } from "@/lib/unlock";
 import { UnlockForm } from "@/features/unlock/PasswordGate";
 import { useUnlock } from "@/features/unlock/useUnlock";
 import { exchangeContext } from "./appData";
+// Registers the PDF form filler's data types with the bridge.
+import "./pdfData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";
 

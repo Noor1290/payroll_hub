@@ -65,11 +65,19 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // One command holding a whole month (ISSUE_MAX_PAYSLIPS payslips of PAYSLIP_BYTES each at
   // most). An answer has one row per employee.
   "payslip-issue": { sendRows: 1, sendBytes: 4_000_000, answerRows: [0, 5_000] },
+  // One command per message. The body may be 250 KB (PDF_TEMPLATE_BODY_BYTES); an answer
+  // lists a company's templates (50 at most) or one template's kept revisions (200 at most).
+  "pdf-template": { sendRows: 1, sendBytes: 270_000, answerRows: [0, 200] },
+  // One file per message, as base64 text: a 5 MB PDF is about 6.7 MB of it. An answer is one
+  // row: whether the file is there, or the file.
+  "pdf-file": { sendRows: 1, sendBytes: 7_100_000, answerRows: [1, 1] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 
 /** The largest template body the hub accepts, as JSON. The database's own limit is 256 KB. */
 export const TEMPLATE_BODY_BYTES = 150_000;
+/** The largest PDF template body the hub accepts, as JSON. The database's own limit is 256 KB. */
+export const PDF_TEMPLATE_BODY_BYTES = 250_000;
 /** How many payslips one save may issue. The database has the same limit. */
 export const ISSUE_MAX_PAYSLIPS = 1_000;
 /** The largest single payslip in a save, as JSON. */

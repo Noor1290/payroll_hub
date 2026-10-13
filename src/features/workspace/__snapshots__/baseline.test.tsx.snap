@@ -771,6 +771,8 @@ exports[`baseline: the app registry > lists these apps, with these data types an
   {
     "accepts": [
       "payroll-result",
+      "pdf-template",
+      "pdf-file",
     ],
     "expectedFields": [
       "ID | string | required | sensitive",
@@ -806,7 +808,10 @@ exports[`baseline: the app registry > lists these apps, with these data types an
     ],
     "id": "pdf-editor",
     "name": "PDF Form Filler",
-    "produces": [],
+    "produces": [
+      "pdf-template",
+      "pdf-file",
+    ],
     "protocolVersion": 1,
     "status": "active",
     "url": "https://noor1290.github.io/pdf-form-filler/",

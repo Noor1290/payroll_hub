@@ -136,6 +136,48 @@ Ready-to-paste task for Claude Code in the `pdf-form-filler` repo:
 
 > Read `docs/INTEGRATION.md` and `docs/bridge.js` from the payroll-hub repo (I will paste or copy them in). Copy bridge.js unchanged to `src/payrollHubBridge.js`, import it once in the entry file, and call `PayrollHubBridge.init({ appId: "pdf-editor", onData })` once in the root component. `onData` must pass `payload.rows` into the same code path the JSON file import uses after parsing (find it via the message "doesn't look like a valid JSON file"), and throw an Error with a clear message when the rows cannot be used. Add a "Get from dashboard" button shown only when `PayrollHubBridge.isEmbedded()`, using `requestData("payroll-result")`. Do not write the received data to localStorage, do not edit bridge.js, and make sure the app behaves exactly as before when opened on its own.
 
+### PDF form filler: templates in the dashboard (`pdf-template`, `pdf-file`)
+
+Added in migration plan Phase 1 (`docs/MIGRATION_PLAN.md`), database side in `supabase/migrations/0012_pdf_templates.sql`. Inside the dashboard the app keeps its templates in the database and its blank PDF forms in a private Storage bucket; opened on its own it keeps using the browser, as before. Still protocol version 1 and the same `bridge.js`.
+
+Both data types are answered and saved with **no dialog and no password gate**: a template is the fields drawn on a form and the company's own details, nothing per employee. Every exchange is a row in the transfer log (never with content) and every save shows a toast. Members of the company read; admins write. Everything is about the company selected in the dashboard: each answer carries `meta: { label, brn, role }`, each save must carry that company's `brn`, and a save for another company is refused as `wrong-company`.
+
+What is NOT sent to the dashboard: the values last typed into a form and the People list. They stay in the browser.
+
+**`pdf-file`: the blank PDF forms.** A file is named by the SHA-256 of its bytes (64 lowercase hex characters) and crosses the bridge as base64 text, one file per message, 5 MB at most.
+
+| Kind | What the app sends | What comes back |
+| --- | --- | --- |
+| request | `params: { action: "exists", sha256, brn? }` | one row `{ sha256, exists }` |
+| request | `params: { action: "download", sha256, brn? }` | one row `{ sha256, bytes, data }` (`data` is the file in base64), or `not-found` |
+| save | one row `{ action: "upload", brn, sha256, data }` | `result: { sha256, bytes, already_there }` |
+
+- Before storing, the dashboard checks that `data` is base64, that the file is 5 MB or less, that it starts as a PDF, and that its SHA-256 is the `sha256` stated. Otherwise `invalid` or `too-large`, and nothing is stored.
+- Uploading the same file twice is harmless: the second answer has `already_there: true`.
+- A slow upload may be answered `unavailable` after 8 seconds while it is still going. Ask `exists` before sending it again.
+
+**`pdf-template`: the templates.** `body` is a JSON object the app defines (the dashboard stores and returns it exactly, and never looks inside), 250 KB at most, and must not contain a `data:` file: the PDF goes through `pdf-file`.
+
+| Kind | What the app sends | What comes back |
+| --- | --- | --- |
+| request | `params: { action: "list", brn? }` | a row per template, no bodies: `{ template_id, name, revision, pdf_sha256, pdf_file_name, pdf_bytes, pdf_pages, updated_at, updated_by_you }`. May be none |
+| request | `params: { action: "load", template_id, brn? }` | one row: the same, plus `body` |
+| request | `params: { action: "history", template_id, brn? }` | a row per kept revision, newest first: `{ revision, name, saved_at, saved_by_you }` |
+| request | `params: { action: "companies", brn? }` | the user's OTHER companies they are an admin of: `{ brn, name }` |
+| save | `{ action: "save", brn, template_id, name, body, expected_revision, pdf_sha256, pdf_file_name, pdf_bytes, pdf_pages }` | `result: { action, template_id, name, revision, updated_at }` |
+| save | `{ action: "restore", brn, template_id, revision, expected_revision }` | `result: { action, template_id, name, revision, restored_from, updated_at }` |
+| save | `{ action: "copy-to-company", brn, template_id, to_brn, new_template_id, name }` | `result: { action, template_id, name, revision, to_company }` |
+| save | `{ action: "delete", brn, template_id, expected_revision }` | `result: { action, template_id, name }` |
+
+- **The app chooses a template's id** (a UUID), for a new template too, with `expected_revision: 0`. So a save that is sent twice cannot make two templates: the second is refused as `stale`.
+- **`expected_revision`** is the revision the app last saw. If someone else saved since, the save is refused as `stale` and nothing is overwritten.
+- **The file first.** A save, a restore or a copy whose PDF is not in the bucket for that company is refused as `not-found` ("Send the file first"). For a copy the dashboard copies the file to the other company itself.
+- **Every revision is kept** (the last 200 per template). `restore` makes an earlier one the newest.
+- **Copy** needs the user to be a member of the selected company and an admin of the one named by `to_brn`.
+- **Delete** removes the template and its history, and its file when no other template of that company uses it.
+- Limits: a name is 1 to 80 characters, unique in its company whatever the capitals (`invalid`, "already has one with that name"); 50 templates per company (`too-large`).
+- After `unavailable` or no answer to a save: `load` (or `list`) and compare the revision before saving again, as for payslip templates.
+
 ## Payslip app (app id: `payslip`)
 
 The dashboard's registry entry is active and loads the app from `https://noor1290.github.io/payslip/` (keep the trailing slash). It is registered for four data types:
@@ -406,6 +448,8 @@ Limits per data type, checked by the dashboard before anything else:
 | `statutory-rates`  | exactly 1                           | 4 KB                            | 0 to 1,000        |
 | `payslip-template` | exactly 1                           | 160 KB (the body itself: 150 KB) | 0 to 50          |
 | `payslip-issue`    | exactly 1, holding 1 to 1,000 payslips | 4 MB (each payslip: 16 KB)   | 0 to 5,000        |
+| `pdf-template`     | exactly 1                           | 270 KB (the body itself: 250 KB) | 0 to 200         |
+| `pdf-file`         | exactly 1, holding one file         | 7.1 MB (a 5 MB file as base64)  | exactly 1         |
 
 Rules both sides follow:
 

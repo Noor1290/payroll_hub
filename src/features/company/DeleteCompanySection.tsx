@@ -55,6 +55,9 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
         </li>
       )}
       {preview.issuedPayslips > 0 && <li>{plural(preview.issuedPayslips, "issued payslip")}</li>}
+      {preview.pdfTemplates > 0 && (
+        <li>{plural(preview.pdfTemplates, "PDF form template")}, with their PDF files</li>
+      )}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"

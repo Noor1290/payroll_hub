@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { PGlite } from "@electric-sql/pglite";
+import { STORAGE_STAND_IN } from "@/test/storageStandIn";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -46,6 +47,7 @@ const SUPABASE_STAND_INS = `
   grant usage on schema auth to anon, authenticated, migration_owner;
   grant references on auth.users to migration_owner;
   alter schema public owner to migration_owner;
+  ${STORAGE_STAND_IN}
 `;
 
 const SEED = `
@@ -921,6 +923,8 @@ describe("delete_company after 0011", () => {
     expect(deleted.result).toEqual({
       company_id: ABC,
       issued_payslips: 2,
+      pdf_templates: 0,
+      pdf_template_history: 0,
       entries: 0,
       runs: 0,
       employees: 1,

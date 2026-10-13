@@ -82,13 +82,13 @@ registerSessionCleanup(() => exchangeContext.set(null));
 
 // ---------- shared pieces ----------
 
-const refuse = (code: RefusalCode, error: string): Refusal => ({ ok: false, code, error });
+export const refuse = (code: RefusalCode, error: string): Refusal => ({ ok: false, code, error });
 
-const normaliseBrn = (brn: string) => brn.trim().toUpperCase();
+export const normaliseBrn = (brn: string) => brn.trim().toUpperCase();
 
 /** "YYYY-MM": every month on the wire is written this way. */
 const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-const brnSchema = z.string().trim().min(1).max(50);
+export const brnSchema = z.string().trim().min(1).max(50);
 
 /**
  * The signed-in user and the selected company, or why there is nothing to work with.
@@ -114,6 +114,11 @@ function context(brn: string | undefined): ExchangeContext | Refusal {
   }
   return current;
 }
+
+/** The same three for the handlers that live in other files (pdfData.ts). */
+export const exchangeContextFor = (brn: string | undefined) => context(brn);
+export const invalidRefusal = (error: z.ZodError) => invalid(error);
+export const answerMeta = (membership: Membership) => meta(membership);
 
 /** Names the first thing wrong with what the app sent. Field names only, never values. */
 function invalid(error: z.ZodError): Refusal {
@@ -176,6 +181,12 @@ function classifyRefusal(error: unknown, migration: string): Refusal {
     return refuse(
       "not-found",
       "A payslip uses a template version this company does not have. Reload the templates. Nothing was issued.",
+    );
+  }
+  if (text.includes("PH_NO_FILE")) {
+    return refuse(
+      "not-found",
+      "The PDF file is not in the dashboard for this company. Send the file first, then save again.",
     );
   }
   if (text.includes("PH_NOT_FOUND")) return refuse("not-found", "The dashboard has no such item.");
