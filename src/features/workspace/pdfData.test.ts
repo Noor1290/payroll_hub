@@ -520,3 +520,16 @@ describe("what the user is told", () => {
     expect(allowed.map((app) => app.id)).toEqual(["pdf-editor"]);
   });
 });
+
+describe("the production build", () => {
+  it("can drop the demo store: every use of it is behind `import.meta.env.DEV`, written out in place", async () => {
+    // A helper function around that test hides it from the build tool, and the demo store,
+    // with its sample company names, then reaches the published site (the deploy refuses it).
+    const source = (await import("@/lib/supabase/pdfTemplates.ts?raw")).default as string;
+    const guarded = source.split("import.meta.env.DEV && viewer.isDemo").length - 1;
+    const demoCalls = [...source.matchAll(/\bdemo[A-Z]\w+\(/g)].length;
+    expect(demoCalls).toBeGreaterThan(10);
+    expect(guarded).toBeGreaterThanOrEqual(demoCalls - 1); // removeAllPdfFiles makes two calls behind one test
+    expect(source).not.toMatch(/=>\s*import\.meta\.env\.DEV/);
+  });
+});

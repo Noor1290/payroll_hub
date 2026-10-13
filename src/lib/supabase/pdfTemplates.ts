@@ -113,8 +113,6 @@ function client() {
   return supabase;
 }
 
-const demo = (viewer: Viewer) => import.meta.env.DEV && viewer.isDemo;
-
 /** Storage says "already exists" in more than one way, depending on its version. */
 function alreadyExists(error: unknown): boolean {
   const { statusCode, status, message, error: kind } = (error ?? {}) as Record<string, unknown>;
@@ -134,7 +132,7 @@ export async function pdfFileExists(
   companyId: string,
   sha256: string,
 ): Promise<boolean> {
-  if (demo(viewer)) return demoPdfFileExists(companyId, sha256);
+  if (import.meta.env.DEV && viewer.isDemo) return demoPdfFileExists(companyId, sha256);
   const { data, error } = await client()
     .storage.from(PDF_BUCKET)
     .list(companyId, { search: sha256, limit: 5 });
@@ -152,7 +150,7 @@ export async function uploadPdfFile(
   sha256: string,
   bytes: Uint8Array,
 ): Promise<{ alreadyThere: boolean }> {
-  if (demo(viewer)) return demoUploadPdfFile(companyId, sha256, bytes);
+  if (import.meta.env.DEV && viewer.isDemo) return demoUploadPdfFile(companyId, sha256, bytes);
   const { error } = await client()
     .storage.from(PDF_BUCKET)
     .upload(
@@ -174,7 +172,7 @@ export async function downloadPdfFile(
   companyId: string,
   sha256: string,
 ): Promise<Uint8Array | null> {
-  if (demo(viewer)) return demoDownloadPdfFile(companyId, sha256);
+  if (import.meta.env.DEV && viewer.isDemo) return demoDownloadPdfFile(companyId, sha256);
   if (!(await pdfFileExists(viewer, companyId, sha256))) return null;
   const { data, error } = await client()
     .storage.from(PDF_BUCKET)
@@ -190,7 +188,8 @@ export async function copyPdfFile(
   toCompanyId: string,
   sha256: string,
 ): Promise<void> {
-  if (demo(viewer)) return demoCopyPdfFile(fromCompanyId, toCompanyId, sha256);
+  if (import.meta.env.DEV && viewer.isDemo)
+    return demoCopyPdfFile(fromCompanyId, toCompanyId, sha256);
   if (await pdfFileExists(viewer, toCompanyId, sha256)) return;
   const { error } = await client()
     .storage.from(PDF_BUCKET)
@@ -205,7 +204,7 @@ export async function removePdfFiles(
   sha256s: string[],
 ): Promise<void> {
   if (sha256s.length === 0) return;
-  if (demo(viewer)) return demoRemovePdfFiles(companyId, sha256s);
+  if (import.meta.env.DEV && viewer.isDemo) return demoRemovePdfFiles(companyId, sha256s);
   const { error } = await client()
     .storage.from(PDF_BUCKET)
     .remove(sha256s.map((sha256) => filePath(companyId, sha256)));
@@ -218,7 +217,7 @@ export async function removePdfFiles(
  * is not there yet because migration 0012 has not been run.
  */
 export async function removeAllPdfFiles(viewer: Viewer, companyId: string): Promise<number> {
-  if (demo(viewer)) {
+  if (import.meta.env.DEV && viewer.isDemo) {
     const hashes = await demoListPdfFiles(companyId);
     await demoRemovePdfFiles(companyId, hashes);
     return hashes.length;
@@ -246,7 +245,7 @@ export async function fetchPdfTemplates(
   viewer: Viewer,
   companyId: string,
 ): Promise<PdfTemplateSummary[]> {
-  if (demo(viewer)) return demoFetchPdfTemplates(companyId);
+  if (import.meta.env.DEV && viewer.isDemo) return demoFetchPdfTemplates(companyId);
   const { data, error } = await client()
     .from("pdf_templates")
     .select(SUMMARY_COLUMNS)
@@ -263,7 +262,7 @@ export async function fetchPdfTemplate(
   companyId: string,
   templateId: string,
 ): Promise<PdfTemplate | null> {
-  if (demo(viewer)) return demoFetchPdfTemplate(companyId, templateId);
+  if (import.meta.env.DEV && viewer.isDemo) return demoFetchPdfTemplate(companyId, templateId);
   const { data, error } = await client()
     .from("pdf_templates")
     .select(`${SUMMARY_COLUMNS}, body`)
@@ -280,7 +279,8 @@ export async function fetchPdfTemplateHistory(
   companyId: string,
   templateId: string,
 ): Promise<PdfTemplateRevision[]> {
-  if (demo(viewer)) return demoFetchPdfTemplateHistory(companyId, templateId);
+  if (import.meta.env.DEV && viewer.isDemo)
+    return demoFetchPdfTemplateHistory(companyId, templateId);
   const { data, error } = await client()
     .from("pdf_template_history")
     .select("revision, name, saved_by, saved_at")
@@ -302,7 +302,7 @@ export async function savePdfTemplate(
   companyId: string,
   input: PdfTemplateInput,
 ): Promise<SavedPdfTemplate> {
-  if (demo(viewer)) return demoSavePdfTemplate(companyId, input);
+  if (import.meta.env.DEV && viewer.isDemo) return demoSavePdfTemplate(companyId, input);
   const { data, error } = await client().rpc("save_pdf_template", {
     p_company_id: companyId,
     p_template_id: input.templateId,
@@ -326,7 +326,7 @@ export async function restorePdfTemplate(
   revision: number,
   expectedRevision: number,
 ): Promise<SavedPdfTemplate & { restored_from: number }> {
-  if (demo(viewer)) {
+  if (import.meta.env.DEV && viewer.isDemo) {
     return demoRestorePdfTemplate(companyId, templateId, revision, expectedRevision);
   }
   const { data, error } = await client().rpc("restore_pdf_template", {
@@ -349,7 +349,7 @@ export async function copyPdfTemplate(
   sha256: string,
 ): Promise<SavedPdfTemplate> {
   await copyPdfFile(viewer, input.fromCompanyId, input.toCompanyId, sha256);
-  if (demo(viewer)) return demoCopyPdfTemplate(input);
+  if (import.meta.env.DEV && viewer.isDemo) return demoCopyPdfTemplate(input);
   const { data, error } = await client().rpc("copy_pdf_template", {
     p_from_company_id: input.fromCompanyId,
     p_template_id: input.templateId,
@@ -372,7 +372,7 @@ export async function deletePdfTemplate(
   expectedRevision: number,
 ): Promise<DeletedPdfTemplate> {
   let deleted: DeletedPdfTemplate;
-  if (demo(viewer)) {
+  if (import.meta.env.DEV && viewer.isDemo) {
     deleted = await demoDeletePdfTemplate(companyId, templateId, expectedRevision);
   } else {
     const { data, error } = await client().rpc("delete_pdf_template", {
