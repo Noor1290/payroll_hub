@@ -72,49 +72,47 @@ For each branch, finish with: tests passing, the encoding check, the text check,
 
 After each fix: compare two or three fake employees against a hand calculation (screen, Excel export, PDF-fill JSON), merge one branch at a time, test in the hub.
 
-## 3. Cloud storage for PDF layouts and payroll column setups
+## 3. Moving PDF templates and payroll data from the browser into Supabase
 
-Idea: store PDF field layouts (and later payroll column setups) in Supabase so boxes never have to be redrawn for the same form. The apps stay frontend-only and never talk to Supabase; saving and loading goes through the dashboard and the bridge. Opened standalone, the apps behave exactly as today (existing Export/Import Column Setup stays as the fallback and manual backup).
+Replaced on 12 Oct 2026. The earlier version of this section (PDF layouts first without the files, explicit "Save to cloud" / "Load from cloud" buttons, draft and publish for column setups) no longer applies. The full plan, with the measurements, table sketches, import steps and tests, is `docs/MIGRATION_PLAN.md`.
 
-Decisions made:
-- Start with PDF templates, layout only (no PDF files in Storage yet). Then payroll column setups.
-- Explicit "Save to cloud" / "Load from cloud" buttons first. No automatic sync yet.
-- PDF layouts: same person saving again overwrites their current version; a different person's save creates a new version and the earlier one is kept. Group consecutive saves by the same person within 30 minutes in the history display. Keep a "restore previous version" action.
-- Payroll column setups (calculation rules): draft and publish. Draft edited freely. Publishing creates an immutable version with who and when. Only published versions can be used for a payroll run, and each payroll run records which version it used. Never overwrite a published version.
-- Both: store every save behind the scenes, show the history tidily, and refuse a save if someone else changed the item since you opened it (version check, no silent overwrite).
-- Store a fingerprint of the blank PDF (hash and page count) so a revised government form is detected instead of silently misplacing boxes.
-- Open questions: per-company or shared templates (suggestion: per company plus "copy from another company"), how global columns fit the per-company model, how companies are linked between the apps and the hub (by BRN).
+Why: the payroll app and the PDF form filler keep everything in one browser's storage, with no backup and nothing shared between two people. Measured with fake data, payroll data is small (400 employees for 12 months is about a fifth of the storage); PDF files are what fill it (one 3.8 MB form uses all of it).
 
-Planning prompt for Claude Code in the `payroll-hub` repo (planning only):
+Still true: the apps stay frontend-only and never talk to Supabase; saving and loading goes through the dashboard and the bridge. Opened standalone, the apps behave exactly as today, from browser storage, and the manual exports stay as the fallback.
 
-```
-Usage note: at most 3 screenshots per step, prefer scripted checks, keep replies short.
+Decisions made (12 and 13 Oct 2026; nothing is left to confirm):
+- Order: PDF templates first, then the payroll column setup and companies, then payroll monthly data.
+- PDF files go in a private Supabase Storage bucket (5 MB per file), named by their content hash, not in a table. The hash and page count are the fingerprint that detects a revised government form.
+- Saving is automatic inside the dashboard. No Save or Load buttons for the database. The app always shows "Saved", "Saving" or "NOT saved".
+- Existing browser data is imported once, started by the user: backup file first, a preview that writes nothing, one item at a time, a check that what was stored equals the browser copy, and the browser copy kept as the fallback.
+- Global columns keep working as now: one shared setup, and a change reaches every company. The shared setup (identity fields and Global columns) is a record of its own that companies are attached to. Read: any member of an attached company. Change: only an admin of every attached company.
+- No draft and publish for column setups. Every save is a kept, numbered revision, and each month records the revisions it was saved with.
+- Payroll monthly data: admins only, behind the password gate, no prompt on each load. If the gate is locked, the save is refused, nothing is stored, and it is saved once the dashboard is unlocked. When the gate locks, the payroll app covers the month's table; what was typed stays in memory.
+- The password gate locks after 10 minutes of inactivity (1 to 30 in Settings), not 10 minutes after unlocking. It uses the same activity signal as the sign-out, including the `activity` message from the apps, so it never locks while someone is typing in any app.
+- After the import the browser copy is kept, untouched, as the fallback, labelled "This browser only. Not the dashboard's copy." Removing it is a later, separate action, only after a backup file exists.
+- Companies are linked by BRN, only where the user is an admin of the dashboard company. The import never creates a dashboard company and never overwrites its details: differences are shown. A manual "Link this company to..." covers a missing or mismatched BRN.
+- A PDF template belongs to the company selected in the dashboard, with "Copy to another company". Shared templates stay a later item.
+- Buttons the apps already have ("Save template", "Save" in company details) save to the database inside the dashboard. No new Save or Load buttons.
+- PDF templates: the values last typed and the People list are NOT moved in this migration; they stay in the browser.
+- Every write carries the revision the user last saw; a save over someone else's newer one is refused, never merged silently.
 
-Planning only, no code and no migrations yet. Read CLAUDE.md, docs/BRIEF.md, docs/INTEGRATION.md and the existing migrations, then reply with a plan and ALL your questions at once (lettered options).
+Found on 12 Oct 2026, to fix before the monthly-data phase at the latest: typing inside an app's frame does not count as activity for the dashboard's sign-out (src/lib/idle.ts listens on the dashboard's own window only). Tested in demo mode with the idle time at 1 minute: a click and a key every 3 seconds inside the frame, signed out after about 75 seconds. Planned fix: a new bridge message, `activity`, sent by bridge.js at most once every 30 seconds while the user works in the app, treated by the dashboard like its own activity. Addition to protocol version 1; the new bridge.js is then copied into the three apps.
 
-Goal: store PDF field layouts (phase A) and payroll column setups (phase B) in Supabase, saved and loaded through the dashboard and the bridge. The apps stay frontend-only, never talk to Supabase themselves, and keep working standalone with their existing manual export/import of setups as the fallback.
+Order of work (each step stops for review; each migration is run by hand before the code that needs it is deployed):
+- [ ] 0a. Full backup file (export and import) in pdf-form-filler and payroll_sys.
+- [ ] 0b. A storage interface in both apps, with no change in behaviour.
+- [ ] 0c. The `activity` bridge message, and the password gate locking after inactivity on the same signal.
+- [ ] 1. Migration 0012 (pdf_templates, pdf_template_history, bucket `pdf-forms`), data types `pdf-template` and `pdf-file`, then pdf-form-filler.
+- [ ] 2. Migration 0013 (payroll_shared_setups, payroll_company_setups, their history), data type `payroll-setup`, then payroll_sys.
+- [ ] 3. Migration 0014 (payroll_months), data type `payroll-month` behind the gate, then payroll_sys.
 
-Phase A: PDF templates (layout only)
-- Table(s) for templates: per company, a JSON column for the field definitions (positions, sizes, names, types, mapping to payroll fields), plus a fingerprint of the blank PDF (hash and page count) so opening a PDF finds its saved layout and a revised form is detected instead of silently misplacing boxes. Do not store the PDF file itself for now.
-- Versioning rule: the same person saving again overwrites their current version; a different person's save creates a new version and the earlier one is kept. Every save is also recorded behind the scenes. The history list groups consecutive saves by the same person within 30 minutes into one entry. A "restore previous version" action exists.
-- Conflict check: every write carries the version the user last saw; if someone else changed it since, refuse with a clear message instead of overwriting.
+Later, not part of this migration:
+- [ ] pdf-form-filler: an option to clear the People list after a download.
+- [ ] Move the values last typed and the People list out of browser storage altogether.
+- [ ] One shared PDF template for several companies, with company details kept apart.
+- [ ] Remove the browser copy after an import.
 
-Phase B: payroll column setups (do NOT build yet; design so phase A doesn't block it)
-- Draft and publish: a draft is edited freely; "Publish" creates an immutable version with who and when. Only published versions can be used for a payroll run; a published version is never changed or deleted.
-- Each saved payroll run records the version (or hash) of the column setup it used.
-- Global columns have no equivalent in the per-company model: propose options and ask me.
-- Companies in the payroll app are linked to hub companies by BRN.
-
-Security and rules
-- RLS like the other tables: members read, only admins write; grants to authenticated only; no direct DDL from the browser; migrations written for me to review and run by hand, numbered after the existing ones.
-- New bridge message types (for example save-template, load-template, list-templates), validated with Zod on both sides, same source and exact-origin checks, no "*", size limits (a layout JSON must have a maximum size), an unknown-version reply, and requests answered or refused within the bridge timeout. Update bridge.js and INTEGRATION.md (protocol version bump only if needed; explain).
-- Writes through the bridge need a signed-in dashboard user who is admin of the selected company; reads need membership. Decide whether saving should require the password gate and tell me why.
-- Nothing from layouts or setups is stored in browser storage by the dashboard beyond what the existing rules allow.
-
-Questions I expect you to ask me: per-company or shared templates, how the dashboard UI looks (a Templates page, plus Save to cloud / Load from cloud buttons inside the apps), what happens when a layout's fingerprint doesn't match, delete behaviour, size limits.
-
-Also propose: the order of work, how to test it (including a test that a stale write is refused and that saving twice as the same user doesn't create a version), and what changes are needed in pdf-form-filler (a separate task in that repo, to be done after the dashboard side works with a mock app).
-```
+This also settles the open question in section 7 (Automator) about where the blank PDF lives: in the bucket.
 
 ## 4. Statutory rates with effective dates (CSG, NSF, ceilings, thresholds)
 
@@ -133,7 +131,7 @@ Plan (updated 6 Oct 2026): a SHARED `statutory_rates` table now exists as a desi
 - [ ] Same-origin risk: the dashboard and the apps share https://noor1290.github.io, so an embedded app can reach the dashboard's page and in-memory data. Acceptable while it is a personal tool on fake data. Before real employee data or other users: move the dashboard to its own origin (custom domain or a second GitHub account/org). The origin is one constant in the dashboard and one line in bridge.js; follow the README section "Moving the dashboard to its own origin".
 - [ ] Payslip app: built in its own repo (see its CLAUDE.md). Hub side is docs/HUB_CHANGES.md, done in stages (items 1 and 2, then 3 to 7 with 9 and 10, then 8: all built; the last is on `feature/payslip-issue` with migration 0011 to run). The registry entry gets its URL and status "active" in item 2.
 - [ ] Sync the theme (light/dark) between the hub and the apps. Needs a new bridge message in all three projects.
-- [ ] Optional: store PDF files themselves in Supabase Storage (needs its own security rules; the free plan has limited space).
+- [ ] Store PDF files themselves in Supabase Storage: now part of section 3 (decided 12 Oct 2026). The free plan has limited space; check it before real forms go in.
 
 ## 6. Before real payroll data goes in
 
