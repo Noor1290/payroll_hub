@@ -101,7 +101,7 @@ Found on 12 Oct 2026, to fix before the monthly-data phase at the latest: typing
 Order of work (each step stops for review; each migration is run by hand before the code that needs it is deployed):
 - [ ] 0a. Full backup file (export and import) in pdf-form-filler and payroll_sys.
 - [ ] 0b. A storage interface in both apps, with no change in behaviour.
-- [ ] 0c. The `activity` bridge message, and the password gate locking after inactivity on the same signal.
+- [x] 0c. The `activity` bridge message, and the password gate locking after inactivity on the same signal. Dashboard side done 13 Oct 2026 (src/lib/activity.ts); the new bridge.js is copied into the three apps.
 - [ ] 1. Migration 0012 (pdf_templates, pdf_template_history, bucket `pdf-forms`), data types `pdf-template` and `pdf-file`, then pdf-form-filler.
 - [ ] 2. Migration 0013 (payroll_shared_setups, payroll_company_setups, their history), data type `payroll-setup`, then payroll_sys.
 - [ ] 3. Migration 0014 (payroll_months), data type `payroll-month` behind the gate, then payroll_sys.

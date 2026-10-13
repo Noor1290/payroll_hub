@@ -325,8 +325,8 @@ changed, what to test manually, and anything I need to do (env vars, Supabase se
 
 **Password gate (from docs/BACKLOG.md, agreed 2026-10-03)**
 - Gated: the Data explorer, and sending saved runs to apps (an app's `request-data` now; the Phase 5 wizard when its source is a saved run). Not gated: History, Overview totals, Import, data just received from the payroll app.
-- Unlock window: 10 minutes by default, 1 to 30 in Settings, FIXED from the moment of unlocking (activity does not extend it).
-- Locks on: the deadline, manual sign-out, idle sign-out, session expiry, the tab hidden for more than 2 minutes, and "Lock now". Locking is independent of the login session: the user stays signed in; the 15-minute idle sign-out is unchanged.
+- Unlock window: 10 minutes by default, 1 to 30 in Settings, counted from the LAST ACTIVITY (changed 13 Oct 2026; until then it was fixed from the moment of unlocking). Activity is the signal in src/lib/activity.ts, the one the idle sign-out uses: a click, a key, the wheel or a touch in the dashboard, and the `activity` bridge message from the app that is showing, so it never locks while someone is typing in an app.
+- Locks on: the deadline, manual sign-out, idle sign-out, session expiry, the tab hidden for more than 2 minutes, and "Lock now". Locking is independent of the login session: the user stays signed in; the 15-minute idle sign-out is separate, and since 13 Oct 2026 work inside an app's frame counts as activity for it too.
 - Locking drops the gated rows from memory (query keys in `GATED_QUERY_KEYS`); unlocking fetches them again. Unlock carries across pages within the window.
 - Password check: a separate throwaway Supabase client (`persistSession: false`, `autoRefreshToken: false`, in-memory storage, its own storage key), `signInWithPassword` with the current user's email, then `signOut({ scope: "local" })` on that client only. Never the default scope: it would end every session. The main client is never touched. The password is never stored, logged or kept.
 - No extra lockout beyond Supabase's own rate limiting. Demo mode accepts the word "demo" (dev only).

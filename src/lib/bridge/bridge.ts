@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { appOrigin, APPS, DASHBOARD_ID } from "@/config/apps.config";
+import { reportActivity } from "@/lib/activity";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { createStore } from "@/lib/store";
 import { isUnlocked } from "@/lib/unlock";
@@ -106,6 +107,9 @@ bridge.setHandlers({
   },
   onRequest: (appId, payload) =>
     (dataTypes.get(payload.dataType)?.request ?? handleDataRequest)(appId, payload),
+  // Working in an app is working in the dashboard: it holds off the idle sign-out and the
+  // password gate's lock exactly as a key pressed in the dashboard does.
+  onActivity: () => reportActivity(),
 });
 
 /**

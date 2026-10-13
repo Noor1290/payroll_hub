@@ -18,7 +18,16 @@ const SANDBOX =
 
 const ACTIVE_APPS = APPS.filter((app) => app.status === "active" && app.url);
 
-function AppPane({ app, health, shown }: { app: AppConfig; health: AppHealth; shown: boolean }) {
+interface AppPaneProps {
+  app: AppConfig;
+  health: AppHealth;
+  /** This app's pane is the one (or one of the two) laid out in the workspace. */
+  shown: boolean;
+  /** The user can actually see it: it is shown and the workspace itself is on screen. */
+  inView: boolean;
+}
+
+function AppPane({ app, health, shown, inView }: AppPaneProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const pane = useRef<HTMLDivElement>(null);
   const [dismissed, setDismissed] = useState<AppHealth | null>(null);
@@ -29,6 +38,12 @@ function AppPane({ app, health, shown }: { app: AppConfig; health: AppHealth; sh
     bridge.attachFrame(app.id, () => frame.current?.contentWindow ?? null);
     return () => bridge.detachFrame(app.id);
   }, [app.id]);
+
+  // Only the app the user can see may report that someone is working in it.
+  useEffect(() => {
+    bridge.setShown(app.id, inView);
+    return () => bridge.setShown(app.id, false);
+  }, [app.id, inView]);
 
   const reload = () => {
     const element = frame.current;
@@ -258,6 +273,7 @@ export function WorkspaceHost({ visible }: { visible: boolean }) {
                 app={app}
                 health={health[app.id] ?? "idle"}
                 shown={app.id === activeId || app.id === secondId}
+                inView={visible && (app.id === activeId || app.id === secondId)}
               />
             </ErrorBoundary>
           ))}

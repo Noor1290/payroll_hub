@@ -2,7 +2,7 @@ import { env } from "@/config/env";
 import { preferenceStorage } from "@/lib/storage";
 import { createStore } from "@/lib/store";
 
-/** How long gated areas stay open after the password is confirmed. */
+/** How long gated areas stay open without activity once the password is confirmed. */
 export const UNLOCK_MINUTES = { min: 1, max: 30, default: 10 } as const;
 
 const UNLOCK_MINUTES_KEY = "unlock-minutes";

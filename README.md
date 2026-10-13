@@ -144,9 +144,9 @@ Settings has a "Danger zone" for the selected company, shown only to its admins.
 
 ### The password gate
 
-The data explorer, the Database page, deleting a company, revealing or editing a sensitive company detail, and sending a saved run to an app ask you to **confirm your password** first. After that they stay open for 10 minutes (1 to 30, set in Settings), then lock again.
+The data explorer, the Database page, deleting a company, revealing or editing a sensitive company detail, and sending a saved run to an app ask you to **confirm your password** first. After that they stay open while you are working and lock again after 10 minutes without activity (1 to 30, set in Settings).
 
-- The window is fixed: it is counted from the moment you unlock and is not extended by activity.
+- The time is counted from the last thing you did: a click, a key, a scroll or a touch in the dashboard, or in the app that is showing in the workspace. So it does not lock while you are typing in an app.
 - It also locks when you sign out, when you are signed out for inactivity, when the session expires, and when the tab has been in the background for more than two minutes.
 - Locking removes the employee rows from memory; unlocking fetches them again. You stay signed in the whole time.
 - If an app asks for a saved run while the gate is locked, the dashboard asks you to unlock. If you don't, the app is told the dashboard is locked.

@@ -283,12 +283,12 @@ export function SettingsPage() {
         <Section icon={LockKeyhole} title="Security">
           <p className="text-sm text-muted">
             The data explorer, the Database page, and sending saved runs to apps ask for your
-            password first. After that they stay open for a fixed time and then lock again. They
-            also lock when you sign out and when this tab has been in the background for more than
-            two minutes.
+            password first. After that they stay open while you are working, in the dashboard or in
+            an app, and lock again after the time below without activity. They also lock when you
+            sign out and when this tab has been in the background for more than two minutes.
           </p>
           <NumberSetting
-            label="Keep sensitive areas unlocked for"
+            label="Lock sensitive areas after no activity for"
             unit="minutes"
             range={UNLOCK_MINUTES}
             store={unlockMinutes}

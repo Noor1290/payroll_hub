@@ -109,7 +109,7 @@ describe("Settings", () => {
 
   it("saves the three timings as you type, within their ranges", () => {
     renderSettings();
-    fireEvent.change(screen.getByLabelText("Keep sensitive areas unlocked for"), {
+    fireEvent.change(screen.getByLabelText("Lock sensitive areas after no activity for"), {
       target: { value: "20" },
     });
     fireEvent.change(screen.getByLabelText("Sign me out after no activity for"), {
@@ -122,7 +122,7 @@ describe("Settings", () => {
 
     // Out of range: not saved, flagged, and snapped back on leaving the field.
     const unlockField = screen.getByLabelText(
-      "Keep sensitive areas unlocked for",
+      "Lock sensitive areas after no activity for",
     ) as HTMLInputElement;
     fireEvent.change(unlockField, { target: { value: "99" } });
     expect(unlockMinutes.get()).toBe(20);

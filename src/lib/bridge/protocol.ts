@@ -13,6 +13,10 @@ import { z } from "zod";
  * a request, `result` and `code` on an acknowledgement, `brn` and `role` in `meta`, more
  * refusal codes, `index` on a refused save (which payslip of a month was at fault), and an
  * answer that may have no rows for the data types listed in DATA_RULES.
+ *
+ * Also additive: `activity`, which an app sends (at most every 30 seconds, with nothing in it)
+ * while its user is working in it. It has no reply. An app with an older bridge.js never
+ * sends it and keeps working.
  */
 
 const MAX_ROWS = 10_000;
@@ -206,7 +210,7 @@ export const responseDataPayloadSchema = z.discriminatedUnion("ok", [
 ]);
 export type ResponseDataPayload = z.infer<typeof responseDataPayloadSchema>;
 
-/** ready / ping / pong carry nothing the dashboard relies on. */
+/** ready / ping / pong / activity carry nothing the dashboard relies on. */
 const emptyPayloadSchema = z.looseObject({}).optional();
 
 const base = { from: partySchema, to: partySchema, version: z.number().int(), id: idSchema };
@@ -216,6 +220,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("ready"), payload: emptyPayloadSchema }),
   z.object({ ...base, type: z.literal("ping"), payload: emptyPayloadSchema }),
   z.object({ ...base, type: z.literal("pong"), payload: emptyPayloadSchema }),
+  z.object({ ...base, type: z.literal("activity"), payload: emptyPayloadSchema }),
   z.object({ ...base, type: z.literal("send-data"), payload: sendDataPayloadSchema }),
   z.object({ ...base, type: z.literal("received"), payload: receivedPayloadSchema }),
   z.object({ ...base, type: z.literal("request-data"), payload: requestDataPayloadSchema }),

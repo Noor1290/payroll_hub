@@ -58,6 +58,11 @@ export interface HubHandlers {
   onData?: (appId: string, payload: SendDataPayload) => ReceivedPayload | Promise<ReceivedPayload>;
   /** An app asked for data. Resolve with what to reply (after checking permissions). */
   onRequest?: (appId: string, payload: RequestDataPayload) => Promise<ResponseDataPayload>;
+  /**
+   * Someone is working in an app the user can see. Called at most once per `activityEveryMs`
+   * for each app, whatever the app sends. It says nothing about what was done.
+   */
+  onActivity?: (appId: string) => void;
 }
 
 export interface HubOptions {
@@ -76,6 +81,11 @@ export interface HubOptions {
    * Must stay under the 10 seconds bridge.js waits, so the app always hears from the dashboard.
    */
   saveAnswerMs?: number;
+  /**
+   * An app's `activity` messages count at most once in this time. bridge.js sends one at most
+   * every 30 seconds, so nothing real is lost; an app that floods is simply not listened to.
+   */
+  activityEveryMs?: number;
   newId?: () => string;
 }
 
@@ -94,6 +104,10 @@ interface AppState {
   readyTimer: ReturnType<typeof setTimeout> | null;
   /** Sends waiting for the app to become ready, by message id. */
   queue: Map<string, Envelope>;
+  /** The user can see this app's frame right now (set by whoever lays the frames out). */
+  shown: boolean;
+  /** When an `activity` message from this app last counted; null if none has. */
+  activityAt: number | null;
 }
 
 interface PendingSend {
@@ -144,6 +158,7 @@ export class BridgeHub {
   private readonly loadTimeoutMs: number;
   private readonly pingIntervalMs: number;
   private readonly saveAnswerMs: number;
+  private readonly activityEveryMs: number;
   private readonly newId: () => string;
 
   constructor(options: HubOptions) {
@@ -153,6 +168,7 @@ export class BridgeHub {
     this.loadTimeoutMs = options.loadTimeoutMs ?? 20_000;
     this.pingIntervalMs = options.pingIntervalMs ?? 15_000;
     this.saveAnswerMs = options.saveAnswerMs ?? 8_000;
+    this.activityEveryMs = options.activityEveryMs ?? 5_000;
     this.newId = options.newId ?? (() => crypto.randomUUID());
 
     for (const app of options.apps) {
@@ -167,6 +183,8 @@ export class BridgeHub {
         loadTimer: null,
         readyTimer: null,
         queue: new Map(),
+        shown: false,
+        activityAt: null,
       });
     }
     this.publish();
@@ -238,7 +256,18 @@ export class BridgeHub {
     this.resetConnection(state);
     state.frame = null;
     state.loaded = false;
+    state.shown = false;
+    state.activityAt = null;
     this.setHealth(state, "idle");
+  }
+
+  /**
+   * Say whether the user can see an app's frame right now. Only an app that is showing can
+   * report activity: a frame nobody can see has nobody working in it.
+   */
+  setShown(appId: string, shown: boolean): void {
+    const state = this.states.get(appId);
+    if (state) state.shown = shown;
   }
 
   /**
@@ -452,6 +481,19 @@ export class BridgeHub {
       case "ping":
         this.reply(state, { type: "pong", payload: {} }, message.id);
         return;
+
+      case "activity": {
+        // Counts like a key pressed in the dashboard itself, but only from a frame the user
+        // can see, in a tab the user can see. No reply.
+        if (!state.shown || document.visibilityState !== "visible") return;
+        const now = Date.now();
+        const since = state.activityAt === null ? null : now - state.activityAt;
+        // A clock that was set back must not leave the app unheard until it catches up.
+        if (since !== null && since >= 0 && since < this.activityEveryMs) return;
+        state.activityAt = now;
+        this.handlers.onActivity?.(state.app.id);
+        return;
+      }
 
       case "received": {
         const pending = this.pending.get(message.id);

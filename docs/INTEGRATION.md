@@ -388,12 +388,15 @@ Every message is an envelope:
 | --------------- | ---------------------------- | ------------------------------------------------------------------- | -------------------------------- |
 | `ready`         | app → dashboard              | `{}`                                                                | a `ping`                         |
 | `ping`          | either                       | `{}`                                                                | `pong`, same id                  |
+| `activity`      | app → dashboard              | `{}`                                                                | none                             |
 | `send-data`     | dashboard → app, or app → dashboard | `{ dataType, rows: [...], meta?: { period?: "YYYY-MM", label?, brn?, role? } }` | `received`, same id |
 | `received`      | reply to `send-data`         | `{ ok: true, result? }` or `{ ok: false, error, code?, index? }`    |                                  |
 | `request-data`  | app → dashboard              | `{ dataType, period?: "YYYY-MM", params? }`                         | `response-data`, same id         |
 | `response-data` | dashboard → app              | `{ ok: true, dataType, rows, meta }` or `{ ok: false, error, code? }` |                                |
 
 Still version 1. What the payslip app needed was added as optional parts, so an app written before them keeps working unchanged and `bridge.js` did not change: `params` on a request (an object of at most 2 KB, its shape checked per data type), `result` on an ok `received` from the dashboard, `code` on a refused `received`, `brn` and `role` in `meta`, `index` on a refused `received` (the position, from 0, of the payslip at fault in a refused month), more refusal codes, and an answer with no rows for `statutory-rates`, `payslip-template` and `payslip-issue` (`payroll-result` always has at least one).
+
+`activity` (added 13 Oct 2026, also still version 1) is sent by `bridge.js` itself; an app has nothing to do for it. While the user clicks, types, scrolls or touches inside the app, `bridge.js` says so at most once every 30 seconds, at once if it has not said so lately and otherwise when its turn comes. The message has nothing in it: it says that something was done, never what. The dashboard treats it exactly like a key pressed in the dashboard itself, so neither its sign-out for inactivity nor its password gate happens in the middle of work in an app. It counts only from the app that is showing, in a visible tab, and at most once every 5 seconds per app whatever is sent. There is no reply. An app that still carries the older `bridge.js` keeps working and simply does not send it; its user can then be signed out while working in it, as before. A dashboard that does not know the message yet ignores it, so deploy the dashboard first and copy the new `bridge.js` into the apps after.
 
 Limits per data type, checked by the dashboard before anything else:
 
@@ -414,6 +417,7 @@ Rules both sides follow:
 - The dashboard answers an app's save within 8 seconds, inside the 10 seconds `bridge.js` waits: with the outcome, or with `"unavailable"` when it has none yet. It never answers the same save twice. After `"unavailable"` or no answer, an app reloads and compares the revision before it saves again (the payslip section has the rule in full).
 - An app may only send a data type listed in its registry entry's `produces`, and only receive or request one listed in `accepts`.
 - The dashboard pings every 15 seconds while its tab is visible. Two missed pings show the app as "Not responding".
+- Pings are not activity. Only `activity`, which follows something the user did, holds off the sign-out and the password gate.
 
 ## Moving the dashboard to another origin later
 

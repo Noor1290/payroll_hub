@@ -476,3 +476,119 @@ describe("data from apps", () => {
     expect(frame.sent("response-data")[0]!.payload).toMatchObject({ ok: false });
   });
 });
+
+describe("activity inside an app", () => {
+  const activity = (appId: string, n: number) =>
+    from(appId, "activity", `activity-${String(n).padStart(4, "0")}`);
+
+  function watch() {
+    const onActivity = vi.fn();
+    hub.setHandlers({ onActivity });
+    return onActivity;
+  }
+
+  it("is passed on from the app that is showing, and gets no reply", () => {
+    const frame = connect("payroll");
+    hub.setShown("payroll", true);
+    const onActivity = watch();
+    const before = frame.sent().length;
+
+    deliver(frame.win, activity("payroll", 1));
+
+    expect(onActivity).toHaveBeenCalledTimes(1);
+    expect(onActivity).toHaveBeenCalledWith("payroll");
+    expect(frame.sent()).toHaveLength(before);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("counts 100 messages in one second once", () => {
+    const frame = connect("payroll");
+    hub.setShown("payroll", true);
+    const onActivity = watch();
+
+    for (let n = 0; n < 100; n++) {
+      deliver(frame.win, activity("payroll", n));
+      vi.advanceTimersByTime(10);
+    }
+    expect(onActivity).toHaveBeenCalledTimes(1);
+
+    // bridge.js sends one every 30 seconds at most: each of those counts.
+    vi.advanceTimersByTime(30_000);
+    deliver(frame.win, activity("payroll", 100));
+    vi.advanceTimersByTime(30_000);
+    deliver(frame.win, activity("payroll", 101));
+    expect(onActivity).toHaveBeenCalledTimes(3);
+  });
+
+  it("is ignored from an app whose frame is not showing", () => {
+    const frame = connect("payroll");
+    const onActivity = watch();
+
+    deliver(frame.win, activity("payroll", 1));
+    expect(onActivity).not.toHaveBeenCalled();
+
+    hub.setShown("payroll", true);
+    hub.setShown("payroll", false);
+    deliver(frame.win, activity("payroll", 2));
+    expect(onActivity).not.toHaveBeenCalled();
+  });
+
+  it("is ignored while the dashboard's tab is hidden", () => {
+    const frame = connect("payroll");
+    hub.setShown("payroll", true);
+    const onActivity = watch();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+    deliver(frame.win, activity("payroll", 1));
+    expect(onActivity).not.toHaveBeenCalled();
+
+    // Ignored, not postponed: it took none of the next message's turn.
+    visibility.mockReturnValue("visible");
+    deliver(frame.win, activity("payroll", 2));
+    expect(onActivity).toHaveBeenCalledTimes(1);
+    visibility.mockRestore();
+  });
+
+  it("stops counting when the frame is taken away, until it is shown again", () => {
+    const frame = connect("payroll");
+    hub.setShown("payroll", true);
+    const onActivity = watch();
+
+    hub.detachFrame("payroll");
+    hub.attachFrame("payroll", () => frame.win);
+    deliver(frame.win, activity("payroll", 1));
+
+    expect(onActivity).not.toHaveBeenCalled();
+  });
+
+  it("is still held to the trust rules: the app's own window, origin, version and name", () => {
+    const frame = connect("payroll");
+    const other = connect("pdf-editor");
+    hub.setShown("payroll", true);
+    const onActivity = watch();
+
+    deliver(makeFrame().win, activity("payroll", 1));
+    deliver(frame.win, activity("payroll", 2), "https://evil.example");
+    deliver(frame.win, { ...activity("payroll", 3), version: 2 });
+    // pdf-editor is not showing, and may not speak as payroll either.
+    deliver(other.win, activity("payroll", 4));
+    deliver(other.win, activity("pdf-editor", 5));
+
+    expect(onActivity).not.toHaveBeenCalled();
+  });
+});
+
+describe("activity inside an app, with a clock that is set back", () => {
+  it("still hears the app: an hour's step back does not silence it for an hour", () => {
+    const frame = connect("payroll");
+    hub.setShown("payroll", true);
+    const onActivity = vi.fn();
+    hub.setHandlers({ onActivity });
+
+    deliver(frame.win, from("payroll", "activity", "activity-0001"));
+    vi.setSystemTime(Date.now() - 60 * 60_000);
+    deliver(frame.win, from("payroll", "activity", "activity-0002"));
+
+    expect(onActivity).toHaveBeenCalledTimes(2);
+  });
+});

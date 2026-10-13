@@ -1,4 +1,4 @@
-const ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+import { onActivity } from "@/lib/activity";
 
 export interface IdleWatcherOptions {
   timeoutMs: number;
@@ -9,6 +9,8 @@ export interface IdleWatcherOptions {
 
 /**
  * Calls `onIdle` once after `timeoutMs` without user activity. Returns a stop function.
+ * What counts as activity is decided in src/lib/activity.ts: the dashboard's own window, and
+ * the app that is showing.
  *
  * Compares timestamps instead of trusting one long timer, because browsers throttle timers
  * in background tabs; the check also runs the moment the tab becomes visible again.
@@ -38,18 +40,14 @@ export function startIdleWatcher({
   };
 
   const interval = setInterval(check, Math.min(15_000, Math.max(1_000, timeoutMs / 4)));
-  for (const event of ACTIVITY_EVENTS) {
-    window.addEventListener(event, markActive, { passive: true, capture: true });
-  }
+  const stopListening = onActivity(markActive);
   document.addEventListener("visibilitychange", onVisibility);
 
   function stop() {
     if (stopped) return;
     stopped = true;
     clearInterval(interval);
-    for (const event of ACTIVITY_EVENTS) {
-      window.removeEventListener(event, markActive, { capture: true });
-    }
+    stopListening();
     document.removeEventListener("visibilitychange", onVisibility);
   }
 

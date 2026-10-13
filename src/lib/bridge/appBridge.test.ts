@@ -30,9 +30,11 @@ interface Bridge {
 function load({ embedded }: { embedded: boolean }) {
   const parent = { postMessage: vi.fn() };
   let listener: ((event: unknown) => void) | undefined;
+  const others = new Map<string, (event: unknown) => void>();
   const fake: Record<string, unknown> = {
     addEventListener: (type: string, fn: (event: unknown) => void) => {
       if (type === "message") listener = fn;
+      else others.set(type, fn);
     },
     crypto: { randomUUID: () => crypto.randomUUID() },
   };
@@ -62,7 +64,10 @@ function load({ embedded }: { embedded: boolean }) {
     posted,
     receive,
     fromHub,
-    hasListener: () => listener !== undefined,
+    hasListener: () => listener !== undefined || others.size > 0,
+    /** The user does something in the app: "keydown", "pointerdown", "wheel" or "touchstart". */
+    act: (type: string) => others.get(type)?.({ type }),
+    listensFor: () => [...others.keys()].sort(),
   };
 }
 
@@ -218,5 +223,76 @@ describe("bridge.js embedded", () => {
     vi.advanceTimersByTime(60_000);
     receive(fromHub("response-data", message.id, { ok: true, ...DATA }));
     await expect(reply).resolves.toMatchObject({ ok: true, rows: DATA.rows });
+  });
+});
+
+describe("bridge.js activity", () => {
+  it("tells the dashboard when the user clicks, types, scrolls or touches, with nothing in it", () => {
+    const { bridge, parent, posted, act, listensFor } = load({ embedded: true });
+    bridge.init({ appId: "payroll" });
+    expect(listensFor()).toEqual(["keydown", "pointerdown", "touchstart", "wheel"]);
+    expect(posted("activity")).toHaveLength(0);
+
+    act("keydown");
+
+    expect(posted("activity")).toHaveLength(1);
+    expect(posted("activity")[0]).toMatchObject({
+      from: "payroll",
+      to: "dashboard",
+      version: 1,
+      payload: {},
+    });
+    expect(posted("activity")[0]!.id).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+    // The exact dashboard origin, like every other message.
+    expect(parent.postMessage.mock.calls.at(-1)![1]).toBe(HUB);
+  });
+
+  it("sends at most one every 30 seconds, however much is typed", () => {
+    const { bridge, parent, posted, act } = load({ embedded: true });
+    bridge.init({ appId: "payroll" });
+    const sentAt: number[] = [];
+    parent.postMessage.mockImplementation((message: Posted) => {
+      if (message.type === "activity") sentAt.push(Date.now());
+    });
+
+    // Ten minutes of a key and a click every 3 seconds.
+    const start = Date.now();
+    for (let second = 0; second < 600; second += 3) {
+      act("keydown");
+      act("pointerdown");
+      vi.advanceTimersByTime(3_000);
+    }
+
+    // One at once, then one each 30 seconds: 0, 30, 60 ... 600.
+    expect(sentAt.map((time) => (time - start) / 1_000)).toEqual(
+      Array.from({ length: 21 }, (_, n) => n * 30),
+    );
+    expect(posted("activity")).toHaveLength(21);
+  });
+
+  it("reports the last thing done, when its turn comes, and then goes quiet", () => {
+    const { bridge, posted, act } = load({ embedded: true });
+    bridge.init({ appId: "payroll" });
+
+    act("keydown"); // sent at once
+    vi.advanceTimersByTime(29_000);
+    act("wheel"); // too soon: waits for its turn
+    expect(posted("activity")).toHaveLength(1);
+
+    vi.advanceTimersByTime(1_000);
+    expect(posted("activity")).toHaveLength(2);
+
+    // Nobody is working any more: nothing further is sent.
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(posted("activity")).toHaveLength(2);
+  });
+
+  it("sends nothing when the app runs on its own", () => {
+    const { bridge, parent, act, listensFor } = load({ embedded: false });
+    bridge.init({ appId: "payroll" });
+    act("keydown");
+    vi.advanceTimersByTime(60_000);
+    expect(listensFor()).toEqual([]);
+    expect(parent.postMessage).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reportActivity } from "./activity";
 import { clampUnlockMinutes, setUnlockMinutes, UNLOCK_MINUTES, unlockMinutes } from "./preferences";
 import { queryClient } from "./queryClient";
 import { runSessionCleanup } from "./sessionCleanup";
@@ -38,7 +39,7 @@ describe("defaults", () => {
     expect(unlockState.get()).toMatchObject({ unlocked: false, expiresAt: null });
   });
 
-  it("unlocks for 10 minutes by default, adjustable from 1 to 30", () => {
+  it("locks after 10 minutes without activity by default, adjustable from 1 to 30", () => {
     expect(UNLOCK_MINUTES).toEqual({ min: 1, max: 30, default: 10 });
     expect(unlockMinutes.get()).toBe(10);
     expect(clampUnlockMinutes(undefined)).toBe(10);
@@ -58,7 +59,7 @@ describe("defaults", () => {
 });
 
 describe("locking after the timeout", () => {
-  it("stays open until the deadline, then locks", () => {
+  it("with no activity at all, stays open until the deadline, then locks", () => {
     grantUnlock(10);
     expect(unlockState.get().expiresAt).toBe(Date.now() + 10 * MINUTE);
 
@@ -70,16 +71,55 @@ describe("locking after the timeout", () => {
     expect(unlockState.get()).toEqual({ unlocked: false, expiresAt: null, lockedBy: "timeout" });
   });
 
-  it("is a fixed window: activity does not extend it", () => {
+  it("counts from the last activity, not from unlocking: it stays open while there is activity", () => {
     grantUnlock(10);
-    for (let minute = 0; minute < 9; minute++) {
+    // 25 minutes of work, well past 10 minutes after unlocking.
+    for (let minute = 0; minute < 25; minute++) {
       vi.advanceTimersByTime(MINUTE);
       window.dispatchEvent(new Event("pointerdown"));
       window.dispatchEvent(new Event("keydown"));
     }
     expect(isUnlocked()).toBe(true);
+    expect(unlockState.get().expiresAt).toBe(Date.now() + 10 * MINUTE);
+
+    // Then nothing: it locks 10 minutes after the last thing done.
+    vi.advanceTimersByTime(10 * MINUTE - 1_000);
+    expect(isUnlocked()).toBe(true);
+    vi.advanceTimersByTime(1_000);
+    expect(isUnlocked()).toBe(false);
+    expect(unlockState.get()).toEqual({ unlocked: false, expiresAt: null, lockedBy: "timeout" });
+  });
+
+  it("counts activity reported by an app the same way as activity in the dashboard", () => {
+    grantUnlock(10);
+    vi.advanceTimersByTime(9 * MINUTE);
+    reportActivity();
+    vi.advanceTimersByTime(9 * MINUTE);
+    expect(isUnlocked()).toBe(true);
     vi.advanceTimersByTime(MINUTE);
     expect(isUnlocked()).toBe(false);
+  });
+
+  it("is not reopened by activity that comes after the deadline", () => {
+    grantUnlock(10);
+    vi.setSystemTime(Date.now() + 11 * MINUTE); // time passes, no timers run
+    window.dispatchEvent(new Event("keydown"));
+    expect(unlockState.get()).toEqual({ unlocked: false, expiresAt: null, lockedBy: "timeout" });
+
+    // And nothing done later opens it either: only the password does.
+    window.dispatchEvent(new Event("keydown"));
+    reportActivity();
+    expect(isUnlocked()).toBe(false);
+  });
+
+  it("does not tell its screens about every key: the deadline moves once a second at most", () => {
+    grantUnlock(10);
+    vi.advanceTimersByTime(MINUTE);
+    const changed = vi.fn();
+    const stop = unlockState.subscribe(changed);
+    for (let key = 0; key < 50; key++) window.dispatchEvent(new Event("keydown"));
+    stop();
+    expect(changed).toHaveBeenCalledTimes(1);
   });
 
   it("locks by the clock even if the timer itself never fired (sleeping laptop)", () => {
@@ -112,6 +152,18 @@ describe("locking when the tab is hidden", () => {
     setVisibility("hidden");
     vi.setSystemTime(Date.now() + 3 * MINUTE);
     setVisibility("visible");
+    expect(unlockState.get()).toMatchObject({ unlocked: false, lockedBy: "hidden" });
+  });
+
+  it("locks after two minutes in the background whatever activity is reported meanwhile", () => {
+    grantUnlock(10);
+    setVisibility("hidden");
+    for (let second = 0; second < 120; second += 10) {
+      vi.advanceTimersByTime(10_000);
+      reportActivity();
+    }
+    expect(isUnlocked()).toBe(true);
+    vi.advanceTimersByTime(2_000);
     expect(unlockState.get()).toMatchObject({ unlocked: false, lockedBy: "hidden" });
   });
 

@@ -23,7 +23,7 @@ export async function attemptUnlock(
 
 export interface Unlock {
   unlocked: boolean;
-  /** Epoch milliseconds when it locks again; null while locked. */
+  /** Epoch milliseconds when it locks if nothing more is done; null while locked. */
   expiresAt: number | null;
   /** Why it locked last; null if it has not been unlocked yet. */
   lockedBy: LockReason | null;
@@ -34,8 +34,8 @@ export interface Unlock {
 
 /**
  * The password gate, for any screen or action that should ask for the password first.
- * All users of this hook share one gate: unlocking in one place unlocks them all, for the
- * same fixed window. Use <PasswordGate> to protect a whole screen.
+ * All users of this hook share one gate: unlocking in one place unlocks them all, until the
+ * same time without activity has passed. Use <PasswordGate> to protect a whole screen.
  */
 export function useUnlock(): Unlock {
   const state = useStore(unlockState);

@@ -57,7 +57,7 @@ Per-employee data, so none of the above exemptions apply: admins only, behind th
 
 ## Password gate
 
-Screens and actions that expose saved per-employee data sit behind `<PasswordGate>` / `useUnlock()` (src/features/unlock, state in src/lib/unlock.ts). Memory only, 10 minutes fixed (1 to 30 in Settings), independent of the login session. It is a convenience layer; RLS is the enforcement. New gated data: add its query key to `GATED_QUERY_KEYS` so locking wipes it.
+Screens and actions that expose saved per-employee data sit behind `<PasswordGate>` / `useUnlock()` (src/features/unlock, state in src/lib/unlock.ts). Memory only, locks after 10 minutes without activity (1 to 30 in Settings), independent of the login session. Activity is one signal, src/lib/activity.ts, shared with the idle sign-out: the dashboard's own window, and the `activity` bridge message from the app that is showing (never listen inside the apps' frames). It is a convenience layer; RLS is the enforcement. New gated data: add its query key to `GATED_QUERY_KEYS` so locking wipes it.
 
 ## Company profile and Links
 

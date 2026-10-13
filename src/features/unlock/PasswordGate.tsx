@@ -13,7 +13,7 @@ import { useUnlock } from "./useUnlock";
 const minutesText = (minutes: number) => (minutes === 1 ? "1 minute" : `${minutes} minutes`);
 
 const LOCKED_BECAUSE: Partial<Record<LockReason, string>> = {
-  timeout: "It locked again because the time was up.",
+  timeout: "It locked again because nothing was done for a while.",
   hidden: "It locked again because this tab was in the background for more than two minutes.",
   manual: "You locked it.",
 };
@@ -134,8 +134,8 @@ export function PasswordGate({ what, children }: PasswordGateProps) {
         Confirm your password to continue
       </h2>
       <p className="mt-2 text-sm text-muted">
-        {what} shows national IDs and salary figures. It stays open for {minutesText(minutes)}, then
-        locks again. You stay signed in either way.
+        {what} shows national IDs and salary figures. It locks again after {minutesText(minutes)}{" "}
+        without activity. You stay signed in either way.
       </p>
       {lockedBy && LOCKED_BECAUSE[lockedBy] && (
         <p role="status" className="mt-2 text-sm text-subtle">
@@ -151,7 +151,10 @@ export function PasswordGate({ what, children }: PasswordGateProps) {
 
 const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-/** Small "unlocked until 14:32" note with a Lock now button. Renders nothing while locked. */
+/**
+ * Small "unlocked until 14:32" note with a Lock now button. The time is when it locks if
+ * nothing more is done, so it moves forward while the user works. Renders nothing while locked.
+ */
 export function UnlockStatus() {
   const { unlocked, expiresAt, lock } = useUnlock();
   if (!unlocked || expiresAt === null) return null;

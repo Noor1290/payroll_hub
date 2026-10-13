@@ -9,6 +9,10 @@
  *
  *   PayrollHubBridge.init({ appId: "pdf-editor", onData: function (payload) { ... } });
  *   PayrollHubBridge.sendToDashboard("send-data", { dataType: "payroll-result", rows: rows });
+ *
+ * While the user works in the app it also tells the dashboard so ("activity", at most once
+ * every 30 seconds, with nothing in it), which keeps the dashboard from signing them out or
+ * locking for inactivity. The app has nothing to do for that.
  */
 (function (global) {
   "use strict";
@@ -23,6 +27,8 @@
   var REQUEST_TIMEOUT_MS = 120000; // the dashboard asks its user before answering a request
   var REMEMBERED_IDS = 200;
   var ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+  var ACTIVITY_EVERY_MS = 30000; // "activity" is sent at most this often
+  var ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
 
   var embedded;
   try {
@@ -38,6 +44,8 @@
   var handled = {}; // message id -> acknowledgement already sent, or "pending"
   var handledOrder = [];
   var waiting = {}; // message id -> { resolve, timer } for replies we are waiting on
+  var activitySentAt = null; // when "activity" was last sent
+  var activityTimer = null; // set while one is waiting for its turn
 
   function newId() {
     if (global.crypto && typeof global.crypto.randomUUID === "function") {
@@ -147,6 +155,24 @@
     entry.resolve(value);
   }
 
+  function sendActivity() {
+    activityTimer = null;
+    activitySentAt = Date.now();
+    post("activity", {});
+  }
+
+  // The user clicked, typed or scrolled in this app. A browser does not pass that on to the
+  // page around a frame, so the dashboard is told, or it would sign its user out (and lock)
+  // for "doing nothing" in the middle of their work. The message says only that something
+  // was done, never what, and goes out at most once every ACTIVITY_EVERY_MS: at once if
+  // none was sent lately, otherwise when its turn comes.
+  function onActivity() {
+    if (activityTimer !== null) return;
+    var wait = activitySentAt === null ? 0 : activitySentAt + ACTIVITY_EVERY_MS - Date.now();
+    if (wait <= 0) sendActivity();
+    else activityTimer = setTimeout(sendActivity, Math.min(wait, ACTIVITY_EVERY_MS));
+  }
+
   function onMessage(event) {
     // Only the window that embeds us, and only from the exact dashboard origin.
     if (event.source !== global.parent) return;
@@ -212,6 +238,9 @@
       if (!embedded) return false;
       if (!listening) {
         global.addEventListener("message", onMessage);
+        for (var i = 0; i < ACTIVITY_EVENTS.length; i++) {
+          global.addEventListener(ACTIVITY_EVENTS[i], onActivity, { capture: true, passive: true });
+        }
         listening = true;
       }
       post("ready", {});

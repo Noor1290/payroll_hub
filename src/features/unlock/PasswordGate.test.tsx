@@ -52,7 +52,7 @@ describe("<PasswordGate>", () => {
   it("asks for the password and shows nothing behind it while locked", () => {
     renderGate();
     expect(screen.getByText("Confirm your password to continue")).toBeTruthy();
-    expect(screen.getByText(/stays open for 10 minutes/)).toBeTruthy();
+    expect(screen.getByText(/locks again after 10 minutes without activity/)).toBeTruthy();
     expect(screen.queryByText(SECRET)).toBeNull();
   });
 
@@ -143,7 +143,7 @@ describe("<PasswordGate>", () => {
 
     expect(screen.queryByText(SECRET)).toBeNull();
     expect(screen.getByText("Confirm your password to continue")).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toMatch(/time was up/);
+    expect(screen.getByRole("status").textContent).toMatch(/nothing was done for a while/);
   });
 
   it("hides the content on sign-out", () => {
