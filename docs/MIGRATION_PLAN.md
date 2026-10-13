@@ -505,6 +505,36 @@ Committed on each folder's own branch, not pushed. No migration file: Phase 0 ch
 
 **Found on the way, not fixed** (each in its folder's `docs/KNOWN_ISSUES.md`): the dashboard's whole test run times out on a busy machine, also on the code before Phase 0 (`npm test -- --maxWorkers=4` passes); in the PDF form filler, a reload in the same instant as a key can store a listed person without that key.
 
+### 5.12 Phase 1 as built (13 October 2026), before the migration is run
+
+On the branch `migration-phase-1` in `payroll_hub` and `PDF Editor`; not merged, not deployed. The live project was not contacted: everything below ran in the in-memory Postgres, the demo store and a stand-in dashboard. The test against the real database comes after migration 0012 is run.
+
+**Database: `supabase/migrations/0012_pdf_templates.sql`.** As sketched in 5.2, with these differences:
+- The app chooses a template's id, for a new template too, so a save that is sent twice cannot make two templates.
+- The history table also keeps each revision's file (hash, name, size, pages), so restoring a revision restores the form it was drawn on.
+- One more function, `delete_pdf_template`: the tool already has "Delete", and the sketch had no way to carry it out. It answers whether the file is still used, and the dashboard removes an unused file from the bucket.
+- At most 50 templates per company, as for payslip templates.
+- `delete_company` is replaced to delete the two new tables too. The files are removed by the dashboard, through Storage, before it calls the function.
+- It only adds. A test reads the file and fails if it drops, alters or truncates anything that existed before.
+
+**Dashboard.** Data types `pdf-template` (`list`, `load`, `history`, `companies`; saves `save`, `restore`, `copy-to-company`, `delete`) and `pdf-file` (`exists`, `download`; save `upload`). No dialog and no gate. A file is checked before it is stored: base64, 5 MB, starts as a PDF, SHA-256 as stated. The wire contract is in `docs/INTEGRATION.md`.
+
+**PDF form filler.** Inside the dashboard the templates of the selected company are loaded from it, with their PDFs; a change is saved a moment after it is made, one save at a time per template; a bar says "Saved", "Saving..." or "NOT saved" with the reason. "Copy to another company" and "Import to the dashboard" are on the template list. Opened on its own, or inside a dashboard that does not keep templates yet, it uses the browser exactly as before.
+
+**Decided while building, to confirm:**
+- Inside the dashboard, the values last typed and the People list are kept in the browser under their own key (`pdf-editor:dashboard-values`), by dashboard template id, so the browser's own copy of the templates stays untouched (D4). The import copies them there once. The backup file includes that key and the note of what was imported.
+- The import offers each browser template once, for the company selected at that moment. A template that is already in the dashboard under the same name is left alone unless "replace it with this browser's" is chosen.
+- Someone who is not an admin can open and fill in; a change they make is refused and shown as NOT saved.
+
+**Not built in this phase** (each was in the plan or its tests):
+- A screen for a template's history and "Restore". The database and the dashboard keep and restore revisions; the tool has no button for it yet.
+- The Database page's read-only tabs for the two new tables.
+- The mock app in demo mode for these data types (the tool's own tests use a stand-in dashboard instead).
+- Opening the browser's copy read-only when the dashboard cannot be reached. The tool says so, offers "Try again", and points to opening it on its own.
+- "Download what is on screen" for a tab that has to be closed while offline.
+- Dropping the PDF text from the browser's copy after an import (plan 5.6, step 6). The browser's copy is left exactly as it is.
+- Grouping one person's saves within 30 minutes in a history list (there is no list yet).
+
 ## 6. Risks and things to check first
 
 - **The Supabase plan.** `FUTURE_WORK.md` already notes that the free plan pauses a project after a week without use and has no daily backups. File storage on it is limited too (1 GB when I last knew; please check the current figure). A paused project means every save answers `unavailable`. Real data belongs in the separate production project described in `FUTURE_WORK.md` section 6.

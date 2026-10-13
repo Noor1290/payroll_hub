@@ -102,7 +102,7 @@ Order of work (each step stops for review; each migration is run by hand before 
 - [x] 0a. Full backup file (export and import) in pdf-form-filler and payroll_sys. Done 13 Oct 2026: "Back up" and "Restore" in each app.
 - [x] 0b. A storage interface in both apps, with no change in behaviour. Done 13 Oct 2026.
 - [x] 0c. The `activity` bridge message, and the password gate locking after inactivity on the same signal. Done 13 Oct 2026 (src/lib/activity.ts); the new bridge.js is in the three apps. Deploy the dashboard before the apps.
-- [ ] 1. Migration 0012 (pdf_templates, pdf_template_history, bucket `pdf-forms`), data types `pdf-template` and `pdf-file`, then pdf-form-filler.
+- [ ] 1. Migration 0012 (pdf_templates, pdf_template_history, bucket `pdf-forms`), data types `pdf-template` and `pdf-file`, then pdf-form-filler. Built 13 Oct 2026 on `migration-phase-1` in both repos (see MIGRATION_PLAN.md 5.12). Still to do: run 0012 by hand, test against the real database, merge, deploy; and the items listed there as not built.
 - [ ] 2. Migration 0013 (payroll_shared_setups, payroll_company_setups, their history), data type `payroll-setup`, then payroll_sys.
 - [ ] 3. Migration 0014 (payroll_months), data type `payroll-month` behind the gate, then payroll_sys.
 
