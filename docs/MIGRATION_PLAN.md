@@ -546,6 +546,16 @@ The first run found one fault: the import refused a template that had been store
 
 Not tested against the real database: the copy to another company itself (it would have written to a company other than the test one; only the list of companies was opened), two people saving at once (an old revision was sent instead), someone who is not an admin, a PDF near 5 MB, and deleting a company that has PDF files.
 
+### 5.13 Phase 1 follow-ups (13 October 2026)
+
+On the branch `phase-1-followups` in `payroll_hub` and `PDF Editor`; not merged, not deployed. No migration: the history table and its read policy came with 0012.
+
+- **History and restore (PDF form filler).** "History" on each template lists its saved revisions, newest first, with the date, the time and who saved it. A revision can be looked at, its fields drawn on its PDF, without changing anything. "Restore this version" asks first and is saved by the dashboard as a NEW revision; no earlier revision is deleted or rewritten. Only an admin is offered it. For the preview, the dashboard's `pdf-template` "load" takes an optional `revision`.
+- **Database page (dashboard).** Read-only tabs for `pdf_templates` and `pdf_template_history`, like the other tabs: admins, behind the gate, the selected company only. They show the name, revision, file name, size, pages and hash, who and when. What the app wrote in a template is masked like other app-written JSON. The PDF files are never read there.
+- **Offline copy (PDF form filler).** Each time a company's templates are loaded from the dashboard, the browser keeps that copy, one per company. When the dashboard cannot be reached, each kept copy is offered by company and date, and opens labelled "Offline: read-only copy from [date and time]. Changes can't be saved." Forms can be filled in and downloaded; nothing that changes a template is offered. If the browser has no room for the copy, none is kept and none is offered.
+
+Still not built from the Phase 1 list: the mock app in demo mode for these data types, "Download what is on screen" when offline, dropping the PDF text from the browser's own copy after an import, and grouping one person's saves within 30 minutes in the history list.
+
 ## 6. Risks and things to check first
 
 - **The Supabase plan.** `FUTURE_WORK.md` already notes that the free plan pauses a project after a week without use and has no daily backups. File storage on it is limited too (1 GB when I last knew; please check the current figure). A paused project means every save answers `unavailable`. Real data belongs in the separate production project described in `FUTURE_WORK.md` section 6.
