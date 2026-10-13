@@ -71,6 +71,10 @@ export default defineConfig(({ command, mode }) => {
       environment: "jsdom",
       include: ["src/**/*.test.{ts,tsx}"],
       restoreMocks: true,
+      // Each test file builds its own browser-like environment. With one file per processor
+      // core at once, the slower screen tests ran past the 5 second limit on a busy machine
+      // (docs/KNOWN_ISSUES.md, item 2). Four at a time passes, and is no slower overall.
+      maxWorkers: 4,
     },
   };
 });
