@@ -20,3 +20,10 @@ Status is one of: **open** (to fix), **watch** (not a fault today; look again if
 - **Risk:** a red run that says nothing about the code. It hides a real failure only if the output is not read.
 - **When to act:** if it keeps happening, set `maxWorkers` in the Vitest config or share the environment between files (Vitest prints that suggestion at the end of a run). Do not raise the 5 s limit.
 - **Fixed 13 Oct 2026:** `maxWorkers: 4` in the test settings of vite.config.ts. Plain `npm test` then passed three times in a row.
+
+## 3. Three breaks in `npm run test:prove` are out of date since Phase 1 (open)
+
+- **Where:** `scripts/prove.mjs`, breaks 65, 77 and 79 (numbers as the run of 14 Oct 2026 prints them).
+- **What:** the run ends "109 of 112 breaks caught". Break 65 ("Issued payslips become available to another app") looks for the PDF form filler's old `accepts: [PAYROLL_RESULT]`, which Phase 1 changed; break 79 looks for `const MIGRATION = "0011_issued_payslips.sql"`, which Phase 1 moved to 0012; break 77 removes a delete from the `delete_company` of 0011, which 0012 replaced, so no test notices. All three are the same on `main` (checked with `git show main:...`): not caused by Phase 2. Every Phase 2 break (106 to 112) is caught.
+- **Risk:** the three rules they guarded are still tested; only the proof that those tests can fail is missing.
+- **When to act:** when `prove.mjs` is next changed: point 65 at the payslip app's own `accepts`, 79 at the newest migration file name, and 77 at the newest `delete_company`.
