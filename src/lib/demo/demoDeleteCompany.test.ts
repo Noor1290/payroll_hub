@@ -67,6 +67,8 @@ describe("demoDeleteCompany", () => {
       issuedPayslips: 0,
       pdfTemplates: 0,
       pdfTemplateRevisions: 0,
+      payrollSetups: 0,
+      payrollSetupRevisions: 0,
       approvedRuns: 0,
     });
     expect(demoMemberships.some((m) => m.company.id === ABC)).toBe(false);

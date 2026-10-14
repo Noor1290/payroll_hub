@@ -189,6 +189,12 @@ function classifyRefusal(error: unknown, migration: string): Refusal {
       "The PDF file is not in the dashboard for this company. Send the file first, then save again.",
     );
   }
+  if (text.includes("PH_ALREADY_ATTACHED")) {
+    return refuse(
+      "stale",
+      "This company already has a column setup in the dashboard. Reload, then try again.",
+    );
+  }
   if (text.includes("PH_NOT_FOUND")) return refuse("not-found", "The dashboard has no such item.");
   if (text.includes("PH_TOO_LARGE")) return refuse("too-large", "It is too large to store.");
   if (text.includes("PH_LIMIT")) {

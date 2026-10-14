@@ -41,6 +41,13 @@ export interface DeletePreview {
    */
   pdfTemplates: number;
   pdfTemplateRevisions: number;
+  /**
+   * The company's payroll column setup and its kept revisions (migration 0013): 0 or 1, and
+   * how many revisions. A shared setup that no other company uses goes with it. Zero if those
+   * tables don't exist yet.
+   */
+  payrollSetups: number;
+  payrollSetupRevisions: number;
   /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
   approvedRuns: number;
 }
@@ -102,6 +109,8 @@ export async function fetchDeletePreview(
     issuedPayslips,
     pdfTemplates,
     pdfTemplateRevisions,
+    payrollSetups,
+    payrollSetupRevisions,
   ] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
@@ -119,11 +128,13 @@ export async function fetchDeletePreview(
     db.from("issued_payslips").select("id", head).eq("company_id", companyId),
     db.from("pdf_templates").select("id", head).eq("company_id", companyId),
     db.from("pdf_template_history").select("revision", head).eq("company_id", companyId),
+    db.from("payroll_company_setups").select("company_id", head).eq("company_id", companyId),
+    db.from("payroll_company_setup_history").select("revision", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
-  // These tables come from later migrations (0005, 0006, 0009 to 0012). Until they are run
+  // These tables come from later migrations (0005, 0006, 0009 to 0013). Until they are run
   // there is nothing in them to delete, and deleting a company must keep working.
   const optional = (result: { error: unknown; count: number | null }) => {
     if (result.error) {
@@ -146,6 +157,8 @@ export async function fetchDeletePreview(
     issuedPayslips: optional(issuedPayslips),
     pdfTemplates: optional(pdfTemplates),
     pdfTemplateRevisions: optional(pdfTemplateRevisions),
+    payrollSetups: optional(payrollSetups),
+    payrollSetupRevisions: optional(payrollSetupRevisions),
     approvedRuns: count.parse(approved.count),
   };
 }
@@ -206,7 +219,7 @@ export interface DeleteCompanyFailure extends DataFailure {
  * to a company replaces the function, so an older file must never be named here: run after
  * the newer ones, it would put back a function that does not know their tables.
  */
-const MIGRATION = "0012_pdf_templates.sql";
+const MIGRATION = "0013_payroll_setups.sql";
 const RUN_MIGRATIONS = `The owner needs to run the files in supabase/migrations that the database has not had yet, in order, up to ${MIGRATION}, in the Supabase SQL editor.`;
 
 const failure = (

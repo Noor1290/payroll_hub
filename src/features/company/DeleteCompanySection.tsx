@@ -58,6 +58,11 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
       {preview.pdfTemplates > 0 && (
         <li>{plural(preview.pdfTemplates, "PDF form template")}, with their PDF files</li>
       )}
+      {preview.payrollSetups > 0 && (
+        <li>
+          its payroll column setup ({plural(preview.payrollSetupRevisions, "saved revision")})
+        </li>
+      )}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"

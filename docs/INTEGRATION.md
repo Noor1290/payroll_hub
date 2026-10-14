@@ -89,6 +89,34 @@ Ready-to-paste task for Claude Code in the `payroll_sys` repo:
 
 > Read `docs/INTEGRATION.md` and `docs/bridge.js` from the payroll-hub repo (I will paste or copy them in). Copy bridge.js unchanged to `src/payrollHubBridge.js`, import it once in the entry file, and call `PayrollHubBridge.init({ appId: "payroll" })` once in the root component. Find where the "pdf-fill" JSON export array is built and add a "Send to dashboard" button beside the existing export button, shown only when `PayrollHubBridge.isEmbedded()`. It must send the exact same array with `dataType: "payroll-result"` and `meta.period` as `YYYY-MM`, and show the reply's success or error. Do not change the existing export, do not edit bridge.js, and make sure the app behaves exactly as before when opened on its own.
 
+### Payroll app: column setup (`payroll-setup`)
+
+Added in migration plan Phase 2 (`docs/MIGRATION_PLAN.md`), database side in `supabase/migrations/0013_payroll_setups.sql`. Inside the dashboard the app keeps its column setup in the database; opened on its own it keeps using the browser, as before. The months of employee data stay in the app's browser storage until Phase 3. Still protocol version 1 and the same `bridge.js`. A dashboard that does not know this data type answers "not registered": the app then stays with the browser.
+
+There are two kinds of setup, each a JSON `body` the app defines (the dashboard stores and returns it exactly and never looks inside), 250 KB at most:
+
+- **The shared setup**: the identity fields, which one is the ID field, and the Global columns. Several companies are attached to it and a change reaches all of them. Any member of an attached company may read it; only someone who is an **admin of every attached company** may change it (before any is attached: only its creator).
+- **A company's own setup**: its own columns and its custom company details. Members read, admins save. Its name, address and BRN are the dashboard company's own and are not in it.
+
+No dialog and no password gate (nothing per employee). Every exchange is a row in the transfer log (never with content) and every save shows a toast. Companies are named by BRN. Each message carries `brn`, the company selected in the dashboard, which must match (`wrong-company` otherwise). A save may also name another of the user's companies (`company_brn`, or each entry of `companies`); the database decides whether the user may change it.
+
+| Kind | What the app sends | What comes back |
+| --- | --- | --- |
+| request | `params: { action: "load", brn? }` | nothing when the selected company has no setup yet; otherwise first `{ kind: "shared", shared_setup_id, name, body, revision, updated_at, updated_by_you, can_change, companies, admin_of }`, then one row per attached company the user is a member of: `{ kind: "company", brn, name, address, role, selected, shared_setup_id, body, revision, updated_at, updated_by_you }` |
+| request | `params: { action: "history", target: "shared" \| "company", company_brn?, brn? }` | a row per kept revision, newest first (200 at most): `{ revision, saved_at, saved_by_you }` |
+| request | `params: { action: "revision", target, revision, company_brn?, brn? }` | one kept revision: `{ revision, body, saved_at, saved_by_you }`, and for a company also `shared_setup_id` |
+| request | `params: { action: "companies", brn? }` | the companies the user is an ADMIN of: `{ brn, name, address, has_setup, shared_setup_id, selected }` (for the import) |
+| save | `{ action: "save-shared", brn, shared_setup_id, name, body, expected_revision, companies?: [{ company_brn, body, expected_revision }] }` | `result: { action, shared_setup_id, name, revision, updated_at, companies: [{ brn, revision }] }` |
+| save | `{ action: "save-company", brn, company_brn?, body, expected_revision }` | `result: { action, brn, company, shared_setup_id, revision, updated_at }` |
+| save | `{ action: "attach-company", brn, company_brn?, shared_setup_id, body }` | the same as `save-company` |
+
+- **The app chooses the shared setup's id** (a UUID) and creates it with `expected_revision: 0`, with no companies; then attaches each company. A save sent twice is refused as `stale`; so is attaching a company that already has a setup.
+- **`companies` on `save-shared`** saves those companies' own setups in the same step, all or nothing: a change of a Global column's key rewrites formulas in company columns too. Each must be attached to that shared setup.
+- **`expected_revision`** is the revision the app last saw. If someone else saved since, the save is refused as `stale` and nothing is overwritten. After `unavailable` or no answer: `load` and compare before saving again.
+- **`can_change`, `companies`, `admin_of`** on the shared row say whether the user may change it, how many companies use it and how many of those the user is an admin of: show the Global columns read-only from the start when `can_change` is false.
+- **Every revision is kept, none dropped**: a month will record the revisions it was saved with (Phase 3).
+- `forbidden`: the user may not make this change (not an admin of that company, or not of every company using the shared setup).
+
 ## `pdf-form-filler` (app id: `pdf-editor`)
 
 This app **receives** payroll results.

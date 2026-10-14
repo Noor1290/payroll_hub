@@ -903,6 +903,65 @@ const BREAKS = [
     test: "src/lib/unlock.test.ts",
     mustFail: "the deadline moves once a second at most",
   },
+
+  // ---------- Phase 2: the payroll column setup (migration 0013, payroll-setup) ----------
+  {
+    what: "An admin of ANY attached company may change the shared setup",
+    file: "supabase/migrations/0013_payroll_setups.sql",
+    find: "      then not exists (\n        select 1\n        from public.payroll_company_setups cs\n        where cs.shared_setup_id = p_setup_id\n          and not exists (",
+    replace:
+      "      then exists (\n        select 1\n        from public.payroll_company_setups cs\n        where cs.shared_setup_id = p_setup_id\n          and exists (",
+    test: "src/features/workspace/payrollSetups.db.test.ts",
+    mustFail: "an admin of some but not all attached companies can read it, and cannot change it",
+  },
+  {
+    what: "A save of the shared setup with an old revision overwrites",
+    file: "supabase/migrations/0013_payroll_setups.sql",
+    find: "    if v_setup.revision <> p_expected_revision then\n      raise exception 'PH_STALE' using errcode = 'P0001';\n    end if;\n\n    update public.payroll_shared_setups s",
+    replace: "    update public.payroll_shared_setups s",
+    test: "src/features/workspace/payrollSetups.db.test.ts",
+    mustFail: "refuses a save of the shared setup that carries an old revision",
+  },
+  {
+    what: "A company setup saved with the shared setup skips its revision check",
+    file: "supabase/migrations/0013_payroll_setups.sql",
+    find: "      if v_company.revision <> (v_item ->> 'expected_revision')::integer then\n        raise exception 'PH_STALE' using errcode = 'P0001';\n      end if;\n",
+    replace: "",
+    test: "src/features/workspace/payrollSetups.db.test.ts",
+    mustFail: "saves company setups with the shared setup all or nothing",
+  },
+  {
+    what: "delete_company leaves the company's payroll setup behind",
+    file: "supabase/migrations/0013_payroll_setups.sql",
+    find: "  delete from public.payroll_company_setups cs where cs.company_id = p_company_id;\n  get diagnostics v_setups = row_count;\n",
+    replace: "  v_setups := 0;\n",
+    test: "src/features/company/deleteCompanyMigration.test.ts",
+    mustFail: "deletes from every table that belongs to a company",
+  },
+  {
+    what: "The dashboard forwards a setup body over 250 KB",
+    file: "src/features/workspace/payrollSetupData.ts",
+    find: "            (b) => jsonBytes(b) > SETUP_BODY_BYTES,\n",
+    replace: "            (b) => jsonBytes(b) > SETUP_BODY_BYTES * 2,\n",
+    test: "src/features/workspace/payrollSetupData.test.ts",
+    mustFail: "refuses a body over 250 KB",
+  },
+  {
+    what: "The import is offered companies the user only views",
+    file: "src/features/workspace/payrollSetupData.ts",
+    find: '(m) => m.role === "admin" && m.company.brn,',
+    replace: "(m) => Boolean(m.company.brn),",
+    test: "src/features/workspace/payrollSetupData.test.ts",
+    mustFail: "lists only the companies the user is an admin of",
+  },
+  {
+    what: "The app is told it may change Global columns it may not",
+    file: "src/features/workspace/payrollSetupData.ts",
+    find: "            can_change: access.can_change,",
+    replace: "            can_change: true,",
+    test: "src/features/workspace/payrollSetupData.test.ts",
+    mustFail: "an admin of some but not all attached companies cannot change the shared setup",
+  },
 ];
 
 const gitStatus = () =>

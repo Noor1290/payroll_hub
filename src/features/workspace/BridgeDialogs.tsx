@@ -32,6 +32,7 @@ import { useUnlock } from "@/features/unlock/useUnlock";
 import { exchangeContext } from "./appData";
 // Registers the PDF form filler's data types with the bridge.
 import "./pdfData";
+import "./payrollSetupData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";
 

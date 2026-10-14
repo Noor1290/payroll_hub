@@ -71,6 +71,10 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // One file per message, as base64 text: a 5 MB PDF is about 6.7 MB of it. An answer is one
   // row: whether the file is there, or the file.
   "pdf-file": { sendRows: 1, sendBytes: 7_100_000, answerRows: [1, 1] },
+  // One command per message: a shared setup (250 KB at most, SETUP_BODY_BYTES) and the company
+  // setups saved with it. An answer is the shared setup and its companies, a history (200 at
+  // most), or the companies an import can link to.
+  "payroll-setup": { sendRows: 1, sendBytes: 1_000_000, answerRows: [0, 500] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 
@@ -78,6 +82,8 @@ export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ??
 export const TEMPLATE_BODY_BYTES = 150_000;
 /** The largest PDF template body the hub accepts, as JSON. The database's own limit is 256 KB. */
 export const PDF_TEMPLATE_BODY_BYTES = 250_000;
+/** The largest payroll setup body the hub accepts, as JSON. The database's own limit is 256 KB. */
+export const SETUP_BODY_BYTES = 250_000;
 /** How many payslips one save may issue. The database has the same limit. */
 export const ISSUE_MAX_PAYSLIPS = 1_000;
 /** The largest single payslip in a save, as JSON. */

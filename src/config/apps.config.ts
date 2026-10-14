@@ -48,6 +48,11 @@ export const PAYSLIP_ISSUE = "payslip-issue";
 export const PDF_TEMPLATE = "pdf-template";
 /** The blank PDF forms themselves, in the Storage bucket under the hash of their content (migration 0012). */
 export const PDF_FILE = "pdf-file";
+/**
+ * The payroll app's column setup: the shared setup companies are attached to (identity fields,
+ * Global columns) and each company's own columns and details, every revision kept (migration 0013).
+ */
+export const PAYROLL_SETUP = "payroll-setup";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -83,8 +88,8 @@ export const APPS: readonly AppConfig[] = [
     icon: Calculator,
     accentColor: "var(--accent)",
     status: "active",
-    accepts: [],
-    produces: [PAYROLL_RESULT],
+    accepts: [PAYROLL_SETUP],
+    produces: [PAYROLL_RESULT, PAYROLL_SETUP],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: [],
   },

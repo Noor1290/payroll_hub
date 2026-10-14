@@ -17,6 +17,7 @@ import {
   demoPdfTemplateCounts,
   demoPdfTemplateRows,
 } from "./demoPdfTemplates";
+import { demoForgetPayrollSetups, demoPayrollSetupCounts } from "./demoPayrollSetups";
 
 /**
  * FAKE in-memory database for dev-only demo mode. Every name, number and id here is invented.
@@ -452,6 +453,7 @@ export async function demoFetchDeletePreview(companyId: string) {
     links: demoCompanyDataRows("company_links", companyId).length,
     ...demoAppDataCounts(companyId),
     ...demoPdfTemplateCounts(companyId),
+    ...demoPayrollSetupCounts(companyId),
     approvedRuns: companyRuns.filter((run) => run.status === "approved").length,
   };
 }
@@ -488,6 +490,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
   demoForgetCompanyData(companyId);
   demoForgetAppData(companyId);
   demoForgetPdfTemplates(companyId);
+  demoForgetPayrollSetups(companyId);
   return result;
 }
 

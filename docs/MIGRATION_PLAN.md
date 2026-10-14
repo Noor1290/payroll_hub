@@ -16,6 +16,7 @@ Covers `Payroll_sys` (payroll), `PDF Editor` (PDF form filler), `payslip` and `p
 - **The password gate (decided 13 October):** it locks after 10 minutes without activity (up to 30 in Settings), not 10 minutes after unlocking, and work inside an app counts as activity (section 5.8).
 - **Nothing is left to confirm.** Every decision is in section 4.
 - **Phase 0 is built** (13 October 2026): the backup files, the storage interfaces, the `activity` message and the gate. What was built, and what it leaves for Phase 1, is in section 5.11. No migration was needed.
+- **Phase 2 is built** (14 October 2026), not merged: migration 0013 (not run yet), the `payroll-setup` data type, and the payroll app's setup in the dashboard with its import. Section 5.14.
 
 ## 1. Where each app saves its data today
 
@@ -557,6 +558,33 @@ On the branch `phase-1-followups` in `payroll_hub` and `PDF Editor`; not merged,
 **Tested against the real database (13 October 2026), in "TEST Co Ltd" only,** the same way as Phase 1: the two branch builds served in place of the live sites in one browser window, the owner signing in by hand. 15 of 15 checks passed: the offline copy (with the window's connection to the database cut off) opened read-only with its date and time, could be filled in and downloaded, and nothing typed offline reached the database; History listed the three revisions with date, time and who; a revision was drawn with its fields; restoring revision 2 was saved as revision 4 with revisions 3, 2 and 1 kept as they were; both Database page tabs showed the rows with the fields masked and nothing that edits; and the company was left as it was found. Two checks failed on the first run because of the test script itself (one read the page too early, one mistook the column header `saved_at` for a Save button); corrected, the run was clean.
 
 Still not built from the Phase 1 list: the mock app in demo mode for these data types, "Download what is on screen" when offline, dropping the PDF text from the browser's own copy after an import, and grouping one person's saves within 30 minutes in the history list.
+
+### 5.14 Phase 2 as built (14 October 2026), before the migration is run
+
+On the branch `migration-phase-2` in `payroll_hub` and `Payroll_sys`; not merged, not deployed. The live project was not contacted: everything below ran in the in-memory Postgres, the demo store and stand-in dashboards. The test against the real database comes after migration 0013 is run.
+
+**Database: `supabase/migrations/0013_payroll_setups.sql`.** As sketched in 5.3, with these differences:
+- The app chooses the shared setup's id, so a save sent twice cannot make two.
+- `save_payroll_shared_setup` can save attached companies' own setups in the same step, all or nothing: a change of a Global column's key rewrites formulas in company columns too.
+- The rules are three small functions the policies and the saves share: `can_read_payroll_shared_setup`, `can_change_payroll_shared_setup` (an admin of every attached company; before any is attached, its creator) and `payroll_shared_setup_access` (whether the caller may change it, and how many companies use it and how many of those the caller administers: counts only).
+- Every revision of both kinds is kept, none dropped (months will point at them). The company history also records which shared setup the company was attached to.
+- `delete_company` is replaced: it deletes the company's own setup and revisions, and the shared setup with its revisions when no other company uses it any more.
+- It only adds. A test reads the file and fails if it drops, alters or truncates anything that existed before.
+
+**Dashboard.** Data type `payroll-setup` (`load`, `history`, `revision`, `companies`; saves `save-shared`, `save-company`, `attach-company`), no dialog and no gate. Companies are named by BRN; a save may name another of the user's companies (`company_brn`), since the import attaches several and a key change reaches several. The wire contract is in `docs/INTEGRATION.md`. A demo store with the same rules backs the dashboard's own tests and demo mode.
+
+**Payroll app.** Inside the dashboard the setup of the company selected there is loaded from it; a change is saved a moment after it is made, one save at a time; a bar says "Saved", "Saving..." or "NOT saved" with the reason, and offers "Save mine over it" / "Use the dashboard's version" when someone else saved meanwhile. The Global columns are read-only, with the reason, for someone who is not an admin of every company using them; a company's columns and details are read-only for someone who is not its admin. "Import to the dashboard" needs a backup file first, shows what it will do without writing anything (BRN matches, differences in name and address, conflicts, "Link this company to..."), then imports the shared setup and each company one at a time and checks each by reading it back. This browser's own copy is never written; opened on its own after an import, it is labelled "This browser only. Not the dashboard's copy." The months stay in the browser under the same keys, so an imported company keeps its months; a test shows every calculated figure is the same before and after the import. Opened on its own, or inside a dashboard that does not know `payroll-setup`, the app uses the browser exactly as before.
+
+**Decided while building, to confirm:**
+- Inside the dashboard the company's name, address and BRN are the dashboard's own: the app shows them read-only (Company details says where to change them) and its exports use them. Only the custom company details are saved with the company's setup.
+- Inside the dashboard the company list shows only the company selected there, without add, rename, delete or Restore. "Back up" stays (the import needs it).
+- A dashboard company with no setup yet offers, to its admin: "Import to the dashboard" when this browser has something to import, "Use the shared columns of ..." when the user's other companies already use a shared setup, otherwise "Start with new, empty Global columns". Nothing is made by itself.
+- In the import, a conflict starts as "skip" until a choice is made; into an existing shared setup the choice is "replace with this browser's, as a new revision" or "keep the dashboard's". If the user's companies use more than one shared setup, the import is refused.
+- Column widths and the month being viewed are kept per dashboard company in this browser (`payroll_dashboard_prefs_v1`), started from the browser company's at the import. That key and the import note (`payroll_dashboard_imported_v1`) hold no payroll value and are not in the backup file.
+
+**Not built in this phase:** the Database page tabs for the four tables; the mock app in demo mode; a screen for the setup's history (the dashboard answers `history` and `revision`); opening this browser's copy read-only when the dashboard cannot be reached (the app says so, offers "Try again", and points to opening it on its own).
+
+**Found on the way, not fixed:** `Payroll_sys/docs/KNOWN_ISSUES.md` item 7: until Phase 3, a key changed inside the dashboard moves the values in the browser's months but not in the browser's own copy of the setup. Still open from section 6: payroll known issue 4 (re-saving an exemption formula nests it again), which with automatic saving now also makes a new revision each time.
 
 ## 6. Risks and things to check first
 

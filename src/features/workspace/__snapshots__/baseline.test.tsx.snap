@@ -757,12 +757,15 @@ exports[`baseline: the 2026-10 sample > is stored like this by an import 1`] = `
 exports[`baseline: the app registry > lists these apps, with these data types and expected fields 1`] = `
 [
   {
-    "accepts": [],
+    "accepts": [
+      "payroll-setup",
+    ],
     "expectedFields": [],
     "id": "payroll",
     "name": "Payroll System",
     "produces": [
       "payroll-result",
+      "payroll-setup",
     ],
     "protocolVersion": 1,
     "status": "active",
