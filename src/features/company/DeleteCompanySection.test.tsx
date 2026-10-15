@@ -46,6 +46,8 @@ const CLEAR: DeletePreview = {
   pdfTemplateRevisions: 0,
   payrollSetups: 0,
   payrollSetupRevisions: 0,
+  payrollMonths: 0,
+  payrollMonthRevisions: 0,
   approvedRuns: 0,
 };
 /** Two of its runs are approved; one of those is soft-deleted (the count includes it). */
@@ -456,7 +458,7 @@ describe("confirming", () => {
 
     const alert = await within(dialog()).findByRole("alert");
     expect(alert.textContent).toContain("The database needs an update");
-    expect(alert.textContent).toContain("up to 0013_payroll_setups.sql");
+    expect(alert.textContent).toContain("up to 0014_payroll_months.sql");
     expect(alert.textContent).not.toContain("0007");
     expect(select).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();

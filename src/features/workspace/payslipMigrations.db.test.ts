@@ -925,6 +925,8 @@ describe("delete_company after 0011", () => {
       issued_payslips: 2,
       pdf_templates: 0,
       pdf_template_history: 0,
+      payroll_months: 0,
+      payroll_month_history: 0,
       payroll_company_setups: 0,
       payroll_company_setup_history: 0,
       payroll_shared_setups: 0,

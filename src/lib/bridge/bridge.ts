@@ -46,6 +46,11 @@ export interface RequestQuestion {
   what: string;
   /** What agreeing sends to the app, in one sentence. */
   warning: string;
+  /**
+   * The app only needs the dashboard unlocked (payroll months): the dialog asks for the
+   * password and nothing else, and answers by itself as soon as the gate is open.
+   */
+  unlockOnly?: boolean;
   answer: () => Promise<ResponseDataPayload>;
 }
 

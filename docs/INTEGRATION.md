@@ -91,7 +91,7 @@ Ready-to-paste task for Claude Code in the `payroll_sys` repo:
 
 ### Payroll app: column setup (`payroll-setup`)
 
-Added in migration plan Phase 2 (`docs/MIGRATION_PLAN.md`), database side in `supabase/migrations/0013_payroll_setups.sql`. Inside the dashboard the app keeps its column setup in the database; opened on its own it keeps using the browser, as before. The months of employee data stay in the app's browser storage until Phase 3. Still protocol version 1 and the same `bridge.js`. A dashboard that does not know this data type answers "not registered": the app then stays with the browser.
+Added in migration plan Phase 2 (`docs/MIGRATION_PLAN.md`), database side in `supabase/migrations/0013_payroll_setups.sql`. Inside the dashboard the app keeps its column setup in the database; opened on its own it keeps using the browser, as before. The months of employee data are the next data type, `payroll-month` (Phase 3). Still protocol version 1 and the same `bridge.js`. A dashboard that does not know this data type answers "not registered": the app then stays with the browser.
 
 There are two kinds of setup, each a JSON `body` the app defines (the dashboard stores and returns it exactly and never looks inside), 250 KB at most:
 
@@ -114,8 +114,38 @@ No dialog and no password gate (nothing per employee). Every exchange is a row i
 - **`companies` on `save-shared`** saves those companies' own setups in the same step, all or nothing: a change of a Global column's key rewrites formulas in company columns too. Each must be attached to that shared setup.
 - **`expected_revision`** is the revision the app last saw. If someone else saved since, the save is refused as `stale` and nothing is overwritten. After `unavailable` or no answer: `load` and compare before saving again.
 - **`can_change`, `companies`, `admin_of`** on the shared row say whether the user may change it, how many companies use it and how many of those the user is an admin of: show the Global columns read-only from the start when `can_change` is false.
-- **Every revision is kept, none dropped**: a month will record the revisions it was saved with (Phase 3).
+- **Every revision is kept, none dropped**: a month records the revisions it was saved with (`payroll-month`, below).
+- **A change of a column's key** that moves values in saved months is not a `payroll-setup` save: it is `key-change` under `payroll-month`, so the setup and the months change together.
 - `forbidden`: the user may not make this change (not an admin of that company, or not of every company using the shared setup).
+
+### Payroll app: months (`payroll-month`)
+
+Added in migration plan Phase 3 (`docs/MIGRATION_PLAN.md`), database side in `supabase/migrations/0014_payroll_months.sql`. Inside the dashboard the app keeps its months there: each company's employees and the values typed for them, one month at a time, the whole month as one JSON list `[{ "id": "...", "values": { "<column key>": ... } }]`, stored and returned exactly as sent, 1 MB and 5,000 employees at most. Opened on its own the app keeps using the browser. A dashboard that does not know this data type answers "not registered": the app then keeps its months in the browser as in Phase 2.
+
+National IDs and salaries, so (decision D5):
+
+- **Admins only.** Anyone else is refused as `forbidden` without a question, and the database lets them read nothing, not even a count.
+- **The password gate must be open**, to read and to save, with **no dialog** on each read or save. While it is locked everything except `gate` and `unlock` is refused at once as `locked`, and nothing is read or stored.
+- **The dashboard tells the app when the gate opens or locks**: it sends the app one row, `send-data` with `{ dataType: "payroll-month", rows: [{ action: "gate", unlocked: true | false }] }`, only when that changes. Nothing else is in it. An app that does not listen answers that it cannot receive data; nothing depends on it.
+- Every exchange is a row in the transfer log, with counts and the month, never a value. A saved month has **no toast** (the app saves by itself a moment after typing stops and shows "Saved"); a refused save and a change of key do.
+
+Each message carries `brn`, the company selected in the dashboard (`wrong-company` otherwise). `company_brn` names another of the user's companies (the import of months); the user must be its admin too.
+
+| Kind | What the app sends | What comes back |
+| --- | --- | --- |
+| request | `params: { action: "gate", brn? }` | one row `{ unlocked }`. Answered to any member, gate open or not |
+| request | `params: { action: "unlock", brn }` | the dashboard shows its password prompt (nothing else: no "Send"); one row `{ unlocked: true }` once it is open, `denied` on "Not now", `locked` if nobody answers in 100 seconds. At once when already open |
+| request | `params: { action: "list", brn, company_brn? }` | a row per saved month, oldest first, without employees: `{ period, revision, shared_revision, company_revision, employee_count, value_keys, updated_at, updated_by_you }`. `value_keys` are the column keys the month holds values under: names only |
+| request | `params: { action: "load", brn, company_brn?, periods: ["YYYY-MM", ...] }` | 1 to 12 months; a row per month that exists: `{ period, revision, shared_revision, company_revision, employee_count, employees, updated_at, updated_by_you }`. A month that does not exist is left out |
+| request | `params: { action: "history", brn, company_brn?, period }` | a row per save of that month, newest first (200 at most): `{ revision, shared_revision, company_revision, employee_count, kept, saved_at, saved_by_you }` |
+| save | `{ action: "save", brn, company_brn?, period, employees, expected_revision, shared_revision, company_revision, keep_previous? }` | `result: { action, brn, company, period, revision, employee_count, updated_at }` |
+| save | `{ action: "key-change", brn, moves: [{ old_key, new_key, company_brn }], shared?: { shared_setup_id, name, body, expected_revision, companies? }, company?: { company_brn?, body, expected_revision } }` | `result: { action, setup: { shared_setup_id, revision, brn?, companies: [{ brn, revision }] }, months: [{ brn, period, revision }] }` |
+
+- **`expected_revision`** is the month's revision the app last saw, `0` for a month the dashboard does not have yet. If someone else saved since, the save is refused as `stale` and nothing is overwritten. After `unavailable` or no answer: `load` the month and compare before saving again. Only a month that was read can be saved.
+- **`shared_revision` and `company_revision`** are the column setup revisions the month was worked out with (`payroll-setup`). They must be kept revisions of that company's setups (`invalid` otherwise); they are recorded with the month.
+- **History.** Every save is recorded (who, when, the setup revisions, the number of employees). The month's content is kept with a record when it would otherwise be lost: the last revision of each day (UTC), a revision someone else saved when another person saves over it, and the one replaced by a save with `keep_previous: true` ("Save mine over it", an import that replaces a month). `kept` says which.
+- **`key-change`**: a column's or an identity field's key changed. One step, all or nothing: the setup that carries the new key is saved exactly as `save-shared` (with `shared`) or `save-company` (with `company`) would save it, with every check they have, and the values move from `old_key` to `new_key` in every saved month the key reaches: every company attached to the shared setup when `company_brn` is `null` (a Global column, an identity field), only that company otherwise. Each month moved gets a new revision, listed in `months`. Exactly one of `shared` and `company`; with `company`, every move must name that company. At most 20 moves, applied in order.
+- `forbidden`: not an admin of that company (or, for a Global key, of every company using the shared setup). `not-found`: the company has no column setup in the dashboard yet, or a key is to move in a company not attached to the shared setup.
 
 ## `pdf-form-filler` (app id: `pdf-editor`)
 

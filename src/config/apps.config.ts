@@ -53,6 +53,11 @@ export const PDF_FILE = "pdf-file";
  * Global columns) and each company's own columns and details, every revision kept (migration 0013).
  */
 export const PAYROLL_SETUP = "payroll-setup";
+/**
+ * The payroll app's months: each company's employees and the values typed for them, one month
+ * at a time, every save recorded (migration 0014). Admins only, behind the password gate.
+ */
+export const PAYROLL_MONTH = "payroll-month";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -88,8 +93,8 @@ export const APPS: readonly AppConfig[] = [
     icon: Calculator,
     accentColor: "var(--accent)",
     status: "active",
-    accepts: [PAYROLL_SETUP],
-    produces: [PAYROLL_RESULT, PAYROLL_SETUP],
+    accepts: [PAYROLL_SETUP, PAYROLL_MONTH],
+    produces: [PAYROLL_RESULT, PAYROLL_SETUP, PAYROLL_MONTH],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: [],
   },

@@ -175,6 +175,8 @@ export async function answerRequest(
  *
  * `describe` turns a successful result into the toast's text. It must not include payroll values.
  * `count` says how many rows the save stored, for the log; one unless told otherwise.
+ * `quiet` leaves out the success toast, for saves an app makes by itself every few seconds and
+ * shows its own "Saved" for. The log row is still written, and a failure still has its toast.
  */
 export async function recordSave(
   appId: string,
@@ -183,6 +185,7 @@ export async function recordSave(
   save: () => Promise<ReceivedPayload>,
   describe: (result: Record<string, unknown>) => string,
   count: (result: Record<string, unknown>) => number = () => 1,
+  { quiet = false }: { quiet?: boolean } = {},
 ): Promise<ReceivedPayload> {
   const id = crypto.randomUUID();
   const name = getApp(appId)?.name ?? appId;
@@ -203,7 +206,7 @@ export async function recordSave(
   }
   if (ack.ok) {
     finishExchange(id, { ok: true, rowCount: count(ack.result ?? {}) });
-    toast.success(describe(ack.result ?? {}), { description: `Saved from ${name}.` });
+    if (!quiet) toast.success(describe(ack.result ?? {}), { description: `Saved from ${name}.` });
   } else {
     finishExchange(id, { ok: false, code: ack.code });
     toast.error(`${name} could not save ${what}`, { description: ack.error });

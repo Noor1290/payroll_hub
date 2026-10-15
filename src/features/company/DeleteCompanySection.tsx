@@ -63,6 +63,12 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
           its payroll column setup ({plural(preview.payrollSetupRevisions, "saved revision")})
         </li>
       )}
+      {preview.payrollMonths > 0 && (
+        <li>
+          {plural(preview.payrollMonths, "month of payroll data", "months of payroll data")} (
+          {plural(preview.payrollMonthRevisions, "recorded save")})
+        </li>
+      )}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"

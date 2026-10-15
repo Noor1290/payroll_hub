@@ -17,6 +17,7 @@ import {
   demoPdfTemplateCounts,
   demoPdfTemplateRows,
 } from "./demoPdfTemplates";
+import { demoForgetPayrollMonths, demoPayrollMonthCounts } from "./demoPayrollMonths";
 import { demoForgetPayrollSetups, demoPayrollSetupCounts } from "./demoPayrollSetups";
 
 /**
@@ -454,6 +455,7 @@ export async function demoFetchDeletePreview(companyId: string) {
     ...demoAppDataCounts(companyId),
     ...demoPdfTemplateCounts(companyId),
     ...demoPayrollSetupCounts(companyId),
+    ...demoPayrollMonthCounts(companyId),
     approvedRuns: companyRuns.filter((run) => run.status === "approved").length,
   };
 }
@@ -490,6 +492,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
   demoForgetCompanyData(companyId);
   demoForgetAppData(companyId);
   demoForgetPdfTemplates(companyId);
+  demoForgetPayrollMonths(companyId);
   demoForgetPayrollSetups(companyId);
   return result;
 }

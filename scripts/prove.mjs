@@ -962,6 +962,90 @@ const BREAKS = [
     test: "src/features/workspace/payrollSetupData.test.ts",
     mustFail: "an admin of some but not all attached companies cannot change the shared setup",
   },
+
+  // ---------- Phase 3: the payroll months (migration 0014, payroll-month) ----------
+  {
+    what: "A viewer of the company can read its months",
+    file: "supabase/migrations/0014_payroll_months.sql",
+    find: 'create policy "payroll_months_select" on public.payroll_months\n  for select to authenticated\n  using (public.is_company_admin(company_id));',
+    replace:
+      'create policy "payroll_months_select" on public.payroll_months\n  for select to authenticated\n  using (public.is_company_member(company_id));',
+    test: "src/features/workspace/payrollMonths.db.test.ts",
+    mustFail: "a viewer of the company sees nothing at all",
+  },
+  {
+    what: "A month saved with an old revision overwrites",
+    file: "supabase/migrations/0014_payroll_months.sql",
+    find: "    if v_month.revision <> p_expected_revision then\n      raise exception 'PH_STALE' using errcode = 'P0001';\n    end if;\n\n    -- What is about to be replaced",
+    replace: "    -- What is about to be replaced",
+    test: "src/features/workspace/payrollMonths.db.test.ts",
+    mustFail: "refuses an old revision",
+  },
+  {
+    what: "What another admin saved is lost when someone saves over it",
+    file: "supabase/migrations/0014_payroll_months.sql",
+    find: "       and (coalesce(p_keep_previous, false)\n            or v_month.updated_by is distinct from v_user\n",
+    replace: "       and (coalesce(p_keep_previous, false)\n",
+    test: "src/features/workspace/payrollMonths.db.test.ts",
+    mustFail: "what someone else saved, when another admin saves over it",
+  },
+  {
+    what: "A Global key moves the values in one company only",
+    file: "supabase/migrations/0014_payroll_months.sql",
+    find: "      select coalesce(array_agg(cs.company_id order by cs.company_id), '{}') into v_targets\n      from public.payroll_company_setups cs\n      where cs.shared_setup_id = v_setup_id;",
+    replace:
+      "      select coalesce(array_agg(cs.company_id order by cs.company_id), '{}') into v_targets\n      from public.payroll_company_setups cs\n      where cs.shared_setup_id = v_setup_id\n      limit 1;",
+    test: "src/features/workspace/payrollMonths.db.test.ts",
+    mustFail: "the values move in every month of every attached company",
+  },
+  {
+    what: "delete_company leaves the company's months behind",
+    file: "supabase/migrations/0014_payroll_months.sql",
+    find: "  delete from public.payroll_months pm where pm.company_id = p_company_id;\n  get diagnostics v_months = row_count;\n",
+    replace: "  v_months := 0;\n",
+    test: "src/features/company/deleteCompanyMigration.test.ts",
+    mustFail: "deletes from every table that belongs to a company",
+  },
+  {
+    what: "The dashboard reads months while its password gate is locked",
+    file: "src/features/workspace/payrollMonthData.ts",
+    find: "  if (!isUnlocked()) return READ_LOCKED;\n\n  try {",
+    replace: "  try {",
+    test: "src/features/workspace/payrollMonthData.test.ts",
+    mustFail: "refuses every read and every save at once as locked",
+  },
+  {
+    what: "A viewer is answered months",
+    file: "src/features/workspace/payrollMonthData.ts",
+    find: '  if (command.action === "gate") return answer([{ unlocked: isUnlocked() }]);\n  if (membership.role !== "admin") return notAdmin(membership.company.name);',
+    replace: '  if (command.action === "gate") return answer([{ unlocked: isUnlocked() }]);',
+    test: "src/features/workspace/payrollMonthData.test.ts",
+    mustFail: "a viewer is refused everything but 'gate'",
+  },
+  {
+    what: "Every saved month shows a toast",
+    file: "src/features/workspace/payrollMonthData.ts",
+    find: '      { quiet: (payload.rows[0] as { action?: unknown } | undefined)?.action === "save" },',
+    replace: "      { quiet: false },",
+    test: "src/features/workspace/payrollMonthData.test.ts",
+    mustFail: "no toast for a saved month",
+  },
+  {
+    what: "The app is told about the gate on every tick, not only when it opens or locks",
+    file: "src/features/workspace/payrollMonthData.ts",
+    find: "  if (unlocked === toldUnlocked) return;\n",
+    replace: "",
+    test: "src/features/workspace/payrollMonthData.test.ts",
+    mustFail: "only when that changes",
+  },
+  {
+    what: "The unlock prompt waits for a Send instead of answering once unlocked",
+    file: "src/features/workspace/BridgeDialogs.tsx",
+    find: "    if (!unlockOnly || !unlocked || answered.current || !user || !current) return;\n",
+    replace: "    return;\n",
+    test: "src/features/workspace/payrollMonthUnlock.test.tsx",
+    mustFail: "asks only for the password",
+  },
 ];
 
 const gitStatus = () =>

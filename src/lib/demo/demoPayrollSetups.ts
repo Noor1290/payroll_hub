@@ -308,6 +308,27 @@ export function demoSeedAttachedCompany(
   keep({ kind: "company", id: companyId }, 1, body, now, setupId);
 }
 
+/** The setup a company is attached to and its current revisions: for the demo months. */
+export function demoSetupRevisions(companyId: string) {
+  const company = companies.find((c) => c.company_id === companyId);
+  if (!company) return null;
+  const setup = shared.find((s) => s.id === company.shared_setup_id);
+  return {
+    sharedSetupId: company.shared_setup_id,
+    sharedRevision: setup?.revision ?? 0,
+    companyRevision: company.revision,
+  };
+}
+
+/** Whether a setup has that revision kept: what a month may record it was saved with. */
+export function demoHasSetupRevision(target: SetupTarget, revision: number): boolean {
+  return history.some((h) => h.key === keyOf(target) && h.revision === revision);
+}
+
+/** The companies attached to a shared setup, whatever the demo user's role in them. */
+export const demoAttachedCompanyIds = (setupId: string) =>
+  attachedTo(setupId).map((c) => c.company_id);
+
 /** What deleting a company would remove: for the delete preview. */
 export function demoPayrollSetupCounts(companyId: string) {
   return {

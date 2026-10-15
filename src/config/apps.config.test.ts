@@ -37,8 +37,8 @@ describe("app registry", () => {
     expect(payslip.expectedFields).toEqual(getApp("pdf-editor")!.expectedFields);
     // Nothing changes for the other apps, and payroll results still go to the same two.
     expect(getApp("payroll")).toMatchObject({
-      accepts: ["payroll-setup"],
-      produces: ["payroll-result", "payroll-setup"],
+      accepts: ["payroll-setup", "payroll-month"],
+      produces: ["payroll-result", "payroll-setup", "payroll-month"],
     });
     expect(getApp("pdf-editor")).toMatchObject({
       accepts: ["payroll-result", "pdf-template", "pdf-file"],

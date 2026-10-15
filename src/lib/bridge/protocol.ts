@@ -75,6 +75,10 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // setups saved with it. An answer is the shared setup and its companies, a history (200 at
   // most), or the companies an import can link to.
   "payroll-setup": { sendRows: 1, sendBytes: 1_000_000, answerRows: [0, 500] },
+  // One command per message: a month (1 MB at most, MONTH_BYTES), or a change of key carrying
+  // the setup it is saved with (a shared setup and its companies' setups). An answer lists a
+  // company's months (100 years at most), a few months with their employees, or a history.
+  "payroll-month": { sendRows: 1, sendBytes: 2_200_000, answerRows: [0, 1_200] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 
@@ -84,6 +88,10 @@ export const TEMPLATE_BODY_BYTES = 150_000;
 export const PDF_TEMPLATE_BODY_BYTES = 250_000;
 /** The largest payroll setup body the hub accepts, as JSON. The database's own limit is 256 KB. */
 export const SETUP_BODY_BYTES = 250_000;
+/** The largest payroll month the hub accepts, as JSON. The database's own limit is 1 MiB. */
+export const MONTH_BYTES = 1_000_000;
+/** How many months one payroll-month "load" may ask for. */
+export const MONTHS_PER_LOAD = 12;
 /** How many payslips one save may issue. The database has the same limit. */
 export const ISSUE_MAX_PAYSLIPS = 1_000;
 /** The largest single payslip in a save, as JSON. */

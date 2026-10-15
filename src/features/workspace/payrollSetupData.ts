@@ -44,9 +44,9 @@ import { answerRequest, recordSave } from "./deliver";
  *    an admin of every attached company make it;
  *  - each company's own setup: its own columns and company details.
  *
- * Nothing in either is per employee (the months stay in the app's browser storage until
- * Phase 3), so, like PDF templates, it is answered and saved WITHOUT a dialog and without the
- * password gate; every exchange is a row in the transfer log and every save shows a toast.
+ * Nothing in either is per employee (the months are another data type, payroll-month, behind
+ * the gate: payrollMonthData.ts), so, like PDF templates, it is answered and saved WITHOUT a
+ * dialog and without the password gate; every exchange is a row in the transfer log and every save shows a toast.
  * Both bodies are the app's own JSON, stored exactly as sent and never looked inside.
  *
  * Companies are named by BRN on the wire. Every message carries the BRN of the company

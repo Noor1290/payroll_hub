@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Database, Inbox, ListChecks, LoaderCircle, Send, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +33,7 @@ import { exchangeContext } from "./appData";
 // Registers the PDF form filler's data types with the bridge.
 import "./pdfData";
 import "./payrollSetupData";
+import "./payrollMonthData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";
 
@@ -183,6 +184,8 @@ function RequestDialog({ request }: { request: DataRequest }) {
     question?.what ?? (period ? `the ${formatPeriod(`${period}-01`)} run` : "the latest run");
 
   const { unlocked } = useUnlock();
+  // Only the password is asked for (payroll months): nothing is sent from this dialog.
+  const unlockOnly = question?.unlockOnly === true;
 
   const deny = () =>
     request.respond({
@@ -233,6 +236,14 @@ function RequestDialog({ request }: { request: DataRequest }) {
     request.respond(response);
   };
 
+  // Once the gate is open, an app that only needed it unlocked is answered by itself, once.
+  const answered = useRef(false);
+  useEffect(() => {
+    if (!unlockOnly || !unlocked || answered.current || !user || !current) return;
+    answered.current = true;
+    void approve();
+  });
+
   return (
     <Dialog.Root open>
       <Dialog.Portal>
@@ -249,7 +260,9 @@ function RequestDialog({ request }: { request: DataRequest }) {
             </span>
             <div className="min-w-0">
               <Dialog.Title className="text-lg font-semibold">
-                {app?.name ?? request.appId} is asking for payroll data
+                {unlockOnly
+                  ? `${app?.name ?? request.appId} needs the dashboard unlocked`
+                  : `${app?.name ?? request.appId} is asking for payroll data`}
               </Dialog.Title>
               <Dialog.Description asChild>
                 <div className="mt-1.5 space-y-2 text-sm text-muted">
@@ -257,6 +270,19 @@ function RequestDialog({ request }: { request: DataRequest }) {
                     <p>It asked for a kind of data this dashboard can't provide.</p>
                   ) : !current ? (
                     <p>No company is selected, so there is nothing to send.</p>
+                  ) : unlockOnly ? (
+                    <>
+                      <p>
+                        It works with {what} of{" "}
+                        <span className="text-fg">{current.company.name}</span>, which are kept
+                        behind your password.
+                      </p>
+                      <p>
+                        {unlocked
+                          ? "The dashboard is unlocked."
+                          : "Confirm your password to unlock the dashboard. Nothing is sent to the app by this."}
+                      </p>
+                    </>
                   ) : !unlocked ? (
                     <>
                       <p>
@@ -290,9 +316,9 @@ function RequestDialog({ request }: { request: DataRequest }) {
           )}
           <div className="mt-6 flex justify-end gap-2">
             <Button autoFocus={unlocked} disabled={busy} onClick={deny}>
-              Deny
+              {unlockOnly ? "Not now" : "Deny"}
             </Button>
-            {supported && current && unlocked && (
+            {supported && current && unlocked && !unlockOnly && (
               <Button variant="primary" disabled={busy} onClick={() => void approve()}>
                 {busy ? (
                   <LoaderCircle className="animate-spin" aria-hidden="true" />

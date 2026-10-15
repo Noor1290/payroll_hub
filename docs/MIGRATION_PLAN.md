@@ -17,6 +17,7 @@ Covers `Payroll_sys` (payroll), `PDF Editor` (PDF form filler), `payslip` and `p
 - **Nothing is left to confirm.** Every decision is in section 4.
 - **Phase 0 is built** (13 October 2026): the backup files, the storage interfaces, the `activity` message and the gate. What was built, and what it leaves for Phase 1, is in section 5.11. No migration was needed.
 - **Phase 2 is built** (14 October 2026), not merged: migration 0013 (not run yet), the `payroll-setup` data type, and the payroll app's setup in the dashboard with its import. Section 5.14.
+- **Phase 3 is built** (15 October 2026), not merged: migration 0014 (not run yet), the `payroll-month` data type behind the password gate, and the payroll app's months in the dashboard with their import. Section 5.15.
 
 ## 1. Where each app saves its data today
 
@@ -587,6 +588,34 @@ On the branch `migration-phase-2` in `payroll_hub` and `Payroll_sys`; not merged
 **Found on the way, not fixed:** `Payroll_sys/docs/KNOWN_ISSUES.md` item 7: until Phase 3, a key changed inside the dashboard moves the values in the browser's months but not in the browser's own copy of the setup. Fixed on 14 October (Payroll_sys `d1ba9d1`): payroll known issue 4. Re-saving a Simple formula with an exemption no longer wraps it again, and saving any column with no change gives the same column (the form keeps a stored `excludeFromExport` unless it is changed), so no new revision is made. Proven by tests that fail on the old form, and against the real database (below).
 
 **Tested against the real database (14 October 2026), after migration 0013 was run, in "TEST Co Ltd" and "TEST Co 2 Ltd" only,** the same way as Phase 1: the two branch builds served in place of the live sites in one browser window, the owner signing in by hand, fake data in a throwaway browser profile. 17 of 17 checks passed: before writing anything, none of the owner's companies had a setup; the import asked for a backup first, its preview wrote nothing, both companies were matched by BRN, and the shared setup and both companies were imported and checked (one shared setup at revision 1, both attached); every figure was identical before and after the import in both companies; saving a Simple NSF with an "Age 60+" exemption twice with no change left its formula and revision as they were; a Global change made from TEST Co 2 Ltd was one new revision and reached TEST Co Ltd, changing only NSF and Net Pay; the browser's own copy and its months were left as they were. The test data was then removed by the owner with a cleanup limited to the two TEST companies.
+
+### 5.15 Phase 3 as built (15 October 2026), before the migration is run
+
+On the branch `migration-phase-3` in `payroll_hub` and `Payroll_sys`; not merged, not deployed. The live project was not contacted: everything below ran in the in-memory Postgres, the demo store and stand-in dashboards. The test against the real database comes after migration 0014 is run.
+
+**Database: `supabase/migrations/0014_payroll_months.sql`.** As sketched in 5.4, with these differences:
+- `employees`, `payroll_runs` and `payroll_entries` are not used: they hold the results sent with "Send to dashboard", which stay as they are. No existing table is changed.
+- A month records the shared setup it was saved with, its revision and the company's own revision; foreign keys to the two history tables of 0013 make sure those revisions exist and are kept.
+- `payroll_month_history` records every save (who, when, the setup revisions, the number of employees). The month's content is kept with a record only when it would otherwise be lost: the last revision of each day (UTC), a revision someone else saved when another person saves over it, and the revision replaced by "Save mine over it" or by an import. Keeping the content of every save would grow by megabytes a day: the app saves a moment after each pause in typing.
+- `save_payroll_key_change` is the all-or-nothing change of key of 5.3: it calls the setup saves of 0013 unchanged and moves the values in every month the key reaches, in one transaction.
+- The list of a month's column keys (names only) is kept with it, so the "Change this column's key?" question can count months without reading them.
+- `delete_company` is replaced to delete the months and their history before the setup revisions they point at.
+- It only adds. A test reads the file and fails if it drops, alters or truncates anything that existed before.
+
+**Dashboard.** Data type `payroll-month` (`gate`, `unlock`, `list`, `load`, `history`; saves `save` and `key-change`). Admins only; the gate must be open, with no dialog on each read or save; locked = `locked` at once. The dashboard tells the payroll app when the gate opens or locks (a one-row message with nothing else in it). "Unlock" from the app opens the request dialog in a password-only form. A saved month has no toast; everything is in the transfer log without values. The wire contract is in `docs/INTEGRATION.md`.
+
+**Payroll app.** Inside a dashboard that keeps months, the month on screen is read from it and saved to it a moment after typing stops, one save at a time per month, recording the setup revisions it was worked out with. Nothing of a month is written to the browser, saved or not. The bar says "Saved", "Saving..." or "NOT saved" for the setup and the months together, and offers "Save mine over it" / "Use the dashboard's version" when someone else saved the same month. When the gate locks, the Employee Table and Totals are covered ("Unlock the dashboard to continue"), the month's tools are disabled, what was typed stays in memory, marked NOT saved, and is saved when the gate opens; "Unlock the dashboard" asks the dashboard for its password prompt. Someone who is not an admin of the company sees the columns, not the employees. "Import months to the dashboard" needs a backup file first, lists every company and month (a company whose setup was not imported in Phase 2 is named and left alone), offers a month the dashboard already has as "Keep the dashboard's" or "Replace it with this browser's, as a new revision", stores each month and checks it by reading it back and comparing every calculated figure, and never writes this browser's copy. Opened on its own, or inside a dashboard that does not keep months yet, the app works as before.
+
+**Known issue 7** (a key changed inside the dashboard moved the values in the browser's months but not in the browser's copy of the setup) no longer happens inside a dashboard that keeps months: the change moves the values in the dashboard, with the setup, and this browser's copy is not touched. Proven through the real screens: before and after, the app opened on its own shows the same figures and its stored text is unchanged. It can still happen inside a dashboard that does not keep months yet (Phase 2 deployed alone).
+
+**Decided while building, to confirm:**
+- Month history keeps the content as described above, not of every save.
+- A saved month shows no toast in the dashboard (a refused one does); each save is still a transfer-log row, so a long session of typing adds many rows.
+- While the gate is locked, the Global and Company Columns tabs stay usable (no employee in them); a change of a column's key needs the gate and waits, NOT saved, until it opens.
+- A month whose figures would not be the same with the dashboard's columns is not offered by the import (it would change the payroll); months with no employees are not imported.
+- The import of months does not start while the column setup has changes not saved yet.
+
+**Not built in this phase:** the Database page tabs for the two month tables (nor those of Phase 2's four tables); a screen for a month's history (the dashboard answers `history`); the mock app in demo mode; opening this browser's months read-only when the dashboard cannot be reached.
 
 ## 6. Risks and things to check first
 
