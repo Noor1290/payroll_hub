@@ -16,8 +16,9 @@ Covers `Payroll_sys` (payroll), `PDF Editor` (PDF form filler), `payslip` and `p
 - **The password gate (decided 13 October):** it locks after 10 minutes without activity (up to 30 in Settings), not 10 minutes after unlocking, and work inside an app counts as activity (section 5.8).
 - **Nothing is left to confirm.** Every decision is in section 4.
 - **Phase 0 is built** (13 October 2026): the backup files, the storage interfaces, the `activity` message and the gate. What was built, and what it leaves for Phase 1, is in section 5.11. No migration was needed.
-- **Phase 2 is built** (14 October 2026), not merged: migration 0013 (not run yet), the `payroll-setup` data type, and the payroll app's setup in the dashboard with its import. Section 5.14.
-- **Phase 3 is built** (15 October 2026), not merged: migration 0014 (run and tested against the real database on 15 October), the `payroll-month` data type behind the password gate, and the payroll app's months in the dashboard with their import. Section 5.15.
+- **Phase 2 is built** (14 October 2026) and merged: migration 0013 (not run yet), the `payroll-setup` data type, and the payroll app's setup in the dashboard with its import. Section 5.14.
+- **Phase 3 is built** (15 October 2026) and merged: migration 0014 (run and tested against the real database on 15 October), the `payroll-month` data type behind the password gate, and the payroll app's months in the dashboard with their import. Section 5.15.
+- **Phase 3 follow-ups are built** (15 October 2026), on the branch `phase-3-followups`, not merged: History and restore of the column setups and months, the Database page tabs for the setup and month tables, the read-only offline copy of the column setup, and the docs say `payroll_hub` for the live address. No migration. Section 5.16.
 
 ## 1. Where each app saves its data today
 
@@ -625,6 +626,38 @@ On the branch `migration-phase-3` in `payroll_hub` and `Payroll_sys`; not merged
 - a Global column's key changed inside the dashboard: one step moved the values in all three months of both companies with the setup (shared revision 2); this browser's own copy was unchanged byte for byte and, opened on its own, showed the same figures as at the start (known issue 7 resolved).
 
 Found and fixed on the way: the first save of a month answered slowly (over 10 seconds; later calls took about 0.3 seconds), so the import could not confirm September although it was stored. The import now asks for the read-back again, and offers a month already in the dashboard exactly as here as "check it and note it as imported", with no second write (Payroll_sys `91df937`, with tests). The next import did exactly that for September. Found, not fixed: dashboard known issue 4 (the app's first question after a reload can arrive before the dashboard knows who is signed in). The two sign-outs during the test were the idle sign-out after 15 minutes without activity.
+
+### 5.16 Phase 3 follow-ups (15 October 2026)
+
+On the branch `phase-3-followups` in `payroll_hub`, `Payroll_sys` and `payslip` (docs only); not merged, not deployed. No migration: the history tables and their read policies came with 0013 and 0014.
+
+- **History and restore (payroll app, inside the dashboard).** "History of the Global columns" (Global Columns tab), "History of the columns of [company]" (Company Columns tab) and "History of this month" (Employee Table) list every saved revision, newest first, with the date, the time and who saved it, in the same layout as the PDF form filler's "Saved versions". Looking at one changes nothing: a setup revision shows its identity fields, columns and formulas; a month revision its employees, worked out with the columns in use now (and says which setup revisions it was saved with). "Restore this version" asks first and saves the revision as a NEW one; nothing earlier is rewritten or deleted.
+  - Restoring a setup names the keys, formulas, columns and other settings that change, then works out again every month saved with a LATER revision of that setup and names any whose figures would not be the same (month, company, how many figures, which columns; never a figure). Restore is not offered until that check has run, so the dashboard must be unlocked for it. It is an ordinary `save-shared` / `save-company` of the earlier body.
+  - Restoring a month is a `save` of that revision's employees with `keep_previous` (the revision it replaces is kept with its content) and the new `restored_from`, which also makes it announced with a toast. A save whose content the dashboard did not keep (see 5.15) is listed as "only the record kept" and cannot be shown or restored.
+  - Restore is offered only to someone who may change it (shared: an admin of every attached company; company and months: its admin). A month's History needs the gate open; when the dashboard locks, the dialog shows nothing of the month and reads it again once unlocked.
+  - Dashboard: `payroll-month` `revision` answers one revision with its employees (kept content, or the revision in use now), behind the gate, admins only.
+- **Database page (dashboard).** Read-only tabs for `payroll_shared_setups`, `payroll_shared_setup_history`, `payroll_company_setups`, `payroll_company_setup_history`, `payroll_months` and `payroll_month_history`, like the other tabs: admins, behind the gate, the selected company only. A shared setup belongs to no company: it is read through the selected company's attachment to it (an inner join). Setup bodies are masked as app-written JSON; a month's employees (national IDs and salaries) are masked until revealed, and the two month tabs are admin-only, as their policies are.
+- **Offline copy (payroll app).** Each time the column setup is loaded from the dashboard, the browser keeps that copy per company (`payroll_dashboard_offline_v1`: shared and company columns, formulas and custom details only; never a month, salary or national ID). When the dashboard cannot be reached it is offered by company and date, and opens as "Offline: read-only copy from [date/time]. Changes can't be saved." Nothing in it can be changed; the Employee Table and Totals say the months are not in it; "Try the dashboard again" goes back.
+- **Docs.** The live address and repository are `payroll_hub` in the docs and READMEs of `payroll_hub` and `payslip` (and the untracked `hub_docs` copies in the two other apps). Left as they are because they are right: the local dev path `/payroll-hub/` (Vite's default and `.env`), and code (package name, log prefix, `bridge.js`'s comment, which the apps copy byte for byte, and the browser tests' stand-in paths).
+
+**Decided while building, to confirm:**
+- History can be looked at by anyone who may read it (members, for the setups); only Restore is limited as above, as in the PDF form filler.
+- A setup restore does not move values between keys: if a key changes, values typed under the newer key stay there. The dialog names the key and the months that would be worked out differently.
+- A month restore is saved with the column setup revisions in use now, as every month save is.
+- The offline copy is the setup as last LOADED (as asked): a save or restore made after the load is in it only from the next load.
+
+**Tested against the real database (15 October 2026), in "TEST Co Ltd" (C1234577) and "TEST Co 2 Ltd" (C1136524) only,** the same way as Phase 3: the branch builds served at the live sites' address in one Chromium window with a throwaway profile, the owner signing in and typing the password at each unlock. The two companies still held Phase 3's test data (shared revision 2, months of September and October). 11 of 11 checks passed:
+- the Global columns' History listed revisions 2 and 1 with date, time and "saved by you"; looking at revision 1 changed nothing;
+- with a Net Pay change saved as shared revision 3 and October saved with it, restoring revision 2 named the formula, warned "October 2026, TEST Co Ltd: 6 figures in Net Pay", saved nothing before Restore, then stored revision 4 equal to revision 2 with 1 to 3 kept, and nothing was saved again after it; TEST Co Ltd's own columns the same way (PRGF; the warning named PRGF and Total MRA contributions; company revision 4, the shared setup untouched);
+- October's History listed revisions 10 to 1, revision 5 as the one with its content kept; a record-only revision offered no Restore; revision 5 was shown with nothing to type into; restoring it stored revision 11 equal to revision 5, with revision 10 kept with its content; the table showed it;
+- the six Database page tabs showed TEST Co Ltd's rows (the shared setup through the join: 1 setup, 4 revisions), every body and month masked until revealed, no write button, no user id;
+- with the window's requests to the database cut off, the payroll app offered "Open the read-only copy of TEST Co Ltd from [date] at [time]"; it opened with the label, no write control on either column tab, the months not in it, and nothing reached the database; the kept copy held no employee, salary or ID; "Try the dashboard again" went back;
+- locking the dashboard with a month's History open left nothing of the month in the dialog, and covered the table;
+- afterwards only the two TEST companies have a payroll setup (BC CO LTD and "Test Co Ltd", C1234566, have none).
+
+Found on the way: reloading the whole dashboard page locks the gate (it is kept in memory only), as designed; and, before the commit, the "what restoring it would change" list counted columns as changed when only the order of their stored properties differed (the database does not keep it). Fixed (compared by content) with a test that fails on the old comparison.
+
+The test data is removed with a cleanup limited to the two TEST companies, matched by name and BRN (given to the owner, preview first).
 
 ## 6. Risks and things to check first
 
