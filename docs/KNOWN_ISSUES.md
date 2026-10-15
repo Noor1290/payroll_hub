@@ -1,4 +1,4 @@
-# Known issues (payroll-hub)
+# Known issues (payroll_hub)
 
 Issues in this repo only. The payroll app keeps its own list in `docs/KNOWN_ISSUES.md` in payroll_sys.
 

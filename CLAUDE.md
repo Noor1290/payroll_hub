@@ -1,7 +1,7 @@
 # Payroll Hub: project memory
 
 Static, frontend-only dashboard (React 18 + Vite + TypeScript strict + Tailwind) on GitHub Pages at
-https://noor1290.github.io/payroll-hub/ (Vite `base: "/payroll-hub/"`, configurable). It connects standalone apps,
+https://noor1290.github.io/payroll_hub/ (the deploy sets Vite `base` from the repository name; locally it defaults to `/payroll-hub/`; configurable). It connects standalone apps,
 monitors them, and transfers data between them. Full spec: **docs/BRIEF.md** (read the section for the current phase, and section 12 for agreed decisions).
 
 ## Hard rules (never break these)
@@ -93,4 +93,4 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 
 - [x] Phase 1  - [x] Phase 2  - [x] Phase 3  - [x] Phase 4  - [x] Phase 5  - [x] Phase 6
 - Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [x] Stage B, items 3 to 7, 9, 10 (merged and deployed; migrations 0008 to 0010 run)  - [x] Stage C, item 8 (on `feature/payslip-issue`; migration 0011 is for the owner to run)
-- Moving app data into Supabase (docs/MIGRATION_PLAN.md): [x] Phase 0 (backup files and storage interfaces in the apps, the `activity` message, the gate locks after inactivity; no migration)  - [x] Phase 1 (0012)  - [x] Phase 2 (0013)  - [ ] Phase 3 (0014, built on branch migration-phase-3, not merged)
+- Moving app data into Supabase (docs/MIGRATION_PLAN.md): [x] Phase 0 (backup files and storage interfaces in the apps, the `activity` message, the gate locks after inactivity; no migration)  - [x] Phase 1 (0012)  - [x] Phase 2 (0013)  - [x] Phase 3 (0014, merged)  - [x] Phase 3 follow-ups (History and restore, Database page tabs, offline copy; branch `phase-3-followups`, no migration)

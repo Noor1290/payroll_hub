@@ -1,6 +1,6 @@
 # Hub changes needed by the payslip app
 
-A to-do list for the `payroll-hub` repo, written from the payslip repo on 6 October 2026 and updated on 7 October 2026 to say what was built (Stage B, then Stage C the same day). Every SQL file is run by hand by the owner in the Supabase SQL editor. `bridge.js` is not changed by any item.
+A to-do list for the `payroll_hub` repo, written from the payslip repo on 6 October 2026 and updated on 7 October 2026 to say what was built (Stage B, then Stage C the same day). Every SQL file is run by hand by the owner in the Supabase SQL editor. `bridge.js` is not changed by any item.
 
 Status: items 1 and 2 are done and merged (Stage A). Items 3 to 7, 9 and 10 are done, merged and deployed (Stage B), and migrations 0008 to 0010 have been run. Item 8, with 9 and 10 for its table, is built on the branch `feature/payslip-issue` (Stage C), not merged; migration 0011 is written and still to be run.
 

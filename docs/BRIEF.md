@@ -14,8 +14,8 @@ a real "wow" dashboard.
   Imports that JSON and auto-fills a PDF.
 - **App 3 (coming soon): Payslip Automation.** Consumes the same payroll JSON. Not built yet.
 - More apps will be added later, so everything must be registry-driven (adding an app = one config entry).
-- This dashboard is a third repo under the same account, served at https://noor1290.github.io/payroll-hub/
-  (repo name `payroll-hub`). Vite `base` must be `/payroll-hub/` and configurable.
+- This dashboard is a third repo under the same account, served at https://noor1290.github.io/payroll_hub/
+  (repo name `payroll_hub`). Vite `base` must be `/payroll_hub/` there, and configurable (the deploy sets it from the repo name).
 - All apps are static sites on the **same origin** (https://noor1290.github.io), so `event.origin` alone cannot tell apps apart.
 - Each app must keep working **standalone** (manual JSON import/export) if the dashboard is down. Apps must not depend on
   each other or on the dashboard.
@@ -248,7 +248,7 @@ in-memory data" button, About/version.
   explore the UI without Supabase. It must be impossible to enable in a production build and must never bypass real auth in production.
 - Vitest tests for: JSON transform/trim/validation, period-from-filename, BRN company matching, column auto-mapping and
   required-field enforcement, message validation (reject wrong source/origin/version), ready-queue + ack timeout behaviour.
-- GitHub Actions workflow to build and deploy to GitHub Pages (repo `payroll-hub`), injecting `VITE_SUPABASE_URL` and
+- GitHub Actions workflow to build and deploy to GitHub Pages (repo `payroll_hub`), injecting `VITE_SUPABASE_URL` and
   `VITE_SUPABASE_ANON_KEY` from repository variables/secrets.
 - README: setup, env vars, how to add a new app to the registry, how to add a field (use `payroll_entries.extra` first;
   ALTER TABLE only when it must be queryable), how to test the security (a user who is not a company member must see

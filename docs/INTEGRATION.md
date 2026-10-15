@@ -17,7 +17,7 @@ All of these sites are served from one origin, `https://noor1290.github.io`. Bec
 
 Both existing apps are React + Vite, so the steps assume that.
 
-1. **Copy the file.** Copy `docs/bridge.js` from the `payroll-hub` repo to `src/payrollHubBridge.js` in the app. Do not edit it. If the app lints its sources, add the file to the linter's ignore list.
+1. **Copy the file.** Copy `docs/bridge.js` from the `payroll_hub` repo to `src/payrollHubBridge.js` in the app. Do not edit it. If the app lints its sources, add the file to the linter's ignore list.
 2. **Load it once**, at the top of the app's entry file (`src/main.jsx` or `src/main.tsx`):
 
    ```js
@@ -87,7 +87,7 @@ What to build:
 
 Ready-to-paste task for Claude Code in the `payroll_sys` repo:
 
-> Read `docs/INTEGRATION.md` and `docs/bridge.js` from the payroll-hub repo (I will paste or copy them in). Copy bridge.js unchanged to `src/payrollHubBridge.js`, import it once in the entry file, and call `PayrollHubBridge.init({ appId: "payroll" })` once in the root component. Find where the "pdf-fill" JSON export array is built and add a "Send to dashboard" button beside the existing export button, shown only when `PayrollHubBridge.isEmbedded()`. It must send the exact same array with `dataType: "payroll-result"` and `meta.period` as `YYYY-MM`, and show the reply's success or error. Do not change the existing export, do not edit bridge.js, and make sure the app behaves exactly as before when opened on its own.
+> Read `docs/INTEGRATION.md` and `docs/bridge.js` from the payroll_hub repo (I will paste or copy them in). Copy bridge.js unchanged to `src/payrollHubBridge.js`, import it once in the entry file, and call `PayrollHubBridge.init({ appId: "payroll" })` once in the root component. Find where the "pdf-fill" JSON export array is built and add a "Send to dashboard" button beside the existing export button, shown only when `PayrollHubBridge.isEmbedded()`. It must send the exact same array with `dataType: "payroll-result"` and `meta.period` as `YYYY-MM`, and show the reply's success or error. Do not change the existing export, do not edit bridge.js, and make sure the app behaves exactly as before when opened on its own.
 
 ### Payroll app: column setup (`payroll-setup`)
 
@@ -194,7 +194,7 @@ What to build:
 
 Ready-to-paste task for Claude Code in the `pdf-form-filler` repo:
 
-> Read `docs/INTEGRATION.md` and `docs/bridge.js` from the payroll-hub repo (I will paste or copy them in). Copy bridge.js unchanged to `src/payrollHubBridge.js`, import it once in the entry file, and call `PayrollHubBridge.init({ appId: "pdf-editor", onData })` once in the root component. `onData` must pass `payload.rows` into the same code path the JSON file import uses after parsing (find it via the message "doesn't look like a valid JSON file"), and throw an Error with a clear message when the rows cannot be used. Add a "Get from dashboard" button shown only when `PayrollHubBridge.isEmbedded()`, using `requestData("payroll-result")`. Do not write the received data to localStorage, do not edit bridge.js, and make sure the app behaves exactly as before when opened on its own.
+> Read `docs/INTEGRATION.md` and `docs/bridge.js` from the payroll_hub repo (I will paste or copy them in). Copy bridge.js unchanged to `src/payrollHubBridge.js`, import it once in the entry file, and call `PayrollHubBridge.init({ appId: "pdf-editor", onData })` once in the root component. `onData` must pass `payload.rows` into the same code path the JSON file import uses after parsing (find it via the message "doesn't look like a valid JSON file"), and throw an Error with a clear message when the rows cannot be used. Add a "Get from dashboard" button shown only when `PayrollHubBridge.isEmbedded()`, using `requestData("payroll-result")`. Do not write the received data to localStorage, do not edit bridge.js, and make sure the app behaves exactly as before when opened on its own.
 
 ### PDF form filler: templates in the dashboard (`pdf-template`, `pdf-file`)
 
@@ -474,7 +474,7 @@ The bridge only trusts the **deployed** dashboard at `https://noor1290.github.io
 4. `pdf-form-filler`: from that dialog choose **Send to… → PDF Form Filler**. The dashboard should say "Delivered" and the app should show the data.
 5. Open each app directly in its own tab. No dashboard buttons should appear and everything should work as before.
 
-To try the dashboard side without touching the real apps, run `npm run dev:demo` in the `payroll-hub` repo: it loads mock apps that use the real `bridge.js`. The mock payslip app has a button for each rates and template message, and buttons to load and issue a month of payslips, against fake data kept in memory.
+To try the dashboard side without touching the real apps, run `npm run dev:demo` in the `payroll_hub` repo: it loads mock apps that use the real `bridge.js`. The mock payslip app has a button for each rates and template message, and buttons to load and issue a month of payslips, against fake data kept in memory.
 
 ## Protocol reference (version 1)
 
