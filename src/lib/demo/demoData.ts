@@ -17,8 +17,16 @@ import {
   demoPdfTemplateCounts,
   demoPdfTemplateRows,
 } from "./demoPdfTemplates";
-import { demoForgetPayrollMonths, demoPayrollMonthCounts } from "./demoPayrollMonths";
-import { demoForgetPayrollSetups, demoPayrollSetupCounts } from "./demoPayrollSetups";
+import {
+  demoForgetPayrollMonths,
+  demoPayrollMonthCounts,
+  demoPayrollMonthRows,
+} from "./demoPayrollMonths";
+import {
+  demoForgetPayrollSetups,
+  demoPayrollSetupCounts,
+  demoPayrollSetupRows,
+} from "./demoPayrollSetups";
 
 /**
  * FAKE in-memory database for dev-only demo mode. Every name, number and id here is invented.
@@ -558,6 +566,14 @@ function rawRows(table: DbTableName, companyId: string): Record<string, unknown>
     case "pdf_templates":
     case "pdf_template_history":
       return demoPdfTemplateRows(table, companyId);
+    case "payroll_shared_setups":
+    case "payroll_shared_setup_history":
+    case "payroll_company_setups":
+    case "payroll_company_setup_history":
+      return demoPayrollSetupRows(table, companyId);
+    case "payroll_months":
+    case "payroll_month_history":
+      return demoPayrollMonthRows(table, companyId);
     case "payroll_entries": {
       const companyRuns = new Map(
         runs.filter((r) => r.companyId === companyId).map((r) => [r.id, r]),
@@ -664,5 +680,11 @@ export async function demoFetchTableCounts(
     issued_payslips: isAdmin ? count("issued_payslips") : null,
     pdf_templates: count("pdf_templates"),
     pdf_template_history: count("pdf_template_history"),
+    payroll_shared_setups: count("payroll_shared_setups"),
+    payroll_shared_setup_history: count("payroll_shared_setup_history"),
+    payroll_company_setups: count("payroll_company_setups"),
+    payroll_company_setup_history: count("payroll_company_setup_history"),
+    payroll_months: isAdmin ? count("payroll_months") : null,
+    payroll_month_history: isAdmin ? count("payroll_month_history") : null,
   };
 }

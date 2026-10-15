@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   demoFetchMonthHistory,
   demoFetchMonthList,
+  demoFetchMonthRevision,
   demoFetchMonths,
   demoSaveKeyChange,
   demoSaveMonth,
@@ -178,6 +179,60 @@ export async function fetchMonthHistory(
     .range(0, HISTORY_PAGE - 1);
   if (error) throw error;
   return z.array(monthRevisionSchema).parse(data);
+}
+
+const keptRevisionSchema = monthRevisionSchema.omit({ kept: true }).extend({
+  employees: employeesSchema.nullable(),
+});
+const currentContentSchema = z.object({
+  revision: z.number().int().min(1),
+  employees: employeesSchema,
+});
+
+/** One revision of a month as it was saved, with its employees. */
+export type KeptMonthRevision = Omit<MonthRevision, "kept"> & {
+  employees: Record<string, unknown>[];
+};
+
+/**
+ * One revision of a month with its employees, for the payroll app's history preview and
+ * restore. The content comes from its history record when it was kept there, or from the month
+ * itself when it is the revision in use now. Null when the revision does not exist or only its
+ * record was kept (see migration 0014). Reads only.
+ */
+export async function fetchMonthRevision(
+  viewer: Viewer,
+  companyId: string,
+  period: string,
+  revision: number,
+): Promise<KeptMonthRevision | null> {
+  if (import.meta.env.DEV && viewer.isDemo) {
+    return demoFetchMonthRevision(companyId, period, revision);
+  }
+  const { data, error } = await client()
+    .from("payroll_month_history")
+    .select(
+      "revision, shared_revision, company_revision, employee_count, employees, saved_by, saved_at",
+    )
+    .eq("company_id", companyId)
+    .eq("period", period)
+    .eq("revision", revision)
+    .maybeSingle();
+  if (error) throw error;
+  if (data === null) return null;
+  const record = keptRevisionSchema.parse(data);
+  if (record.employees !== null) return { ...record, employees: record.employees };
+
+  const now = await client()
+    .from("payroll_months")
+    .select("revision, employees")
+    .eq("company_id", companyId)
+    .eq("period", period)
+    .maybeSingle();
+  if (now.error) throw now.error;
+  if (now.data === null) return null;
+  const month = currentContentSchema.parse(now.data);
+  return month.revision === revision ? { ...record, employees: month.employees } : null;
 }
 
 // ---------- saving ----------

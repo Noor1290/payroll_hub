@@ -329,6 +329,48 @@ export function demoHasSetupRevision(target: SetupTarget, revision: number): boo
 export const demoAttachedCompanyIds = (setupId: string) =>
   attachedTo(setupId).map((c) => c.company_id);
 
+/**
+ * The raw rows the Database page reads for a company, shaped as the API returns them. A
+ * shared setup is the one the company is attached to, as the page's join reads it.
+ */
+export function demoPayrollSetupRows(
+  table:
+    | "payroll_shared_setups"
+    | "payroll_shared_setup_history"
+    | "payroll_company_setups"
+    | "payroll_company_setup_history",
+  companyId: string,
+): Record<string, unknown>[] {
+  if (roleIn(companyId) === null) return [];
+  const own = companies.find((c) => c.company_id === companyId);
+  if (!own) return [];
+  const setup = shared.find((s) => s.id === own.shared_setup_id);
+  switch (table) {
+    case "payroll_company_setups":
+      return [{ ...copy(own), created_by: own.updated_by, created_at: own.updated_at }];
+    case "payroll_company_setup_history":
+      return history
+        .filter((h) => h.key === `company:${companyId}`)
+        .map((h) => ({ company_id: companyId, ...without(h, "key") }));
+    case "payroll_shared_setups":
+      return setup
+        ? [
+            {
+              ...without(setup, "created_by"),
+              created_by: setup.created_by,
+              created_at: setup.updated_at,
+            },
+          ]
+        : [];
+    case "payroll_shared_setup_history":
+      return setup
+        ? history
+            .filter((h) => h.key === `shared:${setup.id}`)
+            .map((h) => ({ ...without(h, "key"), shared_setup_id: setup.id, name: setup.name }))
+        : [];
+  }
+}
+
 /** What deleting a company would remove: for the delete preview. */
 export function demoPayrollSetupCounts(companyId: string) {
   return {

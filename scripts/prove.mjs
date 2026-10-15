@@ -1027,8 +1027,8 @@ const BREAKS = [
   {
     what: "Every saved month shows a toast",
     file: "src/features/workspace/payrollMonthData.ts",
-    find: '      { quiet: (payload.rows[0] as { action?: unknown } | undefined)?.action === "save" },',
-    replace: "      { quiet: false },",
+    find: '  return row?.action === "save" && row.restored_from === undefined;',
+    replace: "  return false;",
     test: "src/features/workspace/payrollMonthData.test.ts",
     mustFail: "no toast for a saved month",
   },
@@ -1055,6 +1055,48 @@ const BREAKS = [
     replace: "    response = await answer();",
     test: "src/features/workspace/signInWait.test.ts",
     mustFail: "the question waits for the sign-in and is answered, not refused",
+  },
+
+  // ---------- Phase 3 follow-ups: history and restore, Database page tabs ----------
+  {
+    what: "A month revision whose content was not kept is answered with the month as it is now",
+    file: "src/lib/demo/demoPayrollMonths.ts",
+    find: "    record.employees ?? (month && month.revision === revision ? month.employees : null);",
+    replace: "    record.employees ?? month?.employees ?? null;",
+    test: "src/features/workspace/payrollMonthData.test.ts",
+    mustFail: "a revision whose content was not kept",
+  },
+  {
+    what: "A restored month is saved quietly, with no toast",
+    file: "src/features/workspace/payrollMonthData.ts",
+    find: '  return row?.action === "save" && row.restored_from === undefined;',
+    replace: '  return row?.action === "save";',
+    test: "src/features/workspace/payrollMonthData.test.ts",
+    mustFail: "a restore is a save naming the revision it restores",
+  },
+  {
+    what: "The Database page shows a month's employees unmasked",
+    file: "src/lib/supabase/database.ts",
+    find: '      { key: "employees", kind: "list", sensitive: true },',
+    replace: '      { key: "employees", kind: "list" },',
+    test: "src/features/database/DatabasePage.test.tsx",
+    mustFail: "mask every month's salaries and national IDs by default",
+  },
+  {
+    what: "The month tables are read for someone who is not an admin",
+    file: "src/lib/supabase/database.ts",
+    find: '    adminOnly: true,\n    canBeDeleted: false,\n    defaultSort: { column: "period", ascending: false },',
+    replace: '    canBeDeleted: false,\n    defaultSort: { column: "period", ascending: false },',
+    test: "src/features/database/DatabasePage.test.tsx",
+    mustFail: "are for admins only: someone else is told so",
+  },
+  {
+    what: "The shared setup tabs read every shared setup, not the selected company's",
+    file: "src/lib/supabase/database.ts",
+    find: "      return query.eq(SHARED_SETUP_JOIN[table.name].company, companyId);",
+    replace: "      return query;",
+    test: "src/lib/supabase/database.test.ts",
+    mustFail: "the shared setup through the company attached to it",
   },
 ];
 

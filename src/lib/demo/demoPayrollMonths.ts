@@ -1,4 +1,5 @@
 import type {
+  KeptMonthRevision,
   KeyChangeInput,
   MonthInfo,
   MonthInput,
@@ -188,6 +189,59 @@ export async function demoFetchMonthHistory(
       kept: h.employees !== null,
       saved_by: h.saved_by,
       saved_at: h.saved_at,
+    }));
+}
+
+/** One revision with its employees: kept with its record, or the month's own when current. */
+export async function demoFetchMonthRevision(
+  companyId: string,
+  period: string,
+  revision: number,
+): Promise<KeptMonthRevision | null> {
+  await pause(30);
+  if (!isAdmin(companyId)) return null;
+  const record = history.find(
+    (h) => h.company_id === companyId && h.period === period && h.revision === revision,
+  );
+  if (!record) return null;
+  const month = months.find((m) => m.company_id === companyId && m.period === period);
+  const employees =
+    record.employees ?? (month && month.revision === revision ? month.employees : null);
+  if (employees === null) return null;
+  return {
+    revision: record.revision,
+    shared_revision: record.shared_revision,
+    company_revision: record.company_revision,
+    employee_count: record.employee_count,
+    saved_by: record.saved_by,
+    saved_at: record.saved_at,
+    employees: copy(employees),
+  };
+}
+
+/** The raw rows the Database page reads for a company, shaped as the API returns them. */
+export function demoPayrollMonthRows(
+  table: "payroll_months" | "payroll_month_history",
+  companyId: string,
+): Record<string, unknown>[] {
+  if (!isAdmin(companyId)) return [];
+  if (table === "payroll_months") {
+    return months
+      .filter((m) => m.company_id === companyId)
+      .map((m) => ({
+        ...copy(m),
+        value_keys: valueKeys(m.employees),
+        created_by: m.updated_by,
+        created_at: m.updated_at,
+      }));
+  }
+  return history
+    .filter((h) => h.company_id === companyId)
+    .map((h) => ({
+      ...copy(h),
+      shared_setup_id: months.find((m) => m.company_id === companyId && m.period === h.period)!
+        .shared_setup_id,
+      content_kept: h.employees !== null,
     }));
 }
 

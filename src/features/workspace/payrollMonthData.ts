@@ -17,6 +17,7 @@ import { PAYROLL_MONTHS_KEY, queryClient } from "@/lib/queryClient";
 import {
   fetchMonthHistory,
   fetchMonthList,
+  fetchMonthRevision,
   fetchMonths,
   PAYROLL_MONTHS_MIGRATION,
   saveKeyChange,
@@ -93,6 +94,14 @@ const paramsSchema = z.discriminatedUnion("action", [
     company_brn: brnSchema.optional(),
     period: periodSchema,
   }),
+  /** One revision of a month with its employees, when its content was kept. Reads only. */
+  z.strictObject({
+    action: z.literal("revision"),
+    brn: brnSchema,
+    company_brn: brnSchema.optional(),
+    period: periodSchema,
+    revision: z.number().int().min(1),
+  }),
 ]);
 
 const moveSchema = z.strictObject({
@@ -117,6 +126,8 @@ const saveSchema = z.discriminatedUnion("action", [
     company_revision: z.number().int().min(1),
     /** Keep what is there now in the month's history before replacing it. */
     keep_previous: z.boolean().optional(),
+    /** The earlier revision these employees are a restore of ("Restore this version"). */
+    restored_from: z.number().int().min(1).optional(),
   }),
   z
     .strictObject({
@@ -164,6 +175,10 @@ const SAVE_LOCKED = refuse(
   "The dashboard is locked, so this was NOT saved. Unlock it there, and it is saved then.",
 );
 const NO_SUCH_COMPANY = refuse("not-found", "You have no company with that BRN in the dashboard.");
+const REVISION_NOT_KEPT = refuse(
+  "not-found",
+  "This revision's content was not kept: the dashboard has only the record of that save.",
+);
 const TOO_LARGE = refuse(
   "too-large",
   "The month is larger than the dashboard accepts (1 MB). Nothing was saved.",
@@ -295,6 +310,19 @@ export async function answerPayrollMonthRequest(
           command.period,
         );
       }
+      case "revision": {
+        const kept = await gatedRead(
+          [companyId, "revision", command.period, command.revision],
+          () => fetchMonthRevision(viewer, companyId, toDate(command.period), command.revision),
+        );
+        if (kept !== null && "ok" in kept) return kept;
+        if (kept === null) return REVISION_NOT_KEPT;
+        const { saved_by, ...revision } = kept;
+        return answer(
+          [{ period: command.period, ...revision, saved_by_you: you(saved_by) }],
+          command.period,
+        );
+      }
     }
   } catch (error) {
     if (!isUnlocked()) return READ_LOCKED;
@@ -341,6 +369,7 @@ export async function savePayrollMonthFromApp(payload: SendDataPayload): Promise
           revision: saved.revision,
           employee_count: saved.employee_count,
           updated_at: saved.updated_at,
+          ...(command.restored_from !== undefined ? { restored_from: command.restored_from } : {}),
         },
       };
     }
@@ -453,7 +482,20 @@ export function describePayrollMonthSave(result: Record<string, unknown>): strin
     const months = Array.isArray(result.months) ? result.months.length : 0;
     return `Payroll column key changed, with its values in ${months} ${months === 1 ? "month" : "months"}`;
   }
-  return `${String(result.company)}: ${formatPeriod(`${String(result.period)}-01`)} saved (revision ${String(result.revision)})`;
+  const month = `${String(result.company)}: ${formatPeriod(`${String(result.period)}-01`)}`;
+  if (typeof result.restored_from === "number") {
+    return `${month} restored from revision ${result.restored_from} (revision ${String(result.revision)})`;
+  }
+  return `${month} saved (revision ${String(result.revision)})`;
+}
+
+/**
+ * A month saved by itself as the user types has no toast; a restore ("Restore this version")
+ * and a change of key do.
+ */
+export function isQuietMonthSave(payload: SendDataPayload): boolean {
+  const row = payload.rows[0] as { action?: unknown; restored_from?: unknown } | undefined;
+  return row?.action === "save" && row.restored_from === undefined;
 }
 
 /** How many rows a save stored, for the transfer log: the month, or the setup and each month moved. */
@@ -490,6 +532,6 @@ registerDataType(PAYROLL_MONTH, {
       () => savePayrollMonthFromApp(payload),
       describePayrollMonthSave,
       savedCount,
-      { quiet: (payload.rows[0] as { action?: unknown } | undefined)?.action === "save" },
+      { quiet: isQuietMonthSave(payload) },
     ),
 });

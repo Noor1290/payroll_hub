@@ -29,6 +29,12 @@ export const DB_TABLE_NAMES = [
   "issued_payslips",
   "pdf_templates",
   "pdf_template_history",
+  "payroll_shared_setups",
+  "payroll_shared_setup_history",
+  "payroll_company_setups",
+  "payroll_company_setup_history",
+  "payroll_months",
+  "payroll_month_history",
 ] as const;
 export type DbTableName = (typeof DB_TABLE_NAMES)[number];
 
@@ -348,6 +354,123 @@ export const DB_TABLES: Record<DbTableName, DbTable> = {
     defaultSort: { column: "saved_at", ascending: false },
     keyColumns: ["template_id", "revision"],
   },
+  // The payroll app's column setups (migration 0013). A shared setup belongs to no company:
+  // it is read through the selected company's attachment to it (see `scope`). Every body is
+  // the app's own JSON (columns, formulas, the company's custom details): masked.
+  payroll_shared_setups: {
+    name: "payroll_shared_setups",
+    columns: [
+      id("id"),
+      text("name", { nullable: false }),
+      count("revision"),
+      { key: "body", kind: "json", sensitive: true },
+      actor("created_by"),
+      stamp("created_at"),
+      actor("updated_by"),
+      stamp("updated_at"),
+    ],
+    searchColumns: ["name"],
+    canBeDeleted: false,
+    defaultSort: { column: "updated_at", ascending: false },
+    keyColumns: ["id"],
+  },
+  payroll_shared_setup_history: {
+    name: "payroll_shared_setup_history",
+    columns: [
+      id("shared_setup_id"),
+      count("revision"),
+      text("name", { nullable: false }),
+      { key: "body", kind: "json", sensitive: true },
+      actor("saved_by"),
+      stamp("saved_at"),
+    ],
+    searchColumns: ["name"],
+    canBeDeleted: false,
+    defaultSort: { column: "saved_at", ascending: false },
+    keyColumns: ["shared_setup_id", "revision"],
+  },
+  payroll_company_setups: {
+    name: "payroll_company_setups",
+    columns: [
+      id("company_id"),
+      id("shared_setup_id"),
+      count("revision"),
+      { key: "body", kind: "json", sensitive: true },
+      actor("created_by"),
+      stamp("created_at"),
+      actor("updated_by"),
+      stamp("updated_at"),
+    ],
+    searchColumns: [],
+    canBeDeleted: false,
+    defaultSort: { column: "updated_at", ascending: false },
+    keyColumns: ["company_id"],
+  },
+  payroll_company_setup_history: {
+    name: "payroll_company_setup_history",
+    columns: [
+      id("company_id"),
+      count("revision"),
+      id("shared_setup_id"),
+      { key: "body", kind: "json", sensitive: true },
+      actor("saved_by"),
+      stamp("saved_at"),
+    ],
+    searchColumns: [],
+    canBeDeleted: false,
+    defaultSort: { column: "saved_at", ascending: false },
+    keyColumns: ["company_id", "revision"],
+  },
+  // The payroll app's months (migration 0014): every employee and the values typed for them,
+  // national IDs and salaries included. Admins only (RLS), masked until revealed.
+  payroll_months: {
+    name: "payroll_months",
+    columns: [
+      id("company_id"),
+      { key: "period", kind: "date" },
+      count("revision"),
+      id("shared_setup_id"),
+      count("shared_revision"),
+      count("company_revision"),
+      count("employee_count"),
+      // The column keys the month holds values under: names only.
+      { key: "value_keys", kind: "list" },
+      { key: "employees", kind: "list", sensitive: true },
+      actor("created_by"),
+      stamp("created_at"),
+      actor("updated_by"),
+      stamp("updated_at"),
+    ],
+    searchColumns: [],
+    monthColumn: "period",
+    adminOnly: true,
+    canBeDeleted: false,
+    defaultSort: { column: "period", ascending: false },
+    keyColumns: ["company_id", "period"],
+  },
+  payroll_month_history: {
+    name: "payroll_month_history",
+    columns: [
+      id("company_id"),
+      { key: "period", kind: "date" },
+      count("revision"),
+      id("shared_setup_id"),
+      count("shared_revision"),
+      count("company_revision"),
+      count("employee_count"),
+      { key: "content_kept", kind: "boolean" },
+      // Empty for a record whose content was not kept.
+      { key: "employees", kind: "list", nullable: true, sensitive: true },
+      actor("saved_by"),
+      stamp("saved_at"),
+    ],
+    searchColumns: [],
+    monthColumn: "period",
+    adminOnly: true,
+    canBeDeleted: false,
+    defaultSort: { column: "saved_at", ascending: false },
+    keyColumns: ["company_id", "period", "revision"],
+  },
 };
 
 /** Tables added by a later migration (0005 onwards). The page still works before they exist. */
@@ -360,6 +483,12 @@ export const OPTIONAL_TABLES: Partial<Record<DbTableName, string>> = {
   issued_payslips: "0011_issued_payslips.sql",
   pdf_templates: "0012_pdf_templates.sql",
   pdf_template_history: "0012_pdf_templates.sql",
+  payroll_shared_setups: "0013_payroll_setups.sql",
+  payroll_shared_setup_history: "0013_payroll_setups.sql",
+  payroll_company_setups: "0013_payroll_setups.sql",
+  payroll_company_setup_history: "0013_payroll_setups.sql",
+  payroll_months: "0014_payroll_months.sql",
+  payroll_month_history: "0014_payroll_months.sql",
 };
 
 /** A row as the page holds it: validated values plus two derived fields. */
@@ -499,12 +628,34 @@ export function likeFilter(columns: readonly string[], search: string): string {
 
 const ENTRY_EMPLOYEE_SEARCH = ["surname", "other_names", "national_id"] as const;
 
+/**
+ * What scopes a shared column setup (which belongs to no company) to the selected company: the
+ * company's own setup, which names the shared setup it is attached to. Inner joins, so a setup
+ * the company is not attached to is not read.
+ */
+const SHARED_SETUP_JOIN = {
+  payroll_shared_setups: {
+    select: "payroll_company_setups!inner(company_id)",
+    company: "payroll_company_setups.company_id",
+  },
+  payroll_shared_setup_history: {
+    select: "payroll_shared_setups!inner(payroll_company_setups!inner(company_id))",
+    company: "payroll_shared_setups.payroll_company_setups.company_id",
+  },
+} as const;
+
 function selectFor(table: DbTable): string {
   const columns = table.columns.map((column) => column.key).join(", ");
-  return table.name === "payroll_entries"
-    ? // Inner joins: the run scopes the entry to a company; the employee is only for searching.
-      `${columns}, payroll_runs!inner(company_id, deleted_at), employees!inner(surname, other_names, national_id)`
-    : columns;
+  switch (table.name) {
+    case "payroll_entries":
+      // Inner joins: the run scopes the entry to a company; the employee is only for searching.
+      return `${columns}, payroll_runs!inner(company_id, deleted_at), employees!inner(surname, other_names, national_id)`;
+    case "payroll_shared_setups":
+    case "payroll_shared_setup_history":
+      return `${columns}, ${SHARED_SETUP_JOIN[table.name].select}`;
+    default:
+      return columns;
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the query builder's type depends on the table; these helpers are table-agnostic
@@ -524,7 +675,14 @@ function scope(query: Builder, table: DbTable, companyId: string, showDeleted: b
     case "issued_payslips":
     case "pdf_templates":
     case "pdf_template_history":
+    case "payroll_company_setups":
+    case "payroll_company_setup_history":
+    case "payroll_months":
+    case "payroll_month_history":
       return query.eq("company_id", companyId);
+    case "payroll_shared_setups":
+    case "payroll_shared_setup_history":
+      return query.eq(SHARED_SETUP_JOIN[table.name].company, companyId);
     case "employees":
     case "payroll_runs": {
       const scoped = query.eq("company_id", companyId);
@@ -630,7 +788,9 @@ export async function fetchTableCounts(
       const columns =
         name === "payroll_entries"
           ? "id, payroll_runs!inner(company_id, deleted_at)"
-          : table.keyColumns[0]!;
+          : name === "payroll_shared_setups" || name === "payroll_shared_setup_history"
+            ? `${table.keyColumns[0]!}, ${SHARED_SETUP_JOIN[name].select}`
+            : table.keyColumns[0]!;
       const request = scope(
         client().from(name).select(columns, { count: "exact", head: true }),
         table,

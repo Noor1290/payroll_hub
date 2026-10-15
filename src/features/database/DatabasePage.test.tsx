@@ -167,6 +167,91 @@ const pdfRevision = (revision: number, savedBy: string | null) =>
     ME,
   );
 
+const SETUP = "a0000000-0000-4000-8000-000000000001";
+const SETUP_BODY = { globalColumns: [{ key: "basicSalary", name: "Basic Salary", formula: "" }] };
+const MONTH_SALARY = 18115.25;
+const monthEmployees = [
+  {
+    id: "e1",
+    values: { employeeId: "TST001", nationalId: NATIONAL_ID, basicSalary: MONTH_SALARY },
+  },
+];
+
+const sharedSetup = () =>
+  parseRow(
+    DB_TABLES.payroll_shared_setups,
+    {
+      id: SETUP,
+      name: "Shared column setup",
+      revision: 2,
+      body: SETUP_BODY,
+      created_by: OTHER_ADMIN,
+      created_at: NOW,
+      updated_by: ME,
+      updated_at: NOW,
+      // The join that scopes it to the selected company; not shown.
+      payroll_company_setups: [{ company_id: ABC }],
+    },
+    ME,
+  );
+
+const companySetupRevision = (revision: number, savedBy: string | null) =>
+  parseRow(
+    DB_TABLES.payroll_company_setup_history,
+    {
+      company_id: ABC,
+      revision,
+      shared_setup_id: SETUP,
+      body: {
+        columns: [{ key: "bonusPay", name: "Bonus", formula: "basicSalary * 0.1" }],
+        customFields: [],
+      },
+      saved_by: savedBy,
+      saved_at: NOW,
+    },
+    ME,
+  );
+
+const payrollMonth = () =>
+  parseRow(
+    DB_TABLES.payroll_months,
+    {
+      company_id: ABC,
+      period: "2026-10-01",
+      revision: 3,
+      shared_setup_id: SETUP,
+      shared_revision: 2,
+      company_revision: 1,
+      employee_count: 1,
+      value_keys: ["basicSalary", "employeeId", "nationalId"],
+      employees: monthEmployees,
+      created_by: OTHER_ADMIN,
+      created_at: NOW,
+      updated_by: ME,
+      updated_at: NOW,
+    },
+    ME,
+  );
+
+const monthRecord = (revision: number, kept: boolean) =>
+  parseRow(
+    DB_TABLES.payroll_month_history,
+    {
+      company_id: ABC,
+      period: "2026-10-01",
+      revision,
+      shared_setup_id: SETUP,
+      shared_revision: 2,
+      company_revision: 1,
+      employee_count: 1,
+      content_kept: kept,
+      employees: kept ? monthEmployees : null,
+      saved_by: ME,
+      saved_at: NOW,
+    },
+    ME,
+  );
+
 const issued = (n: number, issuedBy: string | null) =>
   parseRow(
     DB_TABLES.issued_payslips,
@@ -262,6 +347,12 @@ beforeEach(() => {
     issued_payslips: 3,
     pdf_templates: 1,
     pdf_template_history: 2,
+    payroll_shared_setups: 1,
+    payroll_shared_setup_history: 2,
+    payroll_company_setups: 1,
+    payroll_company_setup_history: 2,
+    payroll_months: 1,
+    payroll_month_history: 2,
   });
   fetchPage
     .mockReset()
@@ -284,6 +375,17 @@ beforeEach(() => {
           return { rows: [pdfTemplate()], total: 1 };
         case "pdf_template_history":
           return { rows: [pdfRevision(2, ME), pdfRevision(1, OTHER_ADMIN)], total: 2 };
+        case "payroll_shared_setups":
+          return { rows: [sharedSetup()], total: 1 };
+        case "payroll_company_setup_history":
+          return {
+            rows: [companySetupRevision(2, ME), companySetupRevision(1, OTHER_ADMIN)],
+            total: 2,
+          };
+        case "payroll_months":
+          return { rows: [payrollMonth()], total: 1 };
+        case "payroll_month_history":
+          return { rows: [monthRecord(3, false), monthRecord(2, true)], total: 2 };
         default:
           return {
             rows: [company(companyId, companyId === ABC ? "ABC Co Ltd" : "XYZ Trading Ltd")],
@@ -376,6 +478,12 @@ describe("what it shows", () => {
       "issued_payslips3",
       "pdf_templates1",
       "pdf_template_history2",
+      "payroll_shared_setups1",
+      "payroll_shared_setup_history2",
+      "payroll_company_setups1",
+      "payroll_company_setup_history2",
+      "payroll_months1",
+      "payroll_month_history2",
     ]);
   });
 
@@ -557,6 +665,107 @@ describe("the PDF template tables", () => {
     await open("pdf_template_history");
     expect(screen.getByText("pdf_template_history isn't in the database yet")).toBeTruthy();
     expect(screen.getByText(/0012_pdf_templates\.sql/)).toBeTruthy();
+  });
+});
+
+describe("the payroll column setup and month tables", () => {
+  it("read the selected company only, behind the gate, and offer nothing that changes them", async () => {
+    render(<Page current={ADMIN} />);
+    await settle();
+    expect(fetchPage).not.toHaveBeenCalled();
+
+    for (const table of [
+      "payroll_shared_setups",
+      "payroll_shared_setup_history",
+      "payroll_company_setups",
+      "payroll_company_setup_history",
+      "payroll_months",
+      "payroll_month_history",
+    ] as const) {
+      await open(table);
+      expect(pageCalls(table).length, table).toBeGreaterThan(0);
+      expect(
+        pageCalls(table).every((call) => call[2] === ABC),
+        table,
+      ).toBe(true);
+      expect(
+        screen.queryByRole("button", { name: /^(delete|edit|save|restore|rename|upload)\b/i }),
+        table,
+      ).toBeNull();
+    }
+  });
+
+  it("mask what the app wrote in a setup: no column or formula until revealed, and no user id", async () => {
+    const { container } = render(<Page current={ADMIN} />);
+    await open("payroll_company_setup_history");
+
+    const text = () => container.textContent ?? "";
+    expect(text()).toContain("You");
+    expect(text()).toContain("Another admin");
+    expect(text()).not.toContain("basicSalary * 0.1");
+    expect(text()).not.toContain(OTHER_ADMIN);
+
+    await open("payroll_shared_setups");
+    expect(text()).toContain("Shared column setup");
+    expect(text()).not.toContain("Basic Salary");
+    // The join that scopes it to the company is not a column.
+    expect(screen.getByRole("table").textContent).not.toContain("company_id");
+  });
+
+  it("mask every month's salaries and national IDs by default, and show them only when revealed", async () => {
+    const { container } = render(<Page current={ADMIN} />);
+    await open("payroll_months");
+
+    const text = () => container.textContent ?? "";
+    for (const hidden of [NATIONAL_ID, "18115", "TST001"]) expect(text()).not.toContain(hidden);
+    // The column keys a month holds are names only, and shown.
+    expect(text()).toContain("nationalId");
+    expect(screen.getAllByRole("button", { name: /employees is hidden/ })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /View JSON/ }));
+    const panel = screen.getByRole("dialog");
+    const json = () => within(panel).getByLabelText("payroll_months row as JSON").textContent ?? "";
+    expect(json()).toContain('"employees": "••••••"');
+    expect(json()).not.toContain(NATIONAL_ID);
+    fireEvent.click(within(panel).getByRole("button", { name: "Reveal sensitive" }));
+    expect(json()).toContain(`"nationalId": "${NATIONAL_ID}"`);
+    expect(json()).toContain(`"basicSalary": ${MONTH_SALARY}`);
+  });
+
+  it("show a month's history: which records kept their content, masked, and the rest empty", async () => {
+    const { container } = render(<Page current={ADMIN} />);
+    await open("payroll_month_history");
+    expect(container.textContent).not.toContain(NATIONAL_ID);
+    expect(container.textContent).not.toContain("18115");
+    // Only the record that kept its content has something to reveal.
+    expect(screen.getAllByRole("button", { name: /employees is hidden/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Reveal all" }));
+    expect(container.textContent).toContain('[{"id":"e1","values":{"employeeId":"TST001"');
+  });
+
+  it("are for admins only: someone else is told so, and not even a count is asked for", async () => {
+    await unlock();
+    render(<Tabs isAdmin={false} />);
+    await settle();
+    expect(fetchCounts.mock.calls.every((call) => call[3] === false)).toBe(true);
+    for (const table of ["payroll_months", "payroll_month_history"] as const) {
+      const tab = screen.getByRole("tab", { name: new RegExp(`^${table}`) });
+      expect(within(tab).getByLabelText("admins only")).toBeTruthy();
+      fireEvent.click(tab);
+      await advance(2_000);
+      expect(screen.getByText(`${table} is for admins only`)).toBeTruthy();
+      expect(pageCalls(table)).toHaveLength(0);
+    }
+  });
+
+  it("name the migration to run when the tables are not in the database yet", async () => {
+    fetchPage.mockRejectedValue({ code: "PGRST205", message: "not found" });
+    render(<Page current={ADMIN} />);
+    await open("payroll_month_history");
+    expect(screen.getByText("payroll_month_history isn't in the database yet")).toBeTruthy();
+    expect(screen.getByText(/0014_payroll_months\.sql/)).toBeTruthy();
+    await open("payroll_shared_setups");
+    expect(screen.getByText(/0013_payroll_setups\.sql/)).toBeTruthy();
   });
 });
 

@@ -15,6 +15,7 @@ import { exchangeContext } from "./appData";
 import {
   answerPayrollMonthRequest,
   describePayrollMonthSave,
+  isQuietMonthSave,
   savePayrollMonthFromApp,
 } from "./payrollMonthData";
 import { savePayrollSetupFromApp } from "./payrollSetupData";
@@ -146,6 +147,7 @@ describe("payroll-month while the password gate is locked", () => {
       { action: "list", brn: "C1234567" },
       { action: "load", brn: "C1234567", periods: ["2026-10"] },
       { action: "history", brn: "C1234567", period: "2026-10" },
+      { action: "revision", brn: "C1234567", period: "2026-10", revision: 1 },
     ]) {
       expect(await request(params), params.action).toMatchObject({ ok: false, code: "locked" });
     }
@@ -198,6 +200,7 @@ describe("payroll-month: who may", () => {
       { action: "unlock", brn: "C7654321" },
       { action: "list", brn: "C7654321" },
       { action: "load", brn: "C7654321", periods: ["2026-10"] },
+      { action: "revision", brn: "C7654321", period: "2026-10", revision: 1 },
     ]) {
       expect(await request(params), params.action).toMatchObject({ ok: false, code: "forbidden" });
     }
@@ -318,6 +321,90 @@ describe("payroll-month: saving and reading a month", () => {
     const answer = await reading;
     expect(answer).toMatchObject({ ok: false, code: "locked" });
     expect(JSON.stringify(answer)).not.toContain("TST001");
+  });
+});
+
+describe("payroll-month: one kept revision, and restoring it", () => {
+  const revision = (revision: number, more: Record<string, unknown> = {}) =>
+    request({ action: "revision", brn: "C1234567", period: "2026-10", revision, ...more });
+
+  it("'revision' answers a kept revision exactly as it was saved, and reading it changes nothing", async () => {
+    await save();
+    // "Save mine over it" keeps what it replaces.
+    await save({ expected_revision: 1, employees: month(19115), keep_previous: true });
+    const counts = demoPayrollMonthCounts(ABC.company.id);
+
+    const answer = await revision(1);
+    expect(answer).toMatchObject({
+      ok: true,
+      meta: { brn: "C1234567", role: "admin", period: "2026-10" },
+      rows: [
+        {
+          period: "2026-10",
+          revision: 1,
+          shared_revision: 1,
+          company_revision: 1,
+          employee_count: 2,
+          saved_by_you: true,
+        },
+      ],
+    });
+    expect(answer.ok && answer.rows[0]!.employees).toEqual(month());
+    expect(answer.ok && "saved_by" in answer.rows[0]!).toBe(false);
+    expect(demoPayrollMonthCounts(ABC.company.id)).toEqual(counts);
+  });
+
+  it("answers the revision in use now from the month itself", async () => {
+    await save();
+    await save({ expected_revision: 1, employees: month(19115) });
+    const answer = await revision(2);
+    expect(answer.ok && answer.rows[0]).toMatchObject({ revision: 2, employee_count: 2 });
+    expect(answer.ok && answer.rows[0]!.employees).toEqual(month(19115));
+  });
+
+  it("a revision whose content was not kept, or that does not exist, is not-found with no value in it", async () => {
+    await save();
+    await save({ expected_revision: 1, employees: month(19115) });
+    await save({ expected_revision: 2, employees: month(20115) });
+    // Revision 1 was replaced the same day by the same person: only its record is kept.
+    const notKept = await revision(1);
+    expect(notKept).toMatchObject({
+      ok: false,
+      code: "not-found",
+      error: expect.stringContaining("not kept"),
+    });
+    expect(JSON.stringify(notKept)).not.toContain("18115");
+    expect(await revision(9)).toMatchObject({ ok: false, code: "not-found" });
+    expect(await revision(0)).toMatchObject({ ok: false, code: "invalid" });
+  });
+
+  it("a restore is a save naming the revision it restores: it keeps what it replaces and is announced", async () => {
+    await save();
+    await save({ expected_revision: 1, employees: month(19115) });
+    const restored = await save({
+      expected_revision: 2,
+      employees: month(),
+      keep_previous: true,
+      restored_from: 1,
+    });
+    expect(restored).toMatchObject({
+      ok: true,
+      result: { action: "save", period: "2026-10", revision: 3, restored_from: 1 },
+    });
+    // Nothing is rewritten: revision 2 is kept with its content, and is still answered.
+    const replaced = await revision(2);
+    expect(replaced.ok && replaced.rows[0]!.employees).toEqual(month(19115));
+    expect(describePayrollMonthSave(restored.ok ? restored.result! : {})).toBe(
+      "ABC Co Ltd: October 2026 restored from revision 1 (revision 3)",
+    );
+    expect(isQuietMonthSave({ dataType: "payroll-month", rows: [{ action: "save" }] })).toBe(true);
+    expect(
+      isQuietMonthSave({ dataType: "payroll-month", rows: [{ action: "save", restored_from: 1 }] }),
+    ).toBe(false);
+    expect(await save({ expected_revision: 3, restored_from: 0 })).toMatchObject({
+      ok: false,
+      code: "invalid",
+    });
   });
 });
 
@@ -478,7 +565,7 @@ describe("the production build", () => {
     const source = (await import("@/lib/supabase/payrollMonths.ts?raw")).default as string;
     const guarded = source.split("import.meta.env.DEV && viewer.isDemo").length - 1;
     const demoCalls = [...source.matchAll(/\bdemo[A-Z]\w+\(/g)].length;
-    expect(demoCalls).toBe(5);
+    expect(demoCalls).toBe(6);
     expect(guarded).toBe(demoCalls);
     expect(source).not.toMatch(/=>\s*import\.meta\.env\.DEV/);
   });

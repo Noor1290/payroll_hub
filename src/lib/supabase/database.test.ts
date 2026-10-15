@@ -92,6 +92,7 @@ const entryRow = (runDeletedAt: string | null = null) => ({
 
 const OTHER_USER = "0b0b0b0b-0000-4000-8000-0000000000b2";
 const TEMPLATE = "50000000-0000-4000-8000-000000000001";
+const SHARED_SETUP = "a0000000-0000-4000-8000-000000000001";
 
 const ratesRow = (more: Record<string, unknown> = {}) => ({
   id: "60000000-0000-4000-8000-000000000001",
@@ -181,6 +182,12 @@ describe("the table list", () => {
       "issued_payslips",
       "pdf_templates",
       "pdf_template_history",
+      "payroll_shared_setups",
+      "payroll_shared_setup_history",
+      "payroll_company_setups",
+      "payroll_company_setup_history",
+      "payroll_months",
+      "payroll_month_history",
     ]);
   });
 
@@ -193,8 +200,12 @@ describe("the table list", () => {
     });
   });
 
-  it("marks only issued_payslips as admin-only", () => {
-    expect(DB_TABLE_NAMES.filter((name) => DB_TABLES[name].adminOnly)).toEqual(["issued_payslips"]);
+  it("marks issued payslips and the payroll months as admin-only, as their policies are", () => {
+    expect(DB_TABLE_NAMES.filter((name) => DB_TABLES[name].adminOnly)).toEqual([
+      "issued_payslips",
+      "payroll_months",
+      "payroll_month_history",
+    ]);
   });
 
   it("masks template bodies and everything on an issued payslip, but not the statutory figures", () => {
@@ -319,6 +330,156 @@ describe("the table list", () => {
       expect(calls("eq")).toContainEqual(["eq", "company_id", COMPANY]);
       expect(String(calls("select")[0]![1])).not.toContain("*");
     }
+  });
+
+  it("shows the payroll column setups' revisions, who and when, and masks what the app wrote in them", () => {
+    const setups = [
+      "payroll_shared_setups",
+      "payroll_shared_setup_history",
+      "payroll_company_setups",
+      "payroll_company_setup_history",
+    ] as const;
+    for (const name of setups) {
+      const table = DB_TABLES[name];
+      // The columns and formulas are the app's: masked, and never searched.
+      expect(
+        table.columns.filter((c) => c.sensitive).map((c) => c.key),
+        name,
+      ).toEqual(["body"]);
+      expect(table.searchColumns, name).not.toContain("body");
+      expect(
+        table.columns.map((c) => c.key),
+        name,
+      ).toContain("revision");
+      expect(
+        table.columns.filter((c) => c.kind === "user"),
+        name,
+      ).toEqual([]);
+      // Members read them (migration 0013), so not admin-only; nothing is ever deleted here.
+      expect(table.adminOnly, name).toBeUndefined();
+      expect(table.canBeDeleted, name).toBe(false);
+      expect(OPTIONAL_TABLES[name], name).toBe("0013_payroll_setups.sql");
+    }
+    const actors = (name: (typeof DB_TABLE_NAMES)[number]) =>
+      DB_TABLES[name].columns.filter((c) => c.kind === "actor").map((c) => c.key);
+    expect(actors("payroll_shared_setups")).toEqual(["created_by", "updated_by"]);
+    expect(actors("payroll_company_setups")).toEqual(["created_by", "updated_by"]);
+    expect(actors("payroll_shared_setup_history")).toEqual(["saved_by"]);
+    expect(actors("payroll_company_setup_history")).toEqual(["saved_by"]);
+    expect(DB_TABLES.payroll_shared_setup_history.keyColumns).toEqual([
+      "shared_setup_id",
+      "revision",
+    ]);
+    expect(DB_TABLES.payroll_company_setup_history.keyColumns).toEqual(["company_id", "revision"]);
+  });
+
+  it("masks every employee of a payroll month (salaries and national IDs), admins only, by month", () => {
+    for (const name of ["payroll_months", "payroll_month_history"] as const) {
+      const table = DB_TABLES[name];
+      expect(
+        table.columns.filter((c) => c.sensitive).map((c) => c.key),
+        name,
+      ).toEqual(["employees"]);
+      expect(table.adminOnly, name).toBe(true);
+      expect(table.monthColumn, name).toBe("period");
+      // Nothing in a month is text that may be searched: only the month itself.
+      expect(table.searchColumns, name).toEqual([]);
+      expect(table.canBeDeleted, name).toBe(false);
+      expect(OPTIONAL_TABLES[name], name).toBe("0014_payroll_months.sql");
+      // The column keys a month holds are names only, shown as they are.
+      expect(
+        table.columns.find((c) => c.key === "employee_count")?.sensitive,
+        name,
+      ).toBeUndefined();
+    }
+    expect(DB_TABLES.payroll_months.columns.find((c) => c.key === "value_keys")).toMatchObject({
+      kind: "list",
+    });
+    expect(DB_TABLES.payroll_months.keyColumns).toEqual(["company_id", "period"]);
+    expect(DB_TABLES.payroll_month_history.keyColumns).toEqual([
+      "company_id",
+      "period",
+      "revision",
+    ]);
+    // A record whose content was not kept has none.
+    expect(
+      DB_TABLES.payroll_month_history.columns.find((c) => c.key === "employees"),
+    ).toMatchObject({
+      nullable: true,
+    });
+  });
+
+  it("reads a payroll month row as stored, and a history record without its content", () => {
+    const month = parseRow(
+      DB_TABLES.payroll_months,
+      {
+        company_id: COMPANY,
+        period: "2026-10-01",
+        revision: 4,
+        shared_setup_id: SHARED_SETUP,
+        shared_revision: 2,
+        company_revision: 1,
+        employee_count: 1,
+        value_keys: ["basicSalary", "nationalId"],
+        employees: [{ id: "e1", values: { nationalId: "X0000000000001", basicSalary: 18115 } }],
+        created_by: OTHER_USER,
+        created_at: NOW,
+        updated_by: VIEWER.id,
+        updated_at: NOW,
+      },
+      VIEWER.id,
+    );
+    expect(month).toMatchObject({ revision: 4, created_by: "Another admin", updated_by: "You" });
+    expect(month.__key).toBe(`${COMPANY}:2026-10-01`);
+    const record = parseRow(
+      DB_TABLES.payroll_month_history,
+      {
+        company_id: COMPANY,
+        period: "2026-10-01",
+        revision: 3,
+        shared_setup_id: SHARED_SETUP,
+        shared_revision: 2,
+        company_revision: 1,
+        employee_count: 1,
+        content_kept: false,
+        employees: null,
+        saved_by: null,
+        saved_at: NOW,
+      },
+      VIEWER.id,
+    );
+    expect(record).toMatchObject({ content_kept: false, employees: null, saved_by: null });
+    expect(JSON.stringify([month, record])).not.toContain(OTHER_USER);
+  });
+
+  it("reads a company's own setup and months by its id, and the shared setup through the company attached to it", async () => {
+    const read = async (name: (typeof DB_TABLE_NAMES)[number]) => {
+      db.state.calls.length = 0;
+      db.state.result = { data: [], count: 0, error: null };
+      await fetchTablePage(VIEWER, name, COMPANY, query());
+      expect(calls("from").map((call) => call[1])).toEqual([name]);
+      return String(calls("select")[0]![1]);
+    };
+    for (const name of [
+      "payroll_company_setups",
+      "payroll_company_setup_history",
+      "payroll_months",
+      "payroll_month_history",
+    ] as const) {
+      expect(await read(name), name).not.toContain("*");
+      expect(calls("eq"), name).toContainEqual(["eq", "company_id", COMPANY]);
+    }
+    // The shared setup has no company of its own: only the one the selected company uses.
+    expect(await read("payroll_shared_setups")).toContain(
+      "payroll_company_setups!inner(company_id)",
+    );
+    expect(calls("eq")).toEqual([["eq", "payroll_company_setups.company_id", COMPANY]]);
+    expect(await read("payroll_shared_setup_history")).toContain(
+      "payroll_shared_setups!inner(payroll_company_setups!inner(company_id))",
+    );
+    expect(calls("eq")).toEqual([
+      ["eq", "payroll_shared_setups.payroll_company_setups.company_id", COMPANY],
+    ]);
   });
 
   it("masks every company detail value, and never searches inside them", () => {
@@ -702,6 +863,12 @@ describe("fetchTableCounts", () => {
       issued_payslips: 1250,
       pdf_templates: 1250,
       pdf_template_history: 1250,
+      payroll_shared_setups: 1250,
+      payroll_shared_setup_history: 1250,
+      payroll_company_setups: 1250,
+      payroll_company_setup_history: 1250,
+      payroll_months: 1250,
+      payroll_month_history: 1250,
     });
     for (const call of calls("select")) expect(call[2]).toEqual({ count: "exact", head: true });
     expect(calls("range")).toEqual([]);
