@@ -15,6 +15,7 @@ import type { ReceivedPayload, ResponseDataPayload, SendDataPayload } from "@/li
 import { formatCount, formatPeriod } from "@/lib/format";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { isUnlocked } from "@/lib/unlock";
+import { whenSignedIn } from "./exchangeContext";
 
 const WHY: Record<SendFailure, string> = {
   unavailable: "The app isn't loaded.",
@@ -151,6 +152,9 @@ export async function answerRequest(
 
   let response: ResponseDataPayload;
   try {
+    // An app may ask before the dashboard has loaded who is signed in (after a reload).
+    const signingIn = whenSignedIn();
+    if (signingIn) await signingIn;
     response = await answer();
   } catch {
     response = { ok: false, code: "unavailable", error: "The dashboard could not get the data." };
@@ -200,6 +204,8 @@ export async function recordSave(
 
   let ack: ReceivedPayload;
   try {
+    const signingIn = whenSignedIn();
+    if (signingIn) await signingIn;
     ack = await save();
   } catch {
     ack = { ok: false, code: "unavailable", error: "The dashboard could not save the data." };

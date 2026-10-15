@@ -1048,6 +1048,14 @@ const BREAKS = [
     test: "src/features/workspace/payrollMonthUnlock.test.tsx",
     mustFail: "asks only for the password",
   },
+  {
+    what: "An app that asks before the dashboard knows who is signed in is refused at once (known issue 4)",
+    file: "src/features/workspace/deliver.ts",
+    find: "    if (signingIn) await signingIn;\n    response = await answer();",
+    replace: "    response = await answer();",
+    test: "src/features/workspace/signInWait.test.ts",
+    mustFail: "the question waits for the sign-in and is answered, not refused",
+  },
 ];
 
 const gitStatus = () =>

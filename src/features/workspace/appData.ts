@@ -20,8 +20,6 @@ import {
 } from "@/lib/bridge/protocol";
 import { formatCount, formatPeriod } from "@/lib/format";
 import { ISSUED_PAYSLIPS_KEY, queryClient } from "@/lib/queryClient";
-import { registerSessionCleanup } from "@/lib/sessionCleanup";
-import { createStore } from "@/lib/store";
 import {
   classifyDataError,
   isMissingFunction,
@@ -41,7 +39,6 @@ import {
   saveTemplateDraft,
   TEMPLATES_MIGRATION,
 } from "@/lib/supabase/payslipTemplates";
-import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import {
   fetchStatutoryRates,
@@ -72,13 +69,10 @@ import { answerRequest, recordSave } from "./deliver";
  * The wire contract (what `params`, rows and results look like) is docs/INTEGRATION.md.
  */
 
-/** Who is signed in and which company is selected, for handlers that run outside React. */
-export interface ExchangeContext {
-  viewer: Viewer;
-  membership: Membership;
-}
-export const exchangeContext = createStore<ExchangeContext | null>(null);
-registerSessionCleanup(() => exchangeContext.set(null));
+// Who is signed in and which company is selected: kept in its own file so deliver.ts can wait
+// for it (known issue 4). Re-exported here, where the handlers and their tests have always found it.
+import { exchangeContext, type ExchangeContext } from "./exchangeContext";
+export { exchangeContext, type ExchangeContext };
 
 // ---------- shared pieces ----------
 

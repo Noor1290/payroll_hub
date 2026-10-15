@@ -30,6 +30,7 @@ import { isUnlocked } from "@/lib/unlock";
 import { UnlockForm } from "@/features/unlock/PasswordGate";
 import { useUnlock } from "@/features/unlock/useUnlock";
 import { exchangeContext } from "./appData";
+import { exchangeContextLoading } from "./exchangeContext";
 // Registers the PDF form filler's data types with the bridge.
 import "./pdfData";
 import "./payrollSetupData";
@@ -338,18 +339,23 @@ function RequestDialog({ request }: { request: DataRequest }) {
 /** One dialog at a time: requests first (an app is waiting on them), then received data. */
 export function BridgeDialogs() {
   const { user } = useAuth();
-  const { current } = useCompany();
+  const { current, status: companyStatus } = useCompany();
   const userId = user?.id;
   const isDemo = user?.isDemo ?? false;
 
   // Handlers that answer apps without a dialog (appData.ts) run outside React: tell them who
-  // is signed in and which company is selected.
+  // is signed in and which company is selected, and whether that is still loading (an app that
+  // asks meanwhile waits for it: known issue 4).
   useEffect(() => {
     exchangeContext.set(
       userId && current ? { viewer: { id: userId, isDemo }, membership: current } : null,
     );
-    return () => exchangeContext.set(null);
-  }, [userId, isDemo, current]);
+    exchangeContextLoading.set(Boolean(userId) && !current && companyStatus === "loading");
+    return () => {
+      exchangeContext.set(null);
+      exchangeContextLoading.set(false);
+    };
+  }, [userId, isDemo, current, companyStatus]);
 
   const requests = useStore(dataRequests);
   const batches = useStore(incomingBatches);
