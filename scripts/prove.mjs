@@ -566,8 +566,8 @@ const BREAKS = [
   {
     what: "Issued payslips become available to another app",
     file: "src/config/apps.config.ts",
-    find: "    accepts: [PAYROLL_RESULT],\n    produces: [],",
-    replace: "    accepts: [PAYROLL_RESULT, PAYSLIP_ISSUE],\n    produces: [],",
+    find: "    accepts: [PAYROLL_RESULT, PDF_TEMPLATE, PDF_FILE],",
+    replace: "    accepts: [PAYROLL_RESULT, PDF_TEMPLATE, PDF_FILE, PAYSLIP_ISSUE],",
     test: "src/features/workspace/appDataIssue.test.tsx",
     mustFail: "is registered for the payslip app only",
   },
@@ -667,7 +667,8 @@ const BREAKS = [
   },
   {
     what: "delete_company forgets the issued payslips",
-    file: "supabase/migrations/0011_issued_payslips.sql",
+    // The newest definition is the one that counts (0014 since Phase 3).
+    file: "supabase/migrations/0014_payroll_months.sql",
     find: "  delete from public.issued_payslips p where p.company_id = p_company_id;\n",
     replace: "",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -686,10 +687,10 @@ const BREAKS = [
   {
     what: "The dashboard names an old migration when delete_company is missing",
     file: "src/features/company/deleteCompany.ts",
-    find: 'const MIGRATION = "0011_issued_payslips.sql";',
-    replace: 'const MIGRATION = "0007_delete_company_any_runs.sql";',
+    find: 'const MIGRATION = "0014_payroll_months.sql";',
+    replace: 'const MIGRATION = "0013_payroll_setups.sql";',
     test: "src/features/company/deleteCompanyMigration.test.ts",
-    mustFail: "is defined last in 0011, the file the dashboard names",
+    mustFail: "is defined last in 0014, the file the dashboard names",
   },
   {
     what: "The delete dialog hides the issued payslips that will go",
@@ -932,7 +933,8 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the company's payroll setup behind",
-    file: "supabase/migrations/0013_payroll_setups.sql",
+    // The newest definition is the one that counts (0014 since Phase 3).
+    file: "supabase/migrations/0014_payroll_months.sql",
     find: "  delete from public.payroll_company_setups cs where cs.company_id = p_company_id;\n  get diagnostics v_setups = row_count;\n",
     replace: "  v_setups := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -992,9 +994,9 @@ const BREAKS = [
   {
     what: "A Global key moves the values in one company only",
     file: "supabase/migrations/0014_payroll_months.sql",
-    find: "      select coalesce(array_agg(cs.company_id order by cs.company_id), '{}') into v_targets\n      from public.payroll_company_setups cs\n      where cs.shared_setup_id = v_setup_id;",
+    find: "      from public.payroll_company_setups cs\n      where cs.shared_setup_id = v_setup_id;\n    end if;",
     replace:
-      "      select coalesce(array_agg(cs.company_id order by cs.company_id), '{}') into v_targets\n      from public.payroll_company_setups cs\n      where cs.shared_setup_id = v_setup_id\n      limit 1;",
+      "      from public.payroll_company_setups cs\n      where cs.shared_setup_id = v_setup_id\n        and cs.company_id = (select min(o.company_id) from public.payroll_company_setups o where o.shared_setup_id = v_setup_id);\n    end if;",
     test: "src/features/workspace/payrollMonths.db.test.ts",
     mustFail: "the values move in every month of every attached company",
   },

@@ -7,7 +7,7 @@ import { DATA_RULES } from "@/lib/bridge/protocol";
 import { demoMemberships } from "@/lib/demo/demoData";
 import { demoForgetPayrollMonths, demoPayrollMonthCounts } from "@/lib/demo/demoPayrollMonths";
 import { demoForgetPayrollSetups } from "@/lib/demo/demoPayrollSetups";
-import { GATED_QUERY_KEYS, PAYROLL_MONTHS_KEY } from "@/lib/queryClient";
+import { GATED_QUERY_KEYS, PAYROLL_MONTHS_KEY, queryClient } from "@/lib/queryClient";
 import { runSessionCleanup } from "@/lib/sessionCleanup";
 import type { Membership } from "@/lib/supabase/schemas";
 import { grantUnlock, isUnlocked, lock } from "@/lib/unlock";
@@ -140,6 +140,8 @@ describe("payroll-month while the password gate is locked", () => {
   });
 
   it("refuses every read and every save at once as locked, and stores nothing", async () => {
+    // Nothing is even read from the database while locked.
+    const read = vi.spyOn(queryClient, "fetchQuery");
     for (const params of [
       { action: "list", brn: "C1234567" },
       { action: "load", brn: "C1234567", periods: ["2026-10"] },
@@ -165,6 +167,8 @@ describe("payroll-month while the password gate is locked", () => {
       payrollMonths: 0,
       payrollMonthRevisions: 0,
     });
+    expect(read).not.toHaveBeenCalled();
+    read.mockRestore();
   });
 
   it("'unlock' asks for the password in the dashboard, and answers once the gate is open", async () => {
