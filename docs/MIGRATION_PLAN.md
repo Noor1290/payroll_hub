@@ -17,7 +17,7 @@ Covers `Payroll_sys` (payroll), `PDF Editor` (PDF form filler), `payslip` and `p
 - **Nothing is left to confirm.** Every decision is in section 4.
 - **Phase 0 is built** (13 October 2026): the backup files, the storage interfaces, the `activity` message and the gate. What was built, and what it leaves for Phase 1, is in section 5.11. No migration was needed.
 - **Phase 2 is built** (14 October 2026), not merged: migration 0013 (not run yet), the `payroll-setup` data type, and the payroll app's setup in the dashboard with its import. Section 5.14.
-- **Phase 3 is built** (15 October 2026), not merged: migration 0014 (not run yet), the `payroll-month` data type behind the password gate, and the payroll app's months in the dashboard with their import. Section 5.15.
+- **Phase 3 is built** (15 October 2026), not merged: migration 0014 (run and tested against the real database on 15 October), the `payroll-month` data type behind the password gate, and the payroll app's months in the dashboard with their import. Section 5.15.
 
 ## 1. Where each app saves its data today
 
@@ -589,7 +589,7 @@ On the branch `migration-phase-2` in `payroll_hub` and `Payroll_sys`; not merged
 
 **Tested against the real database (14 October 2026), after migration 0013 was run, in "TEST Co Ltd" and "TEST Co 2 Ltd" only,** the same way as Phase 1: the two branch builds served in place of the live sites in one browser window, the owner signing in by hand, fake data in a throwaway browser profile. 17 of 17 checks passed: before writing anything, none of the owner's companies had a setup; the import asked for a backup first, its preview wrote nothing, both companies were matched by BRN, and the shared setup and both companies were imported and checked (one shared setup at revision 1, both attached); every figure was identical before and after the import in both companies; saving a Simple NSF with an "Age 60+" exemption twice with no change left its formula and revision as they were; a Global change made from TEST Co 2 Ltd was one new revision and reached TEST Co Ltd, changing only NSF and Net Pay; the browser's own copy and its months were left as they were. The test data was then removed by the owner with a cleanup limited to the two TEST companies.
 
-### 5.15 Phase 3 as built (15 October 2026), before the migration is run
+### 5.15 Phase 3 as built (15 October 2026)
 
 On the branch `migration-phase-3` in `payroll_hub` and `Payroll_sys`; not merged, not deployed. The live project was not contacted: everything below ran in the in-memory Postgres, the demo store and stand-in dashboards. The test against the real database comes after migration 0014 is run.
 
@@ -616,6 +616,15 @@ On the branch `migration-phase-3` in `payroll_hub` and `Payroll_sys`; not merged
 - The import of months does not start while the column setup has changes not saved yet.
 
 **Not built in this phase:** the Database page tabs for the two month tables (nor those of Phase 2's four tables); a screen for a month's history (the dashboard answers `history`); the mock app in demo mode; opening this browser's months read-only when the dashboard cannot be reached.
+
+**Tested against the real database (15 October 2026), after migration 0014 was run** (all 12 columns of its check true), in "TEST Co Ltd" and "TEST Co 2 Ltd" only. The two branch builds were served at the live sites' address in one Chromium window with a throwaway profile, the real bridge and the real project; the owner signed in and typed the password at each unlock by hand. The two companies still had a column setup from before; on the owner's choice it was deleted first with a cleanup limited to them. Fake data from the safety-net fixture. What was checked:
+- the column setup import (Phase 2) made a new shared setup for the two TEST companies only; the months import stored TEST Co Ltd's September and October and TEST Co 2 Ltd's October, each read back with every calculated figure compared;
+- inside the dashboard, October, September and the Totals of both months were identical to the app opened on its own, and so were the PDF fill CSV and JSON byte for byte and every figure of the Excel exports (values, live formulas, Totals). The only difference was the company line: the dashboard company has no address, and the dashboard's is used (decided in Phase 2);
+- typing saved by itself (revisions 2 and 3); the dashboard was locked while values were still being typed: the table was covered, the bar said NOT saved, nothing was stored, and on unlocking from the app the last value typed was saved (revision 4);
+- a save of the same month from elsewhere: NOT saved with both choices; "Save mine over it" stored revision 6 and kept the other version (revision 5) in the history; "Use the dashboard's version" put the other version on screen and stored nothing;
+- a Global column's key changed inside the dashboard: one step moved the values in all three months of both companies with the setup (shared revision 2); this browser's own copy was unchanged byte for byte and, opened on its own, showed the same figures as at the start (known issue 7 resolved).
+
+Found and fixed on the way: the first save of a month answered slowly (over 10 seconds; later calls took about 0.3 seconds), so the import could not confirm September although it was stored. The import now asks for the read-back again, and offers a month already in the dashboard exactly as here as "check it and note it as imported", with no second write (Payroll_sys `91df937`, with tests). The next import did exactly that for September. Found, not fixed: dashboard known issue 4 (the app's first question after a reload can arrive before the dashboard knows who is signed in). The two sign-outs during the test were the idle sign-out after 15 minutes without activity.
 
 ## 6. Risks and things to check first
 
