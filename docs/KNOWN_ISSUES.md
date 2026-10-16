@@ -11,6 +11,7 @@ Status is one of: **open** (to fix), **watch** (not a fault today; look again if
 - **Why:** the demo store waits a short time on every call to look like a network, and this test makes about a dozen calls one after another. Nothing is wrong with what it checks.
 - **Risk:** on a slow or busy machine it could pass the 5 s limit and fail for no real reason, as the PayrollTable tests did before `fix/test-timeouts`.
 - **When to act:** if it fails with a timeout, or is seen above about 4 s. Then make the demo store's pause short under test. Do not raise the limit and do not cut what the test checks.
+- **Measured again (16 Oct 2026, backlog triage):** 3.4 s alone, unchanged. Still watch.
 
 ## 2. The full test run timed out on a busy machine (fixed)
 
