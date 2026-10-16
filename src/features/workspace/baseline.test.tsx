@@ -240,4 +240,60 @@ describe("baseline: an app asks for a saved run (Get from dashboard)", () => {
       transferLog: transferLog.get().map((row) => ({ ...row, at: "(time)", id: "(id)" })),
     }).toMatchSnapshot();
   });
+
+  // Payslip known issue 33 (backlog batch H): "nothing saved" is an answer with a code,
+  // so an app need not recognise the sentence. The sentences are unchanged.
+  async function askFor(period: string) {
+    const frame = makeFrame();
+    bridge.start();
+    bridge.attachFrame("pdf-editor", () => frame.win);
+    bridge.frameLoaded("pdf-editor");
+    fromApp(frame.win, "ready", "ready-0000001");
+    fromApp(frame.win, "pong", frame.calls().at(-1)![0].id);
+    const before = frame.calls().length;
+    grantUnlock(10);
+    render(
+      <MemoryRouter>
+        <AuthContext.Provider value={auth}>
+          <CompanyContext.Provider value={company}>
+            <BridgeDialogs />
+          </CompanyContext.Provider>
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    );
+    act(
+      () =>
+        void fromApp(frame.win, "request-data", REQUEST_ID, { dataType: "payroll-result", period }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Send the / }));
+    await vi.waitFor(() => expect(frame.calls().length).toBeGreaterThan(before));
+    return frame
+      .calls()
+      .slice(before)
+      .map(([envelope]) => envelope.payload);
+  }
+
+  it("a month with no saved run is answered not-found, with the same sentence", async () => {
+    vi.mocked(fetchRuns).mockResolvedValue([]);
+    expect(await askFor("2026-09")).toEqual([
+      { ok: false, code: "not-found", error: "There is no saved run for 2026-09." },
+    ]);
+  });
+
+  it("a saved run with no employees is answered not-found, with the same sentence", async () => {
+    vi.mocked(fetchRuns).mockResolvedValue([
+      {
+        id: "20000000-0000-4000-8000-000000000002",
+        period: "2026-09-01",
+        status: "draft",
+        createdBy: null,
+        createdAt: "2026-09-05T08:00:00+00:00",
+        entryCount: 0,
+      },
+    ]);
+    vi.mocked(fetchRunEntries).mockResolvedValue([]);
+    expect(await askFor("2026-09")).toEqual([
+      { ok: false, code: "not-found", error: "That run has no employees." },
+    ]);
+  });
 });

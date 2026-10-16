@@ -217,13 +217,19 @@ function RequestDialog({ request }: { request: DataRequest }) {
       // Read with the user's own permissions: the database only returns what they may see.
       const runs = await fetchRuns(viewer, current.company.id);
       const run = period ? runs.find((r) => r.period === `${period}-01`) : runs[0];
+      // "Nothing saved" is an answer, not a failure: it says so with a code (the payslip app
+      // reads it as "nothing to compare with"), and the sentence stays as it was.
       if (!run) {
-        response = { ok: false, error: `There is no saved run for ${period ?? "this company"}.` };
+        response = {
+          ok: false,
+          code: "not-found",
+          error: `There is no saved run for ${period ?? "this company"}.`,
+        };
       } else {
         const entries = await fetchRunEntries(viewer, run.id);
         response =
           entries.length === 0
-            ? { ok: false, error: "That run has no employees." }
+            ? { ok: false, code: "not-found", error: "That run has no employees." }
             : {
                 ok: true,
                 dataType,
