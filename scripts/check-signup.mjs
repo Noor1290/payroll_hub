@@ -26,9 +26,13 @@ const results = [
 for (const result of results) console.log(`${result.status.padEnd(7)} ${result.what}: ${result.result}`);
 await client.auth.signOut({ scope: "local" });
 
+// The exit code is set, not forced: on Windows, process.exit() while a connection is closing
+// can crash Node.
 if (results.some((result) => result.status === "FAIL")) {
   console.log("\nSTOP: an account was created. Delete it in Supabase > Authentication > Users, then switch sign-ups off.");
-  process.exit(1);
+  process.exitCode = 1;
+} else if (results.some((result) => result.status === "UNCLEAR")) {
+  process.exitCode = 2;
+} else {
+  console.log("\nSign-ups are off: nobody can create an account with the public key.");
 }
-if (results.some((result) => result.status === "UNCLEAR")) process.exit(2);
-console.log("\nSign-ups are off: nobody can create an account with the public key.");

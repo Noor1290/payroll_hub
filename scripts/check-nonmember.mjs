@@ -76,4 +76,5 @@ const unclear = rows.filter((row) => row.status === "UNCLEAR");
 if (unclear.length > 0) {
   console.log("\nUNCLEAR rows were refused, but not in a way that proves the protection. Send this output to Claude.");
 }
-process.exit(exitCode(rows));
+// Set, not forced: on Windows, process.exit() while a connection is closing can crash Node.
+process.exitCode = exitCode(rows);
