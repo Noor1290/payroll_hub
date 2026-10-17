@@ -194,6 +194,25 @@ interface FunctionSpec {
 const NOT_ADMIN = { kind: "write", refusals: ["PH_NOT_ADMIN", "PH_NOT_SIGNED_IN"] } as const satisfies Refusal;
 const isFalse = (data: unknown) => data === false;
 
+/** Compares JSON by content: the database returns an object's keys in its own order. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => sameJson(item, b[i]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const keysA = Object.keys(a).sort();
+    const keysB = Object.keys(b).sort();
+    return (
+      sameJson(keysA, keysB) &&
+      keysA.every((key) => sameJson((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+    );
+  }
+  return a === b;
+}
+
+/** The id of the shared setup the creation attempt names. Not a company. */
+export const SAFETY_SETUP_ID = "5afe5afe-5afe-45af-85af-5afe5afe5afe";
+
 /**
  * Every function `authenticated` may run (and the helpers it may not), with arguments aimed at
  * the TEST companies. The comment on each write says which argument is the second guard.
@@ -214,7 +233,7 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     args: () => ({ p_setup_id: ZERO_ID }),
     expect: {
       kind: "read",
-      ok: (data) => JSON.stringify(data) === JSON.stringify({ can_change: false, companies: 0, admin_of: 0 }),
+      ok: (data) => sameJson(data, { can_change: false, companies: 0, admin_of: 0 }),
       expected: "no access, 0 companies, or refused",
     },
   },
@@ -227,6 +246,8 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     args: (t) => ({ object_name: `${t.a}/${SAFETY_FILE_HASH}.pdf` }),
     expect: { kind: "read", ok: () => true, expected: "only the id it was given, or refused" },
   },
+  // The keep-awake job's function (0015): open to anon on purpose, reads nothing, answers true.
+  keep_awake: { args: () => ({}), expect: { kind: "read", ok: (data) => data === true, expected: "true, or refused" } },
   set_updated_at: {
     args: () => ({}),
     expect: { kind: "read", ok: () => false, expected: "refused (trigger only)" },
@@ -306,8 +327,8 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
   },
   // Guard: no template.
   delete_pdf_template: { args: (t) => ({ p_company_id: t.a, p_template_id: null, p_expected_revision: null }), expect: NOT_ADMIN },
-  // An existing setup only (expected revision 1): with 0 it would CREATE a setup, which any
-  // signed-in user may do by design (see SKIPPED). A setup that does not exist is "not found".
+  // A change of an existing setup (expected revision 1); the attempt to CREATE one is in
+  // EXTRA_CALLS. A setup that does not exist is "not found".
   save_payroll_shared_setup: {
     args: () => ({ p_setup_id: ZERO_ID, p_name: MARKER, p_body: {}, p_expected_revision: 1, p_companies: [] }),
     expect: { kind: "write", refusals: ["PH_NOT_FOUND", "PH_NOT_ADMIN", "PH_NOT_SIGNED_IN"] },
@@ -339,14 +360,23 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
   },
 };
 
+/** Further calls of a function already in FUNCTIONS, for a second rule it must keep. */
+export const EXTRA_CALLS: { label: string; fn: keyof typeof FUNCTIONS; spec: FunctionSpec }[] = [
+  {
+    // Since 0016 a new shared setup needs an admin of at least one company, checked before
+    // the input. Guard: the name is empty, which the function refuses before it stores
+    // anything, so even a database without 0016 stores nothing (and this row then FAILs).
+    label: "save_payroll_shared_setup() new setup",
+    fn: "save_payroll_shared_setup",
+    spec: {
+      args: () => ({ p_setup_id: SAFETY_SETUP_ID, p_name: "", p_body: {}, p_expected_revision: 0, p_companies: [] }),
+      expect: NOT_ADMIN,
+    },
+  },
+];
+
 /** Not attempted, on purpose. Printed as SKIP rows so the gap stays visible. */
 export const SKIPPED: { object: string; action: Action; reason: string }[] = [
-  {
-    object: "save_payroll_shared_setup (a new setup)",
-    action: "call",
-    reason:
-      "by design any signed-in user may create an unattached shared setup (migration 0013); trying it would store a row outside the TEST companies",
-  },
   {
     object: "storage: create a bucket",
     action: "insert",
@@ -442,12 +472,16 @@ function tableChecks({ api, test, self }: Context): Check[] {
 }
 
 function functionChecks({ api, test }: Context): Check[] {
-  return Object.entries(FUNCTIONS).map(([name, spec]) => {
+  const calls = [
+    ...Object.entries(FUNCTIONS).map(([name, spec]) => ({ label: `${name}()`, name, spec })),
+    ...EXTRA_CALLS.map(({ label, fn, spec }) => ({ label, name: fn, spec })),
+  ];
+  return calls.map(({ label, name, spec }) => {
     const args = spec.args(test);
     if (spec.expect.kind === "read") {
       const { ok, expected } = spec.expect;
       return {
-        object: `${name}()`,
+        object: label,
         action: "call",
         expected,
         write: false,
@@ -456,7 +490,7 @@ function functionChecks({ api, test }: Context): Check[] {
     }
     const { refusals } = spec.expect;
     return {
-      object: `${name}()`,
+      object: label,
       action: "call",
       expected: `refused (${refusals[0]})`,
       write: true,
@@ -521,7 +555,8 @@ export interface RunOptions {
 
 /**
  * Runs every check for one kind of visitor. After the first write that goes through, no further
- * write is attempted (reads still are), so a broken rule cannot be used more than once.
+ * write is attempted (reads still are), so a broken rule cannot be used more than once. A FAIL
+ * that certainly stored nothing (only the invalid argument stopped it) does not stop the run.
  */
 export async function runChecks(context: Context, options: RunOptions = {}): Promise<Row[]> {
   const rows: Row[] = [];
@@ -538,10 +573,15 @@ export async function runChecks(context: Context, options: RunOptions = {}): Pro
       } catch (error) {
         verdict = { status: "UNCLEAR", result: `the request failed: ${error instanceof Error ? error.message : String(error)}` };
       }
-      row = { who: context.who, object: check.object, action: check.action, expected: check.expected, ...verdict };
+      const { status, result } = verdict;
+      row = { who: context.who, object: check.object, action: check.action, expected: check.expected, status, result };
       if (verdict.status === "FAIL" && check.write) {
-        writeFailed = true;
-        row.cleanup = check.cleanup;
+        if (verdict.nothingStored) {
+          row.cleanup = "Nothing was stored: only the deliberately invalid argument stopped it. The permission check needs a migration.";
+        } else {
+          writeFailed = true;
+          row.cleanup = check.cleanup;
+        }
       }
     }
     rows.push(row);

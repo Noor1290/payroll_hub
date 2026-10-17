@@ -45,6 +45,8 @@ export const PERMISSION_CODE = "42501";
 export interface Verdict {
   status: Status;
   result: string;
+  /** A FAIL that certainly stored nothing (a later check refused it): later writes may go on. */
+  nothingStored?: boolean;
 }
 
 const short = (text: string | undefined, max = 90): string => {
@@ -102,7 +104,8 @@ export function judgeWriteCall(result: ApiResult, refusals: readonly string[]): 
   if (/PH_[A-Z_]+/.test(text)) {
     return {
       status: "FAIL",
-      result: `the permission check did not stop it; only a later check did (${describeError(error)})`,
+      result: `the permission check did not stop it; only a later check did, so nothing was stored (${describeError(error)})`,
+      nothingStored: true,
     };
   }
   if (error.code === PERMISSION_CODE) return { status: "PASS", result: `refused (${describeError(error)})` };

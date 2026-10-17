@@ -1125,12 +1125,12 @@ const BREAKS = [
     mustFail: "aims every write at the two TEST companies",
   },
   {
-    what: "The keep-awake job counts any refused key as the database answering",
+    what: "The keep-awake job counts any answer as the database answering",
     file: "src/safety/keepAwake.ts",
-    find: '  if ((status === 401 || status === 403) && postgresCode(text) === "42501") {',
-    replace: "  if (status === 401 || status === 403) {",
+    find: '  if (status === 200 && text === "true") return { ok: true, reason: "the database answered" };',
+    replace: '  if (status < 600) return { ok: true, reason: "the database answered" };',
     test: "src/safety/keepAwake.test.ts",
-    mustFail: "fails when the answer did not come from the database",
+    mustFail: "is OK only for HTTP 200 answering true",
   },
   {
     what: "The 60-day warning is skipped when the database request failed",
@@ -1139,6 +1139,30 @@ const BREAKS = [
     replace: "        if: success()",
     test: "src/safety/keepAwake.test.ts",
     mustFail: "checks the 60-day rule even when the database request failed",
+  },
+  {
+    what: "Migration 0015 forgets to open keep_awake() to anon",
+    file: "supabase/migrations/0015_keep_awake.sql",
+    find: "grant execute on function public.keep_awake() to anon, authenticated;",
+    replace: "grant execute on function public.keep_awake() to authenticated;",
+    test: "src/safety/safetyMigrations.db.test.ts",
+    mustFail: "answers true to the anon key and to a signed-in user",
+  },
+  {
+    what: "Migration 0016 checks the input before who may create a setup",
+    file: "supabase/migrations/0016_shared_setup_needs_admin.sql",
+    find: "  if p_expected_revision = 0 and not exists (",
+    replace: "  if false and not exists (",
+    test: "src/safety/safetyMigrations.db.test.ts",
+    mustFail: "refuses before looking at the input",
+  },
+  {
+    what: "The non-member check tries to create a shared setup with a valid name (it could be stored)",
+    file: "src/safety/nonmemberChecks.ts",
+    find: 'args: () => ({ p_setup_id: SAFETY_SETUP_ID, p_name: "",',
+    replace: 'args: () => ({ p_setup_id: SAFETY_SETUP_ID, p_name: "SAFETY CHECK",',
+    test: "src/safety/nonmemberChecks.test.ts",
+    mustFail: "asks for a new shared setup only with an empty name",
   },
 ];
 

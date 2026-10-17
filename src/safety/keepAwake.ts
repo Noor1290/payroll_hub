@@ -1,18 +1,13 @@
 // The keep-awake job (.github/workflows/keep-awake.yml): one small, real database request every
 // two days, so the free Supabase project is not paused for inactivity.
 //
-// The request calls the database function is_company_member with the public anon key. Every
-// function in this database is closed to anon (0001 revokes this one from public and anon), so
-// Postgres itself answers "permission denied" (code 42501). That answer can only come from a
-// running database that received and checked the request: it proves the project is awake, and
-// it reads nothing. A paused or broken project answers differently (HTTP 540 or 5xx, a PGRST
-// connection error, or nothing), and the job fails.
-//
-// If a ping function callable by anon is ever added (a migration), point PING_FUNCTION at it:
-// an HTTP 200 answer is accepted as well.
+// The request calls public.keep_awake() (migration 0015) with the public anon key. The function
+// reads no table and answers true. It is the only function open to anon: every other one is
+// closed to it. A paused or broken project, a wrong key or a missing 0015 answers anything but
+// HTTP 200 with true, and the job fails.
 
-export const PING_FUNCTION = "is_company_member";
-export const PING_ARGS = { cid: "00000000-0000-0000-0000-000000000000" } as const;
+export const PING_FUNCTION = "keep_awake";
+export const PING_MIGRATION = "0015_keep_awake.sql";
 
 export interface PingRequest {
   url: string;
@@ -30,37 +25,27 @@ export function pingRequest(projectUrl: string, anonKey: string): PingRequest {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(PING_ARGS),
+      body: "{}",
     },
   };
 }
 
-function postgresCode(body: string): string | null {
-  try {
-    const parsed = JSON.parse(body) as { code?: unknown };
-    return typeof parsed.code === "string" ? parsed.code : null;
-  } catch {
-    return null;
-  }
-}
-
-/** OK when the DATABASE answered: HTTP 200, or Postgres's own refusal (401/403 with code 42501).
- * Anything else (a paused project, a wrong key, a connection error) is a failure, with a reason. */
+/** OK only for HTTP 200 answering true: the database ran the function. Anything else (a paused
+ * project, a wrong key, a missing migration) is a failure, with a short reason. */
 export function judgePing(status: number, body: string): { ok: boolean; reason: string } {
   const text = body.trim();
-  if (status === 200) return { ok: true, reason: "the database answered" };
-  if ((status === 401 || status === 403) && postgresCode(text) === "42501") {
-    return { ok: true, reason: "the database answered (it refused the anon key, as it should)" };
-  }
+  if (status === 200 && text === "true") return { ok: true, reason: "the database answered" };
   const shown = text.length > 200 ? `${text.slice(0, 199)}…` : text;
   const hint =
     status === 540 || /paused/i.test(text)
       ? " The project looks PAUSED: restore it in the Supabase dashboard."
-      : /PGRST00[0-3]/.test(text)
-        ? " The API could not reach the database."
-        : status === 401 || status === 403
-          ? " The key itself was refused: check VITE_SUPABASE_ANON_KEY."
-          : "";
+      : /PGRST202/.test(text)
+        ? ` The function is missing: run supabase/migrations/${PING_MIGRATION} in the SQL editor.`
+        : /PGRST00[0-3]/.test(text)
+          ? " The API could not reach the database."
+          : status === 401 || status === 403
+            ? " The key was refused, or anon may no longer call keep_awake(): check VITE_SUPABASE_ANON_KEY and 0015."
+            : "";
   return { ok: false, reason: `HTTP ${status}: ${shown || "(empty answer)"}.${hint}` };
 }
 

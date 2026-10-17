@@ -2,11 +2,10 @@
 # A free project is paused after 7 days with little activity; a paused project answers nothing,
 # so the dashboard and every app inside it would stop saving.
 #
-# What it does: scripts/keep-awake.mjs calls the database function is_company_member with the
-# PUBLIC anon key. The function is closed to anon, so Postgres itself answers "permission
-# denied" (code 42501): only a running database can give that answer, and nothing is read.
-# If the database does not answer (paused, wrong key), the run FAILS, and GitHub emails
-# whoever last changed the schedule line below.
+# What it does: scripts/keep-awake.mjs calls the database function keep_awake() (migration
+# 0015) with the PUBLIC anon key. It reads no table and answers true. If the database does not
+# answer that way (paused, wrong key, 0015 not run), the run FAILS, and GitHub emails whoever
+# last changed the schedule line below.
 #
 # Settings (the same names the deploy workflow uses; set them once, under
 # Settings > Secrets and variables > Actions, as Variables or as Secrets):

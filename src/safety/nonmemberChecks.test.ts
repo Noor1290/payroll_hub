@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   BUCKET,
+  EXTRA_CALLS,
   FUNCTIONS,
   preflight,
   runChecks,
+  SAFETY_SETUP_ID,
   SKIPPED,
   TABLES,
   ZERO_ID,
@@ -47,7 +49,8 @@ describe("what the check covers", () => {
   });
 
   it("calls each function with its real parameter names (newest definition), and gives every required one", () => {
-    for (const [name, spec] of Object.entries(FUNCTIONS)) {
+    const calls = [...Object.entries(FUNCTIONS), ...EXTRA_CALLS.map((call) => [call.fn, call.spec] as const)];
+    for (const [name, spec] of calls) {
       const definitions = [...sql.matchAll(new RegExp(`create or replace function public\\.${name}\\s*\\(([^)]*)\\)`, "g"))];
       const signature = definitions.at(-1)![1]!;
       const params = signature
@@ -90,6 +93,8 @@ function fakeApi(override: Partial<Record<keyof Api, (...args: never[]) => ApiRe
       const fallback: ApiResult =
         name === "pdf_form_company"
           ? { data: A }
+          : name === "keep_awake"
+            ? { data: true }
           : name === "payroll_shared_setup_access"
             ? { data: { can_change: false, companies: 0, admin_of: 0 } }
             : name === "issued_payslips_for_month"
@@ -98,7 +103,12 @@ function fakeApi(override: Partial<Record<keyof Api, (...args: never[]) => ApiRe
                 ? refused
                 : spec?.expect.kind === "read"
                   ? { data: false }
-                  : { error: { code: "42501", message: name === "save_payroll_shared_setup" ? "PH_NOT_FOUND" : "PH_NOT_ADMIN" } };
+                  : {
+                      error: {
+                        code: "42501",
+                        message: name === "save_payroll_shared_setup" && args.p_expected_revision !== 0 ? "PH_NOT_FOUND" : "PH_NOT_ADMIN",
+                      },
+                    };
       return answer("rpc", fallback, { kind: "rpc", target: name, payload: args }, [name, args]);
     },
     storageList: (bucket, prefix) => answer("storageList", { data: [] }, { kind: "storageList", target: `${bucket}/${prefix}` }, []),
@@ -130,7 +140,7 @@ describe("the attempts", () => {
   it("aims every write at the two TEST companies only (or at an id that cannot exist)", async () => {
     const { api, calls } = fakeApi();
     await runChecks({ api, who: "non-member", test: { a: A, b: B }, self: SELF });
-    const allowed = new Set([A, B, ZERO_ID, SELF]);
+    const allowed = new Set([A, B, ZERO_ID, SELF, SAFETY_SETUP_ID]);
     const writes = calls.filter((call) => call.kind !== "read");
     expect(writes.length).toBeGreaterThan(60);
     for (const call of writes) {
@@ -139,12 +149,39 @@ describe("the attempts", () => {
     }
   });
 
-  it("never asks for a new shared setup (expected revision 0 would create one)", async () => {
+  it("asks for a new shared setup only with an empty name, so nothing can be stored even without 0016", async () => {
     const { api, calls } = fakeApi();
     await runChecks({ api, who: "anon", test: { a: A, b: B }, self: null });
     const saves = calls.filter((call) => call.kind === "rpc" && call.target === "save_payroll_shared_setup");
-    expect(saves).toHaveLength(1);
-    expect(saves[0]!.payload).toMatchObject({ p_expected_revision: 1 });
+    expect(saves.map((call) => call.payload)).toEqual([
+      expect.objectContaining({ p_expected_revision: 1 }),
+      expect.objectContaining({ p_setup_id: SAFETY_SETUP_ID, p_expected_revision: 0, p_name: "" }),
+    ]);
+  });
+
+  it("goes on with later writes after a FAIL that stored nothing (only the empty name stopped it)", async () => {
+    const { api } = fakeApi({
+      rpc: (name: string, args: Record<string, unknown>) =>
+        name === "save_payroll_shared_setup" && args.p_expected_revision === 0
+          ? { error: { code: "22023", message: "PH_INVALID_INPUT: the setup name must be 1 to 80 characters" } }
+          : { error: { code: "42501", message: "PH_NOT_ADMIN" } },
+    });
+    const rows = await runChecks({ api, who: "non-member", test: { a: A, b: B }, self: SELF });
+    const creation = rows.find((row) => row.object === "save_payroll_shared_setup() new setup")!;
+    expect(creation.status).toBe("FAIL");
+    expect(creation.cleanup).toMatch(/Nothing was stored/);
+    expect(rows.filter((row) => row.result.startsWith("not attempted: an earlier write"))).toEqual([]);
+  });
+
+  it("accepts the shared-setup access answer whatever order the database puts its keys in", async () => {
+    const { api } = fakeApi({
+      rpc: (name: string) =>
+        name === "payroll_shared_setup_access"
+          ? { data: { admin_of: 0, companies: 0, can_change: false } }
+          : { error: { code: "42501", message: "PH_NOT_ADMIN" } },
+    });
+    const rows = await runChecks({ api, who: "non-member", test: { a: A, b: B }, self: SELF });
+    expect(rows.find((row) => row.object === "payroll_shared_setup_access()")?.status).toBe("PASS");
   });
 
   it("only ever updates a column to the value it already has", async () => {

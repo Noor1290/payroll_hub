@@ -62,7 +62,12 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 8. `0008_employee_date_of_employment.sql`: an optional date of employment per employee, typed in the Data explorer.
 9. `0009_statutory_rates.sql`: the statutory rates the payslip app reads and saves through the dashboard. Replaces the "Delete company" function again.
 10. `0010_payslip_templates.sql`: payslip templates (a draft each, and published versions). Replaces the "Delete company" function again.
-11. `0011_issued_payslips.sql`: the payslips as they were issued, a month at a time, readable by admins only. Replaces the "Delete company" function again; never run an older file that defines it after this one.
+11. `0011_issued_payslips.sql`: the payslips as they were issued, a month at a time, readable by admins only. Replaces the "Delete company" function again.
+12. `0012_pdf_templates.sql`: the PDF form filler's templates and their history, and the private Storage bucket `pdf-forms`. Replaces the "Delete company" function again.
+13. `0013_payroll_setups.sql`: the payroll app's column setups (the shared setup and each company's own) and their history. Replaces the "Delete company" function again.
+14. `0014_payroll_months.sql`: the payroll app's months and their history. Replaces the "Delete company" function again; this is its newest definition, so never run an older file that defines it after this one.
+15. `0015_keep_awake.sql`: one function, `keep_awake()`, that the keep-awake job calls with the anon key (see [Safety checks](#safety-checks)).
+16. `0016_shared_setup_needs_admin.sql`: a new shared column setup can be created only by an admin of at least one company.
 
 Then:
 
@@ -241,7 +246,7 @@ Three things run against the live project, never with any key but the public ano
 
   The project URL and anon key come from `.env`. Close the terminal afterwards so the password goes with it.
 
-**Keep-awake** (`.github/workflows/keep-awake.yml`). A free Supabase project is paused after 7 days with little activity. Every second day (and on demand: Actions > Keep Supabase awake > Run workflow) the job sends the database one small request with the anon key. The function it calls is closed to anon, so Postgres itself answers "permission denied": only a running database can give that answer, and nothing is read. If the database does not answer, the run fails and GitHub emails you. It uses the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` settings as the deploy workflow (Variables or Secrets), and runs only once the file is on `main`. GitHub switches scheduled workflows off in a public repository after 60 days without activity: from 45 days after the last commit the job fails on purpose, so the email reaches you in time; push any commit to reset the count.
+**Keep-awake** (`.github/workflows/keep-awake.yml`). A free Supabase project is paused after 7 days with little activity. Every second day (and on demand: Actions > Keep Supabase awake > Run workflow) the job calls the database function `keep_awake()` (migration 0015) with the anon key. It reads no table and answers `true`; it is the only function open to anon. If the database does not answer that way (paused, wrong key, 0015 not run), the run fails and GitHub emails you. It uses the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` settings as the deploy workflow (Variables or Secrets), and runs only once the file is on `main`. GitHub switches scheduled workflows off in a public repository after 60 days without activity: from 45 days after the last commit the job fails on purpose, so the email reaches you in time; push any commit to reset the count.
 
 ### Backups on the free plan
 

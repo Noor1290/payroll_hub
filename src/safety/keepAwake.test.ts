@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import workflow from "../../.github/workflows/keep-awake.yml?raw";
-import { judgeLastCommit, judgePing, PING_FUNCTION, pingRequest, STALE_AFTER_DAYS } from "./keepAwake.ts";
+import { judgeLastCommit, judgePing, PING_FUNCTION, PING_MIGRATION, pingRequest, STALE_AFTER_DAYS } from "./keepAwake.ts";
 
 const migrations = import.meta.glob<string>("../../supabase/migrations/*.sql", { query: "?raw", import: "default", eager: true });
 const sql = Object.values(migrations)
@@ -9,35 +9,39 @@ const sql = Object.values(migrations)
   .replace(/--.*$/gm, "");
 
 describe("the request", () => {
-  it("calls is_company_member with the anon key and an id that belongs to no company", () => {
+  it("calls keep_awake() with the anon key and no arguments", () => {
     const request = pingRequest("https://abcdefgh.supabase.co/", "anon-key");
-    expect(request.url).toBe("https://abcdefgh.supabase.co/rest/v1/rpc/is_company_member");
+    expect(request.url).toBe("https://abcdefgh.supabase.co/rest/v1/rpc/keep_awake");
     expect(request.init.headers).toMatchObject({ apikey: "anon-key", Authorization: "Bearer anon-key" });
-    expect(JSON.parse(request.init.body)).toEqual({ cid: "00000000-0000-0000-0000-000000000000" });
+    expect(JSON.parse(request.init.body)).toEqual({});
   });
 
-  it("calls a function that exists and is closed to anon, so Postgres itself must answer", () => {
-    expect(sql).toMatch(new RegExp(`create or replace function public\\.${PING_FUNCTION}\\(`));
-    expect(sql).toMatch(new RegExp(`revoke all on function public\\.${PING_FUNCTION}\\(uuid\\) from public, anon;`));
+  it("calls the function migration 0015 opens to anon, and no other function is opened to anon", () => {
+    expect(Object.keys(migrations).some((path) => path.endsWith(`/${PING_MIGRATION}`))).toBe(true);
+    expect(sql).toMatch(new RegExp(`create or replace function public\\.${PING_FUNCTION}\\(\\)`));
+    expect(sql).toMatch(new RegExp(`grant execute on function public\\.${PING_FUNCTION}\\(\\) to anon, authenticated;`));
+    const openToAnon = [...sql.matchAll(/grant execute on function public\.(\w+)\([^)]*\)\s+to[^;]*\banon\b/g)].map((m) => m[1]);
+    expect(openToAnon).toEqual([PING_FUNCTION]);
   });
 });
 
 describe("judgePing", () => {
-  const refused = JSON.stringify({ code: "42501", message: "permission denied for function is_company_member" });
-
-  it("is OK when the database answered: a 200, or Postgres's own refusal of the anon key", () => {
+  it("is OK only for HTTP 200 answering true", () => {
     expect(judgePing(200, "true").ok).toBe(true);
-    expect(judgePing(401, refused).ok).toBe(true);
-    expect(judgePing(403, refused).ok).toBe(true);
+    expect(judgePing(200, "false").ok).toBe(false);
+    expect(judgePing(200, "").ok).toBe(false);
+    expect(judgePing(401, JSON.stringify({ code: "42501", message: "permission denied" })).ok).toBe(false);
   });
 
-  it("fails when the answer did not come from the database", () => {
+  it("fails with a reason for a paused project, a missing migration, a refused key, or anything else", () => {
     expect(judgePing(540, "Project paused").reason).toMatch(/PAUSED/);
+    expect(judgePing(404, JSON.stringify({ code: "PGRST202", message: "Could not find the function" })).reason).toMatch(
+      /run supabase\/migrations\/0015_keep_awake\.sql/,
+    );
     expect(judgePing(503, JSON.stringify({ code: "PGRST002", message: "Could not query the database" })).reason).toMatch(
       /could not reach the database/,
     );
-    expect(judgePing(401, '{"message":"Invalid API key"}').reason).toMatch(/key itself was refused/);
-    expect(judgePing(401, '{"code":"PGRST301","message":"JWT expired"}').ok).toBe(false);
+    expect(judgePing(401, '{"message":"Invalid API key"}').reason).toMatch(/key was refused/);
     expect(judgePing(503, "").reason).toBe("HTTP 503: (empty answer).");
   });
 });
