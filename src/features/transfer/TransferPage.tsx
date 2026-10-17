@@ -57,11 +57,13 @@ import {
   buildOutput,
   effectiveMapping,
   missingRequired,
+  passedAlongColumns,
   sensitiveColumnsSent,
   tableFromReceived,
   tableFromRun,
   validateRows,
   type Mapping,
+  type SourceColumn,
   type SourceTable,
 } from "./mapping";
 import { SelectTable } from "./SelectTable";
@@ -304,6 +306,7 @@ function MappingStep({
   missing,
   issues,
   sensitive,
+  passedAlong,
 }: {
   table: SourceTable;
   selectedColumns: ReadonlySet<string>;
@@ -314,6 +317,7 @@ function MappingStep({
   missing: ExpectedField[];
   issues: ReturnType<typeof validateRows>;
   sensitive: ReturnType<typeof sensitiveColumnsSent>;
+  passedAlong: readonly SourceColumn[];
 }) {
   const templates = useStore(mappingTemplates).filter(
     (t) => t.destinationId === destination.id && t.dataType === dataType,
@@ -326,7 +330,10 @@ function MappingStep({
   const fields = destination.expectedFields;
   const effective = effectiveMapping(baseMapping, selectedColumns, fields);
   const mappedSources = new Set(Object.values(effective));
-  const unmappedColumns = available.filter((column) => !mappedSources.has(column.key));
+  const passedAlongKeys = new Set(passedAlong.map((column) => column.key));
+  const unmappedColumns = available.filter(
+    (column) => !mappedSources.has(column.key) && !passedAlongKeys.has(column.key),
+  );
   const missingKeys = new Set(missing.map((field) => field.key));
 
   return (
@@ -519,6 +526,13 @@ function MappingStep({
         </Notice>
       )}
 
+      {passedAlong.length > 0 && (
+        <p className="text-sm text-muted">
+          Also sent, under the payroll app&rsquo;s own names:{" "}
+          {passedAlong.map((column) => column.label).join(", ")}.
+        </p>
+      )}
+
       {unmappedColumns.length > 0 && (
         <p className="text-sm text-muted">
           Not sent, because nothing in {destination.name} is mapped to{" "}
@@ -536,6 +550,7 @@ function PreviewStep({
   output,
   fields,
   mapping,
+  passedAlong,
   destination,
   from,
   send,
@@ -548,6 +563,7 @@ function PreviewStep({
   output: Record<string, unknown>[];
   fields: readonly ExpectedField[];
   mapping: Mapping;
+  passedAlong: readonly SourceColumn[];
   destination: AppConfig;
   from: FlowEnd;
   send: SendState;
@@ -558,7 +574,16 @@ function PreviewStep({
   onOpenAfterChange: (value: boolean) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
-  const sent = fields.filter((field) => mapping[field.key]);
+  // The mapped fields, then the columns passed along under their own names (masked like any
+  // field the dashboard does not know).
+  const sent: Pick<ExpectedField, "key" | "type" | "sensitive">[] = [
+    ...fields.filter((field) => mapping[field.key]),
+    ...passedAlong.map((column) => ({
+      key: column.key,
+      type: column.type === "number" ? ("number" as const) : ("string" as const),
+      sensitive: true,
+    })),
+  ];
   const failed = send.status === "failed" && send.outcome && !send.outcome.ok ? send.outcome : null;
   const rowsText = `${formatCount(output.length)} ${output.length === 1 ? "row" : "rows"}`;
 
@@ -738,14 +763,17 @@ function Steps({ table, source, dataType, meta, sourceApp, state, update }: Step
     const base = state.mapping ?? autoMap(available, fields);
     const mapping = effectiveMapping(base, selectedColumns, fields);
     const rows = table.rows.filter((row) => selectedRows.has(row.id));
+    const passedAlong = passedAlongColumns(table.columns, selectedColumns, mapping, fields);
+    const passAlongKeys = passedAlong.map((column) => column.key);
     return {
       fields,
       base,
       mapping,
+      passedAlong,
       missing: missingRequired(base, selectedColumns, fields),
       issues: validateRows(rows, mapping, fields),
-      sensitive: sensitiveColumnsSent(mapping, table.columns),
-      output: buildOutput(rows, mapping, fields),
+      sensitive: sensitiveColumnsSent(mapping, table.columns, passAlongKeys),
+      output: buildOutput(rows, mapping, fields, passAlongKeys),
     };
   }, [table, selectedRows, selectedColumns, destination, state.mapping]);
 
@@ -841,6 +869,7 @@ function Steps({ table, source, dataType, meta, sourceApp, state, update }: Step
             missing={derived.missing}
             issues={derived.issues}
             sensitive={derived.sensitive}
+            passedAlong={derived.passedAlong}
           />
           <StepNav
             onBack={() => go(2)}
@@ -864,6 +893,7 @@ function Steps({ table, source, dataType, meta, sourceApp, state, update }: Step
             output={derived.output}
             fields={derived.fields}
             mapping={derived.mapping}
+            passedAlong={derived.passedAlong}
             destination={destination}
             from={{ label: source.label, icon: sourceApp?.icon, color: sourceApp?.accentColor }}
             send={state.send}

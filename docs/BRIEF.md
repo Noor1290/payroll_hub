@@ -336,7 +336,7 @@ changed, what to test manually, and anything I need to do (env vars, Supabase se
 
 **Phase 5 notes**
 - Both sources are shown to the wizard in the payroll app's export shape (its keys, company fields on every row), so the mapping to an app that consumes payroll results is one-to-one by default.
-- Only MAPPED destination fields are sent, under the destination's field names. A selected column that nothing is mapped to is not sent (the mapping step says which).
+- Only MAPPED destination fields are sent, under the destination's field names. A selected column that nothing is mapped to is not sent (the mapping step says which). **Changed 17 Oct 2026 (rehearsal fix F3):** a selected column the dashboard does not know (one of the company's own payroll columns, kept in `extra`) that nothing is mapped to now travels along under its own name, as "Get from dashboard" already sends it (`toExportRow`), unless it is named like a field the destination asks for. The mapping step lists them ("Also sent, under the payroll app's own names: …"), the preview shows them masked, and they count in the sensitive warning. Columns the dashboard knows are still sent only when mapped.
 - The wizard blocks on: a required field with no source (unmapped or its column unticked), and any row value that does not fit the destination field's type. Values are never altered.
 - A saved run as the source sits behind the password gate; if the gate locks mid-wizard the rows are dropped and the prompt returns, but the selections are kept.
 - "Send to…" in the received-data dialog still sends directly; its new "Choose rows and columns…" item hands the data to the wizard instead.

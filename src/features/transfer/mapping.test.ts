@@ -9,6 +9,7 @@ import {
   effectiveMapping,
   missingRequired,
   normaliseName,
+  passedAlongColumns,
   sensitiveColumnsSent,
   tableFromReceived,
   tableFromRun,
@@ -273,6 +274,71 @@ describe("buildOutput", () => {
     expect(Object.keys(output[0]!)).toEqual(
       pdfFields.map((f) => f.key).filter((key) => key !== "Date of Employment"),
     );
+  });
+});
+
+describe("the company's own columns travel along (rehearsal fix F3)", () => {
+  const payslipFields = getApp("payslip")!.expectedFields;
+  const parsed = parsePayrollRows(original);
+  const table = tableFromRun(parsed.rows, parsed.company!);
+
+  it("a saved run sent through the wizard keeps a company column, under its own name, where it has a value", () => {
+    const mapping = effectiveMapping(
+      autoMap(table.columns, payslipFields),
+      all(table.columns),
+      payslipFields,
+    );
+    const along = passedAlongColumns(table.columns, all(table.columns), mapping, payslipFields);
+    expect(along.map((c) => c.key)).toEqual(["Bonus"]);
+    const output = buildOutput(
+      table.rows,
+      mapping,
+      payslipFields,
+      along.map((c) => c.key),
+    );
+    expect(output[5]!.Bonus).toBe(1500);
+    for (const sent of output.slice(0, 5)) expect(sent).not.toHaveProperty("Bonus");
+    // The mapped fields are unchanged and come first.
+    expect(Object.keys(output[5]!).at(-1)).toBe("Bonus");
+    expect(output[5]!["Net Pay"]).toBe(original[5]!["Net Pay"]);
+  });
+
+  it("is the same as what Get from dashboard sends for those columns", () => {
+    const mapping = effectiveMapping(
+      autoMap(table.columns, payslipFields),
+      all(table.columns),
+      payslipFields,
+    );
+    const along = passedAlongColumns(table.columns, all(table.columns), mapping, payslipFields).map(
+      (c) => c.key,
+    );
+    const output = buildOutput(table.rows, mapping, payslipFields, along);
+    expect(output.map((r) => r.Bonus)).toEqual(table.rows.map((r) => r.values.Bonus));
+  });
+
+  it("leaves out a company column that is unticked, mapped, or named like a field the destination asks for", () => {
+    const columns = [
+      column("Presence Bonus", { extra: true }),
+      column("Travelling ", { extra: true }),
+      column("Advance", { extra: true }),
+      column("Surname"),
+    ];
+    const fields = [field("Travelling"), field("Bonus")];
+    const selected = new Set(["Presence Bonus", "Travelling ", "Surname"]);
+    expect(passedAlongColumns(columns, selected, {}, fields).map((c) => c.key)).toEqual([
+      "Presence Bonus",
+    ]);
+    expect(passedAlongColumns(columns, selected, { Bonus: "Presence Bonus" }, fields)).toEqual([]);
+  });
+
+  it("counts the columns passed along in the sensitive warning", () => {
+    const columns = [
+      column("Presence Bonus", { extra: true, sensitive: true }),
+      column("Net Pay", { sensitive: true }),
+    ];
+    expect(
+      sensitiveColumnsSent({ a: "Net Pay" }, columns, ["Presence Bonus"]).map((c) => c.key),
+    ).toEqual(["Presence Bonus", "Net Pay"]);
   });
 });
 

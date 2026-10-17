@@ -23,6 +23,11 @@ export interface SourceColumn {
   sensitive: boolean;
   /** A payroll money figure, shown as rupees. */
   money: boolean;
+  /**
+   * A column this dashboard does not know (one of the company's own payroll columns, kept in
+   * `extra`). Sent along under its own name when nothing is mapped to it (see passedAlongColumns).
+   */
+  extra?: true;
 }
 
 export interface SourceRow {
@@ -57,7 +62,7 @@ function columnFor(key: string, sample: unknown): SourceColumn {
   // A field this dashboard doesn't know: treat it as sensitive until someone decides otherwise.
   const type =
     typeof sample === "number" ? "number" : typeof sample === "boolean" ? "boolean" : "string";
-  return { key, label: key, type, sensitive: true, money: false };
+  return { key, label: key, type, sensitive: true, money: false, extra: true };
 }
 
 /** A saved run as a table, in the payroll app's own export shape (its keys, company on every row). */
@@ -213,16 +218,44 @@ export function validateRows(
 }
 
 /**
- * Exactly what the destination will receive: one object per selected row, holding only the
- * mapped destination fields, in the destination's own field order. Nothing else leaves.
+ * The company's own payroll columns (`extra`) that travel along under their own names: ticked,
+ * nothing mapped to them, and not named like a field the destination asks for (that one would be
+ * mapped, or deliberately left out). This is what "Get from dashboard" already sends
+ * (toExportRow), so a payslip line such as Presence Bonus or Absences is not lost on the way.
+ */
+export function passedAlongColumns(
+  columns: readonly SourceColumn[],
+  selectedColumns: ReadonlySet<string>,
+  mapping: Mapping,
+  fields: readonly ExpectedField[],
+): SourceColumn[] {
+  const mapped = new Set(Object.values(mapping));
+  const fieldNames = new Set(
+    fields.flatMap((field) => [normaliseName(field.key), normaliseName(field.label)]),
+  );
+  return columns.filter(
+    (column) =>
+      column.extra &&
+      selectedColumns.has(column.key) &&
+      !mapped.has(column.key) &&
+      !fieldNames.has(normaliseName(column.key)),
+  );
+}
+
+/**
+ * Exactly what the destination will receive: one object per selected row, holding the mapped
+ * destination fields, in the destination's own field order, then the columns passed along
+ * (`passAlong`, from passedAlongColumns) under their own names. Nothing else leaves.
  *
  * An optional number or date the row has no value for is left out of that row, never sent as
- * "" or 0, so the destination can tell "missing" from "nothing to pay".
+ * "" or 0, so the destination can tell "missing" from "nothing to pay". A column passed along is
+ * left out of a row that has no value for it, for the same reason.
  */
 export function buildOutput(
   rows: readonly SourceRow[],
   mapping: Mapping,
   fields: readonly ExpectedField[],
+  passAlong: readonly string[] = [],
 ): Record<string, unknown>[] {
   const mapped = fields.filter((field) => mapping[field.key]);
   return rows.map((row) => {
@@ -233,15 +266,20 @@ export function buildOutput(
       if (leaveOut && !field.required && isEmpty(value)) continue;
       out[field.key] = value ?? "";
     }
+    for (const key of passAlong) {
+      const value = row.values[key];
+      if (!isEmpty(value) && !(key in out)) out[key] = value;
+    }
     return out;
   });
 }
 
-/** Sensitive source columns that the mapping sends to the destination. */
+/** Sensitive source columns that the mapping sends to the destination, and those passed along. */
 export function sensitiveColumnsSent(
   mapping: Mapping,
   columns: readonly SourceColumn[],
+  passAlong: readonly string[] = [],
 ): SourceColumn[] {
-  const sent = new Set(Object.values(mapping));
+  const sent = new Set([...Object.values(mapping), ...passAlong]);
   return columns.filter((column) => column.sensitive && sent.has(column.key));
 }
