@@ -16,9 +16,11 @@ Covers `Payroll_sys` (payroll), `PDF Editor` (PDF form filler), `payslip` and `p
 - **The password gate (decided 13 October):** it locks after 10 minutes without activity (up to 30 in Settings), not 10 minutes after unlocking, and work inside an app counts as activity (section 5.8).
 - **Nothing is left to confirm.** Every decision is in section 4.
 - **Phase 0 is built** (13 October 2026): the backup files, the storage interfaces, the `activity` message and the gate. What was built, and what it leaves for Phase 1, is in section 5.11. No migration was needed.
-- **Phase 2 is built** (14 October 2026) and merged: migration 0013 (not run yet), the `payroll-setup` data type, and the payroll app's setup in the dashboard with its import. Section 5.14.
+- **Phase 1 is built** (13 October 2026) and merged: migration 0012 (run and tested against the real database on 13 October), the `pdf-template` and `pdf-file` data types, and the PDF form filler's templates in the dashboard with their import. Sections 5.12 and 5.13.
+- **Phase 2 is built** (14 October 2026) and merged: migration 0013 (run and tested against the real database on 14 October), the `payroll-setup` data type, and the payroll app's setup in the dashboard with its import. Section 5.14.
 - **Phase 3 is built** (15 October 2026) and merged: migration 0014 (run and tested against the real database on 15 October), the `payroll-month` data type behind the password gate, and the payroll app's months in the dashboard with their import. Section 5.15.
-- **Phase 3 follow-ups are built** (15 October 2026), on the branch `phase-3-followups`, not merged: History and restore of the column setups and months, the Database page tabs for the setup and month tables, the read-only offline copy of the column setup, and the docs say `payroll_hub` for the live address. No migration. Section 5.16.
+- **Phase 3 follow-ups are built** (15 October 2026) and merged: History and restore of the column setups and months, the Database page tabs for the setup and month tables, the read-only offline copy of the column setup, and the docs say `payroll_hub` for the live address. No migration. Section 5.16.
+- **Status on 17 October 2026:** Phases 0 to 3, Phase 1's follow-ups (section 5.13: history and restore, Database page tabs, offline copy for the PDF form filler) and the Phase 3 follow-ups are all merged and deployed, and migrations 0012 to 0014 are run on the live project. Sections 5.11 to 5.16 still say "not merged" or "before the migration is run" because they record each phase as it was when written.
 
 ## 1. Where each app saves its data today
 

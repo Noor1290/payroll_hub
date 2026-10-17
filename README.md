@@ -67,7 +67,7 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 13. `0013_payroll_setups.sql`: the payroll app's column setups (the shared setup and each company's own) and their history. Replaces the "Delete company" function again.
 14. `0014_payroll_months.sql`: the payroll app's months and their history. Replaces the "Delete company" function again; this is its newest definition, so never run an older file that defines it after this one.
 15. `0015_keep_awake.sql`: one function, `keep_awake()`, that the keep-awake job calls with the anon key (see [Safety checks](#safety-checks)).
-16. `0016_shared_setup_needs_admin.sql`: a new shared column setup can be created only by an admin of at least one company.
+16. `0016_shared_setup_needs_admin.sql`: a new shared column setup can be created only by an admin of at least one company. It replaces a function of 0013, so never run 0013 again after this one: that would put back the old function without the rule.
 
 Then:
 

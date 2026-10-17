@@ -93,5 +93,6 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 (Update this at the end of each phase.)
 
 - [x] Phase 1  - [x] Phase 2  - [x] Phase 3  - [x] Phase 4  - [x] Phase 5  - [x] Phase 6
-- Payslip app (docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [x] Stage B, items 3 to 7, 9, 10 (merged and deployed; migrations 0008 to 0010 run)  - [x] Stage C, item 8 (on `feature/payslip-issue`; migration 0011 is for the owner to run)
-- Moving app data into Supabase (docs/MIGRATION_PLAN.md): [x] Phase 0 (backup files and storage interfaces in the apps, the `activity` message, the gate locks after inactivity; no migration)  - [x] Phase 1 (0012)  - [x] Phase 2 (0013)  - [x] Phase 3 (0014, merged)  - [x] Phase 3 follow-ups (History and restore, Database page tabs, offline copy; branch `phase-3-followups`, no migration)
+- Payslip app (payslip/docs/HUB_CHANGES.md): [x] Stage A, items 1 and 2  - [x] Stage B, items 3 to 7, 9, 10  - [x] Stage C, item 8 (all merged and deployed; migrations 0008 to 0011 run)
+- Moving app data into Supabase (docs/MIGRATION_PLAN.md): [x] Phase 0 (backup files and storage interfaces in the apps, the `activity` message, the gate locks after inactivity; no migration)  - [x] Phase 1 (0012)  - [x] Phase 2 (0013)  - [x] Phase 3 (0014)  - [x] Phase 3 follow-ups (History and restore, Database page tabs, offline copy; no migration). All merged and deployed; migrations 0012 to 0014 run.
+- Backlog fixes (batches A to I) and safety checks (sign-up and non-member checks, keep-awake job; migrations 0015 and 0016): merged and deployed; migrations 0001 to 0016 run on the live project.

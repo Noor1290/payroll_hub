@@ -12,7 +12,7 @@ a real "wow" dashboard.
   The user enters data, it calculates everything, and the user exports a JSON of results.
 - **App 2: PDF Form Filler** (frontend only): https://noor1290.github.io/pdf-form-filler/
   Imports that JSON and auto-fills a PDF.
-- **App 3 (coming soon): Payslip Automation.** Consumes the same payroll JSON. Not built yet.
+- **App 3: Payslip Automation** (live at https://noor1290.github.io/payslip/ since October 2026). Consumes the same payroll JSON.
 - More apps will be added later, so everything must be registry-driven (adding an app = one config entry).
 - This dashboard is a third repo under the same account, served at https://noor1290.github.io/payroll_hub/
   (repo name `payroll_hub`). Vite `base` must be `/payroll_hub/` there, and configurable (the deploy sets it from the repo name).
@@ -115,7 +115,7 @@ Initial entries (use these exact URLs, keep the trailing slashes):
 - `payroll`: name "Payroll System", url `https://noor1290.github.io/payroll_sys/`, produces `["payroll-result"]`, status `active`
 - `pdf-editor`: name "PDF Form Filler", url `https://noor1290.github.io/pdf-form-filler/`, accepts `["payroll-result"]`, status `active`
 - `payslip`: name "Payslip Automation", url `""` (not built yet), accepts `["payroll-result"]`, status `coming-soon`
-  (now active at `https://noor1290.github.io/payslip/`, accepting `payroll-result`, `statutory-rates` and `payslip-template` and producing the last two; see section 12, "Payslip app, stage A" and "stage B")
+  (now active at `https://noor1290.github.io/payslip/`, accepting `payroll-result`, `statutory-rates`, `payslip-template` and `payslip-issue` and producing the last three; see section 12, "Payslip app, stage A", "stage B" and "stage C")
 
 Derive each app's expected origin with `new URL(url).origin` (here `https://noor1290.github.io`) and use it as the exact
 `targetOrigin` and for origin checks. Because the apps share this origin, ALSO verify `event.source` against the
@@ -331,7 +331,7 @@ changed, what to test manually, and anything I need to do (env vars, Supabase se
 - Password check: a separate throwaway Supabase client (`persistSession: false`, `autoRefreshToken: false`, in-memory storage, its own storage key), `signInWithPassword` with the current user's email, then `signOut({ scope: "local" })` on that client only. Never the default scope: it would end every session. The main client is never touched. The password is never stored, logged or kept.
 - No extra lockout beyond Supabase's own rate limiting. Demo mode accepts the word "demo" (dev only).
 - An app request while locked shows the unlock prompt inside the request dialog. Every request has a 100-second deadline (the app waits 120): still locked -> reply `{ ok: false, code: "locked" }`; unlocked but unanswered -> `code: "timeout"`.
-- Reusable: `<PasswordGate what="…">`, `<UnlockForm>`, `<UnlockStatus>`, `useUnlock()`. A separate read-only "Database" page (raw table viewer) is planned and must use the same gate. Not built yet.
+- Reusable: `<PasswordGate what="…">`, `<UnlockForm>`, `<UnlockStatus>`, `useUnlock()`. The read-only "Database" page (raw table viewer) uses the same gate. Built on 2026-10-03: see "Database page" below.
 - Sensitive-column masking with click-to-reveal still applies after unlocking.
 
 **Phase 5 notes**
@@ -345,6 +345,7 @@ changed, what to test manually, and anything I need to do (env vars, Supabase se
 - "Open the app when it is delivered" is remembered as a browser preference (`payroll-hub:transfer-open-after`).
 
 **Database page (added 2026-10-03, on request)**
+- Status (2026-10-17): built and live, with a read-only tab for every table of migrations 0001 to 0014: the five below, `company_details` and `company_links`, the payslip tables (2026-10-08, below), `pdf_templates` and `pdf_template_history` (docs/MIGRATION_PLAN.md 5.13), and the four setup and two month tables (5.16).
 - Admin-only, read-only raw viewer for `companies`, `employees`, `payroll_runs`, `payroll_entries`, `company_members`, behind the password gate. Nav item (lock icon) between History and Settings, hidden for viewers; the route also shows an "admins only" message. "Open Database" in the command palette for admins.
 - Server-side paging (25/50/100 per page, never more than 100 per request), sorting (with the row key as a tiebreaker) and search. Search looks at the table's text columns; for `payroll_runs` a month like `2026-09` matches the period; for `payroll_entries` it searches the employee's name and national ID through the join.
 - Scoping: `companies` by id; `employees`, `payroll_runs`, `company_members` by `company_id`; `payroll_entries` through an inner join on `payroll_runs`.
@@ -428,7 +429,7 @@ changed, what to test manually, and anything I need to do (env vars, Supabase se
 - Templates: the hub accepts a body of at most 150 KB (the database 256 KB), 50 templates per company, names unique ignoring capitals, and refuses a body containing a `data:` URI (no images). Viewers may read drafts. No delete or archive in this stage (FUTURE_WORK 9c).
 - Delete company: the preview counts rates versions, templates and published versions (zero while the tables do not exist). `deleteCompanyMigration.test.ts` also requires the preview to count every table that belongs to a company.
 - The dashboard works against a database without `0008` to `0010`: runs load without the date, and a rates or template exchange is refused as `unavailable`, naming the file to run.
-- Not done in this stage: the Database page does not show the three new tables, and `payslip-issue` (item 8).
+- Not done in this stage: the Database page did not show the three new tables, and `payslip-issue` (item 8). Both were built later: the tabs on 2026-10-08 ("Database page" above), `payslip-issue` in stage C (below).
 
 **Payslip app, stage C (added 2026-10-07; docs/HUB_CHANGES.md item 8, with 9 and 10 for its table)**
 - The wire contract is docs/INTEGRATION.md, section `payslip-issue`. This entry records the decisions behind it.
@@ -443,4 +444,4 @@ changed, what to test manually, and anything I need to do (env vars, Supabase se
 - Every answer to a request for rates, templates and issued payslips carries `meta.role`: `admin` or `member` (the database's `viewer`). A hint for the app's read-only state, not a permission.
 - Database (run by hand): `0011` adds `issued_payslips`, `issue_payslips` (SECURITY DEFINER), `issued_payslips_for_month` (SECURITY INVOKER, read only), a redundant unique index `employees (id, company_id)` for the composite foreign key, and replaces `delete_company`; the newest definition is in `0011`, and that is the file the dashboard names when the function is missing.
 - The dashboard works against a database without `0011`: a load or an issue is refused as `unavailable`, naming the file, and the delete preview counts nothing for the missing table.
-- Not done in this stage: any hub screen for issued payslips (FUTURE_WORK 9c lists a Database page tab, revision history in a load, display names and a default template per company).
+- Not done in this stage: any hub screen for issued payslips. The Database page tab for `issued_payslips` was built on 2026-10-08 ("Database page" above); revision history in a load, display names and a default template per company are still open (FUTURE_WORK 9c).

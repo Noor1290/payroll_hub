@@ -1,3 +1,5 @@
+> Archived 17 Oct 2026: done on 3 Oct 2026 (the Database page's password gate); the decisions are in docs/BRIEF.md section 12.
+
 > Status: built on 2026-10-03. Decisions and scope are recorded in docs/BRIEF.md section 12 ("Password gate").
 
 Add a re-authentication gate to the Database page:

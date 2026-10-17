@@ -3,52 +3,65 @@
 Written at the end of a long session so nothing gets lost. Tick items off as they are done.
 Rule for everything below: use FAKE data only (the repos are public), never put a service-role key anywhere, and test in the deployed hub, not just locally.
 
-## 0. Check where things stand (verify first, I did not confirm all of these)
+Brought up to date on 17 Oct 2026: everything merged and live on `main` in the four repos (up to the backlog fixes and the safety checks) is ticked; migrations 0001 to 0016 have been run on the live project.
 
-- [ ] payroll_sys: `redesign` branch merged into `main`, pushed, deployed, and tested inside the hub (hard refresh, Ctrl+Shift+R)
-- [ ] payroll_sys: "Send to dashboard" visible and working in the hub (button next to the export controls)
-- [ ] pdf-form-filler: bridge installed (`PayrollHubBridge.init`, "Get from dashboard", waiting-data notice and import preview)
-- [ ] Full flow tested with fake data: Send to dashboard -> "results received" -> Save to database -> send to PDF Form Filler
-- [ ] Hub features built and checked: Database page (with password gate), Add company, Delete company, Company profile, Links
-- [ ] Migrations 0002 onward all run on the dev Supabase project, in order
-- [ ] Sign-ups still switched off in Supabase (Authentication -> Sign In / Providers)
-- [ ] payroll_sys Column Setup: employee NSF fixed (see section 9a)
-- [ ] payroll_sys Column Setup: employee NSF = 0 when Age 60+ ticked (check the COMPANY setup too)
-- [ ] payroll_sys: columns renamed to "Employee CSG" and "Employee NSF"; second "PAYE" renamed "PAYE (calculated)"
-- [ ] Payslip app: phases tracked in the payslip repo (CLAUDE.md status); hub changes tracked in docs/HUB_CHANGES.md
+## Before real data
 
-## 1. pdf-form-filler redesign (not started)
+Done:
+- [x] Sign-ups switched off, and anonymous sign-ins too (checked by `scripts/check-signup.mjs`, 17 Oct 2026).
+- [x] Non-member security check: every table, function and the `pdf-forms` bucket, as anon and as a user of no company: 228 PASS, 0 FAIL (`scripts/check-nonmember.mjs`, 17 Oct 2026). Rerun after every migration.
+- [x] Shared-setup gap closed: a new shared column setup needs an admin of at least one company (migration 0016).
+- [x] Keep-awake job every second day (`.github/workflows/keep-awake.yml`, function `keep_awake()` from migration 0015); first run green on 17 Oct 2026.
+- [x] Backup routine written down: README, "Backups on the free plan" (Back up in both apps, export the tables, a copy off this computer, after every payroll month).
 
-Use `redesign-prompt-pdf-form-filler.md`. Start a FRESH Claude Code session in that repo (no old context, saves usage), run `/model opusplan`, and put this line at the top of the prompt:
+Open:
+- [ ] Give the dashboard its own address (a separate origin; a free host is fine). Today the dashboard and the apps share https://noor1290.github.io, so an embedded app can reach the dashboard's page and memory (section 5, and the README section "Moving the dashboard to its own origin").
+- [ ] The rounding decision: payroll_sys known issue 1 (a total can differ by 0.01 from the lines beside it). See section 2.
+- [ ] My accountant confirms the statutory rules the payroll and payslip use, in particular:
+  - employee CSG 1.5% / 3% on the whole base, and which rate applies at exactly Rs 50,000 (today: 1.5% at or below 50,000, 3% strictly above);
+  - employee NSF 1% of min(base, 29,710), so at most Rs 297.10 (not 297.00), and its base (Gross Pay today);
+  - employee NSF 0 for Age 60+;
+  - "Travelling" is the transport allowance; whether Advance is an earning or a recovery.
+- [ ] My own payroll column setup (not visible from the code): employee NSF tier fixed, the Age 60+ exemption present, columns named "Employee CSG", "Employee NSF" and "PAYE (calculated)" (section 9a).
 
-```
-Usage note: at most 3 screenshots per step, prefer scripted checks, keep replies short, and run the keyboard, label, encoding and visible-text checks as scripts from the start.
-```
+Decided:
+- Stay on the FREE Supabase plan, with the keep-awake job and the manual backups instead of Pro (no daily backups, pausing after 7 days without activity is what the keep-awake job prevents). Keep never committing or pasting real national IDs, names or salaries.
 
-Lessons from the payroll_sys redesign to ask for from the start:
-- Safety-net test first (fake data, recorded field mapping and filled PDF field values, not raw bytes), proven to fail on a deliberate change.
-- Encoding check on every commit (a script once corrupted "->" and "-" characters).
-- Visible-text comparison against the last pre-redesign commit; every change must be on an approved list.
-- Keyboard helper for dialogs and menus (focus trap, Escape, focus returns), labels on every control, contrast and reduced-motion checks.
-- PDF preview stays untouched: no blur, glow, tint or overlay on or behind the rendered pages.
-- Work on a `redesign` branch; do not push or merge until I say so.
+## 0. Check where things stand
+
+- [x] payroll_sys: `redesign` branch merged into `main`, pushed, deployed, and tested inside the hub
+- [x] payroll_sys: "Send to dashboard" visible and working in the hub (button next to the export controls)
+- [x] pdf-form-filler: bridge installed (`PayrollHubBridge.init`, "Get from dashboard", waiting-data notice and import preview)
+- [x] Full flow tested with fake data: Send to dashboard -> "results received" -> Save to database -> send to PDF Form Filler (TEST_REPORT, 11 to 16 Oct 2026)
+- [x] Hub features built and checked: Database page (with password gate), Add company, Delete company, Company profile, Links
+- [x] Migrations 0002 onward all run on the live Supabase project, in order (0001 to 0016)
+- [x] Sign-ups still switched off in Supabase (checked by script on 17 Oct 2026)
+- [ ] payroll_sys Column Setup: employee NSF fixed (see section 9a): in my own setup; moved to "Before real data"
+- [ ] payroll_sys Column Setup: employee NSF = 0 when Age 60+ ticked (check the COMPANY setup too): same
+- [ ] payroll_sys: columns renamed to "Employee CSG" and "Employee NSF"; second "PAYE" renamed "PAYE (calculated)": same
+- [x] Payslip app: phases tracked in the payslip repo (CLAUDE.md status); hub changes tracked in payslip/docs/HUB_CHANGES.md
+
+## 1. pdf-form-filler redesign (done)
+
+Done and merged into `main` (PDF Editor, merge `e866687`). The prompt used was `docs/Redesign prompt pdf form filler v2.md` in the PDF Editor folder (kept there, not committed). The lessons it carried (safety net first, encoding check, visible-text comparison, keyboard helper, an untouched PDF preview) are now the working rules of every repo.
 
 ## 2. Known issues to fix (each on its OWN branch from main)
 
 These change calculations or exports, so the safety-net recordings must be updated on purpose, one issue at a time. Detail and evidence are in `docs/KNOWN_ISSUES.md` in payroll_sys.
 
 Before real payroll:
-- [ ] Growing exemption formula (issue 4): re-saving a Simple formula with an exemption wraps the exemption again each time. Value stays right, formula text and Live-Formulas export keep growing. Until fixed, avoid re-saving those columns and check the Live-Formulas export.
+- [x] Growing exemption formula (issue 4): fixed on 14 Oct 2026 (payroll_sys `d1ba9d1`).
 - [ ] One-cent rounding difference: columns are rounded for display, Total deductions sums unrounded values (fake employee F001: 502.88 vs 502.87). Confirm the correct statutory rounding rule for Mauritius payroll BEFORE choosing the fix. This now also affects the payslip app: it adds the lines shown, the payroll adds unrounded values, so totals can differ by 0.01. The payslip labels exact 0.01 differences "rounding" and lets you accept them in bulk; fixing the rule here removes the need.
 
 When convenient:
 - [ ] Slow typing: immediate up to about 50 employees, about 0.2 s per keystroke at 100, 0.7-0.8 s at 400 (production build). Only matters if companies are large.
-- [ ] Import accepts a renamed non-Excel file without an error.
-- [ ] Narrow width: double-click rename of a company is hard to use because the drawer closes on selection (rename works from Company Details and at wide widths).
-- [ ] Export preview: company name and date are centred over the full sheet width, so they sit off-screen until you scroll right on a wide sheet.
+- [x] Import accepts a renamed non-Excel file without an error: fixed 16 Oct 2026 (backlog batch B).
+- [x] Narrow width: double-click rename of a company: fixed 16 Oct 2026 (backlog batch E).
+- [x] Export preview: company name and date off-screen on a wide sheet: fixed 16 Oct 2026 (backlog batch E).
 - [ ] Possible feature: on-screen grand total on Totals, reusing the Excel export's TOTAL row calculation so both always match.
+- [ ] "Equal to" tier shadowed by a "Below" tier with a higher threshold (payroll_sys known issue 9), recorded as a marked failing test.
 
-Prompt for the first two (paste after the redesign is merged):
+Prompt for the first two (the exemption-formula part is done; part 2, rounding, still applies):
 
 ```
 Usage note: at most 3 screenshots per step, prefer scripted checks, keep replies short.
@@ -102,9 +115,11 @@ Order of work (each step stops for review; each migration is run by hand before 
 - [x] 0a. Full backup file (export and import) in pdf-form-filler and payroll_sys. Done 13 Oct 2026: "Back up" and "Restore" in each app.
 - [x] 0b. A storage interface in both apps, with no change in behaviour. Done 13 Oct 2026.
 - [x] 0c. The `activity` bridge message, and the password gate locking after inactivity on the same signal. Done 13 Oct 2026 (src/lib/activity.ts); the new bridge.js is in the three apps. Deploy the dashboard before the apps.
-- [ ] 1. Migration 0012 (pdf_templates, pdf_template_history, bucket `pdf-forms`), data types `pdf-template` and `pdf-file`, then pdf-form-filler. Built 13 Oct 2026 on `migration-phase-1` in both repos (see MIGRATION_PLAN.md 5.12). Still to do: run 0012 by hand, test against the real database, merge, deploy; and the items listed there as not built.
-- [ ] 2. Migration 0013 (payroll_shared_setups, payroll_company_setups, their history), data type `payroll-setup`, then payroll_sys.
-- [ ] 3. Migration 0014 (payroll_months), data type `payroll-month` behind the gate, then payroll_sys.
+- [x] 1. Migration 0012 (pdf_templates, pdf_template_history, bucket `pdf-forms`), data types `pdf-template` and `pdf-file`, then pdf-form-filler. Done: run, tested against the real database and merged (MIGRATION_PLAN.md 5.12 and 5.13).
+- [x] 2. Migration 0013 (payroll_shared_setups, payroll_company_setups, their history), data type `payroll-setup`, then payroll_sys. Done: run, tested against the real database and merged (5.14).
+- [x] 3. Migration 0014 (payroll_months), data type `payroll-month` behind the gate, then payroll_sys. Done: run, tested against the real database and merged, with the follow-ups (5.15 and 5.16).
+
+Still not built from those phases (MIGRATION_PLAN.md 5.12 to 5.15): the mock app in demo mode for these data types, "Download what is on screen" when offline, dropping the PDF text from the browser's copy after an import, grouping one person's saves within 30 minutes in a history list, and opening the browser's months read-only when the dashboard cannot be reached.
 
 Later, not part of this migration:
 - [ ] pdf-form-filler: an option to clear the People list after a download.
@@ -118,30 +133,43 @@ This also settles the open question in section 7 (Automator) about where the bla
 
 Idea: stop hard-coding yearly rates inside column builders. Decision: do NOT scrape the MRA website. Reasons: the MRA disclaimer says the content remains its property and that information is for general use and relied on at your own risk; a layout change could make a scraper read a wrong number silently (every payslip wrong); a web page is not the legal source (the legislation is); rates change about once a year; and browsers cannot read another site's pages from GitHub Pages (CORS) anyway. For a specific question about automated access, ask the MRA (the disclaimer lists 207-6000).
 
-Plan (updated 6 Oct 2026): a SHARED `statutory_rates` table now exists as a design (docs/HUB_CHANGES.md item 6): per company, insert-only, effective-dated, generic column names. The payslip app uses it first, as a warning-only cross-check. Later the payroll app reads its rates from it through the hub (dataType "statutory-rates").
+Plan (updated 6 Oct 2026): a SHARED `statutory_rates` table exists (migration 0009, run; payslip/docs/HUB_CHANGES.md item 6): per company, insert-only, effective-dated, generic column names. The payslip app uses it, as a warning-only cross-check. Not done yet: the payroll app reading its rates from it through the hub (dataType "statutory-rates"); the prompt for it is below.
 - A rates table with effective dates, a source note (for example the Act or Finance Act reference) and who entered it. The payroll app uses the rate valid for the month being processed, so old months still recalculate correctly after a rate change.
 - Admin enters new rates by hand, with a review screen showing old and new values side by side. A correction is a new revision row, never an edit.
 - Optional: a weekly GitHub Action that checks one MRA page and only NOTIFIES that it changed. It never changes a rate itself.
-- Switching payroll_sys to the table changes calculations, so it needs its own branch, a planning step first, a deliberate update of the safety-net recordings, and proof that outputs are identical for the same rates. Do it after the redesign is merged and the two known issues are fixed.
+- Switching payroll_sys to the table changes calculations, so it needs its own branch, a planning step first, a deliberate update of the safety-net recordings, and proof that outputs are identical for the same rates. Do it after the rounding decision (section 2).
+
+Prompt (moved here from PENDING_WORK.md, prompt 3, on 17 Oct 2026; paste into Claude Code in payroll_sys):
+
+```
+New branch: feature/rates-from-db. Plan only first. Goal: the payroll app gets CSG, NSF and other statutory rates from the shared statutory_rates table through the hub (request-data, dataType "statutory-rates"), instead of hard-coded values.
+- The rate used is the version effective for the pay period being calculated.
+- Standalone (outside the hub): use bundled defaults, clearly labelled "Unsaved defaults", and warn.
+- Results must not change for the same rates: record current outputs for a fake data set first and prove they stay identical.
+- List every hard-coded rate you replace. Fake data only. Do not push or merge. Give me the plan and questions before coding.
+```
+
+The hub side for it: the registry entry `payroll` must also accept `statutory-rates` (payslip/docs/HUB_CHANGES.md item 5).
 
 ## 5. Hub backlog
 
 - [ ] Realtime updates (Supabase Realtime) if several people ever work at once. Reload-to-refresh is fine for now. Enable it per table, add subscriptions, and test that RLS also applies to live updates.
 - [ ] Multi-factor authentication for admins (Authentication -> Multi-Factor). Much stronger than the password gate. Check the free-plan limits first.
 - [ ] Same-origin risk: the dashboard and the apps share https://noor1290.github.io, so an embedded app can reach the dashboard's page and in-memory data. Acceptable while it is a personal tool on fake data. Before real employee data or other users: move the dashboard to its own origin (custom domain or a second GitHub account/org). The origin is one constant in the dashboard and one line in bridge.js; follow the README section "Moving the dashboard to its own origin".
-- [ ] Payslip app: built in its own repo (see its CLAUDE.md). Hub side is docs/HUB_CHANGES.md, done in stages (items 1 and 2, then 3 to 7 with 9 and 10, then 8: all built; the last is on `feature/payslip-issue` with migration 0011 to run). The registry entry gets its URL and status "active" in item 2.
+- [x] Payslip app: built in its own repo (see its CLAUDE.md). Hub side (payslip/docs/HUB_CHANGES.md) done in stages A, B and C; `payslip-issue` merged (pull request #4) and migration 0011 run. The registry entry is active.
 - [ ] Sync the theme (light/dark) between the hub and the apps. Needs a new bridge message in all three projects.
-- [ ] Store PDF files themselves in Supabase Storage: now part of section 3 (decided 12 Oct 2026). The free plan has limited space; check it before real forms go in.
+- [x] Store PDF files themselves in Supabase Storage: done in section 3 (bucket `pdf-forms`, migration 0012). The free plan has limited space; check it before real forms go in.
+- [ ] Update the GitHub Actions versions: `actions/checkout@v4` and `actions/setup-node@v4` run on Node 20, which GitHub has deprecated (it already forces them onto Node 24, with a warning on every run). Move to the current major versions in all four repos' deploy workflows and in `keep-awake.yml`.
 
 ## 6. Before real payroll data goes in
 
-- [ ] Create a SEPARATE production Supabase project, on Pro (the free plan auto-pauses after a week of inactivity and has no daily backups). Run all migrations in order. Create the real companies there, with the BRN matching what the payroll app exports.
-- [ ] Choose the region (Mumbai was available) and confirm data-location expectations for the company or clients.
-- [ ] Set up a regular manual export as an extra backup.
-- [ ] Settle the rounding rule and the growing-formula bug (section 2).
-- [ ] Never commit real national IDs, names or salaries; never paste them into chats or Claude Code. Use fake copies for all testing.
-- [ ] Review the RLS policies and test as a user who is not a member of the company (they must see nothing).
-- [ ] Consider the same-origin risk (section 5) before other people use it.
+Replaced on 17 Oct 2026 by the section "Before real data" at the top of this file. What became of the items that were here:
+- A separate production project on Pro: decided against; the free plan stays, with the keep-awake job and manual backups.
+- A regular manual export: written down in the README ("Backups on the free plan").
+- The growing-formula bug: fixed. The rounding rule: still open (top section).
+- RLS review as a non-member: done by `scripts/check-nonmember.mjs` (228 PASS).
+- The same-origin risk: open (top section).
+- Still a rule: never commit real national IDs, names or salaries, and never paste them into chats or Claude Code.
 
 ## 7. Automator (one-click run: database -> PDF editor -> exported PDFs)
 
@@ -154,7 +182,7 @@ What is missing:
 - The PDF editor needs the right TEMPLATE for the job: the blank PDF plus its saved layout. Today the layout is only on the computer. So full automation depends on section 3 (layouts in the cloud, with the PDF fingerprint) AND on a decision about the blank PDF itself (store it in Supabase Storage, or the user keeps it open in the editor first).
 - A hub page for it (name to decide: "Automator", "Auto-run"): choose company, run and employees, choose the target app and template, press run, watch progress, download the result.
 
-Output options (decide later): one PDF per employee, downloaded as one ZIP created in the dashboard (the app hands the files back to the hub; the browser asks permission for many separate downloads, so a single ZIP is nicer), or one combined PDF. Optional password-protected PDFs if files will be emailed.
+Output (decided 17 Oct 2026): one PDF per employee, downloaded as one ZIP created in the dashboard (the app hands the files back to the hub; the browser asks permission for many separate downloads, so a single ZIP is nicer). One combined PDF per company is not needed. Optional password-protected PDFs if files will be emailed.
 
 Safeguards (payroll data goes onto official forms and payslips, so no silent mistakes):
 - Preview the FIRST employee's filled form and require a confirm before the full run.
@@ -170,7 +198,7 @@ Suggested order:
 3. Semi-automatic version: the button sends the selected employees, the editor fills them and shows the first PDF for review, then I click Export all.
 4. Fully automatic version with the ZIP output, then the same for the payslip app.
 
-Open questions: one PDF per employee or combined, where the blank PDF lives, whether templates are per company or shared, naming of the files, whether payslips use the same job format.
+Open questions: whether templates are per company or shared, naming of the files, whether payslips use the same job format. (Where the blank PDF lives is settled: the `pdf-forms` bucket.)
 
 ### Time-based tasks (optional, my earlier suggestions)
 
@@ -211,11 +239,11 @@ Only if wanted later. A scheduled job needs somewhere that is always on, because
 - [x] Date of Employment: new column on hub employees (migration 0008), edited in the hub's Data explorer. Merged and deployed with hub Stage B; 0008 has been run.
 - [ ] Payslip templates cannot be deleted or archived yet (hub Stage B left it out on purpose). Follow-up, as its own migration and branch: an `archived_at` on `payslip_templates` set through a new admin-only function (never a delete: issued payslips will point at published versions, which must stay), an "archive" / "unarchive" action on `payslip-template` saves, archived templates left out of "list" unless asked for, and a decision on whether an archived template still counts towards the 50 per company and still holds its name.
 - [ ] A logo on a payslip: template bodies cannot contain images (the hub refuses a `data:` URI). Decide where a logo lives (a company detail, or its own small table with a size limit) before adding one.
-- [ ] Hub Database page: show `statutory_rates`, `payslip_templates` and `payslip_template_versions` as read-only tabs.
-- [ ] Hub Database page: a read-only tab for `issued_payslips` (not now). Admin only and behind the gate like the rest of that page; mask the national ID, `lines`, `rates_snapshot` and `accepted_differences`, and shorten `issued_by`.
+- [x] Hub Database page: show `statutory_rates`, `payslip_templates` and `payslip_template_versions` as read-only tabs. Done 8 Oct 2026 (branch `database-new-tables`, merged).
+- [x] Hub Database page: a read-only tab for `issued_payslips`. Done 8 Oct 2026, as described here: Admin only and behind the gate like the rest of that page; mask the national ID, `lines`, `rates_snapshot` and `accepted_differences`, and shorten `issued_by`.
 - [ ] Display names in answers (not now). Answers say only "was it you" (`created_by_you`, `updated_by_you`, `published_by_you`, `issued_by_you`), never who. Showing a name needs a profiles table the hub does not have, and a decision on what a member may see about other members.
 - [ ] Default template per company (not now): which published template the payslip app opens with. A row per company set by an admin through a function, returned with the template list.
 - [ ] Revision history in a `payslip-issue` load (later). A load returns only the latest revision of each employee; earlier ones stay in the database. Add an optional way to ask for every revision of one employee and month, with its own size limit.
-- [ ] Payslip lookup (VLOOKUP/INDEX-MATCH) template: "coming soon".
-- [ ] Month-to-month comparison and bulk-approve (payslip Phase 5).
+- [ ] Payslip lookup (VLOOKUP/INDEX-MATCH) template: "coming soon" (payslip Phase 6).
+- [x] Month-to-month comparison and bulk-approve (payslip Phase 5): done and merged.
 - [ ] Check the GUST Font License once before real use.

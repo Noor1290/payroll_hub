@@ -1,3 +1,5 @@
+> Archived 17 Oct 2026: prompts 1 and 2 are done or overtaken; prompt 3 (rates from the database) and the still-open checks were moved to docs/FUTURE_WORK.md.
+
 # Pending prompts (saved 6 Oct 2026)
 
 Do these AFTER the payslip app is built, in this order. Each block is a prompt to paste into Claude Code in the named repo. Send each report back to Claude (chat) for review before starting the next.
