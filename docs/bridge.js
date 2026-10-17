@@ -13,6 +13,10 @@
  * While the user works in the app it also tells the dashboard so ("activity", at most once
  * every 30 seconds, with nothing in it), which keeps the dashboard from signing them out or
  * locking for inactivity. The app has nothing to do for that.
+ *
+ * An app that can hold changes not saved yet says so with PayrollHubBridge.setUnsaved(true/false)
+ * ("unsaved", only when it changes, with nothing else in it). The dashboard then asks its user
+ * before it reloads the app, for example on a change of company.
  */
 (function (global) {
   "use strict";
@@ -46,6 +50,7 @@
   var waiting = {}; // message id -> { resolve, timer } for replies we are waiting on
   var activitySentAt = null; // when "activity" was last sent
   var activityTimer = null; // set while one is waiting for its turn
+  var unsavedSent = false; // the last "unsaved" state told to the dashboard
 
   function newId() {
     if (global.crypto && typeof global.crypto.randomUUID === "function") {
@@ -286,6 +291,18 @@
       var payload = { dataType: dataType };
       if (period) payload.period = period;
       return PayrollHubBridge.sendToDashboard("request-data", payload);
+    },
+
+    /**
+     * Tell the dashboard whether this app holds changes that are not saved yet (true) or not
+     * (false). Sent only when it changes; it says nothing about what the changes are. The
+     * dashboard asks its user before it reloads the app while this is true. Does nothing on its own.
+     */
+    setUnsaved: function (unsaved) {
+      var value = unsaved === true;
+      if (!embedded || !config || value === unsavedSent) return;
+      unsavedSent = value;
+      post("unsaved", { unsaved: value });
     },
 
     /** Call `listener(connected)` now and whenever the connection state changes. Returns an unsubscribe function. */

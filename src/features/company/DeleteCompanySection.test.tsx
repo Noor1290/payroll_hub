@@ -491,7 +491,8 @@ describe("after deleting", () => {
       p_company_id: ABC,
       p_confirm_name: "ABC Co Ltd",
     });
-    expect(select).toHaveBeenCalledWith(XYZ);
+    // The deleted company's apps cannot save any more: nothing to ask (rehearsal fix F1).
+    expect(select).toHaveBeenCalledWith(XYZ, { force: true });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["memberships"] });
     expect(
       queryClient.getQueryData<Membership[]>(["memberships", USER])!.map((m) => m.company.id),

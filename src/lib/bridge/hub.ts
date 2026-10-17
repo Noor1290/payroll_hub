@@ -108,6 +108,8 @@ interface AppState {
   shown: boolean;
   /** When an `activity` message from this app last counted; null if none has. */
   activityAt: number | null;
+  /** The page now in the frame said it holds changes not saved yet (an `unsaved` message). */
+  unsaved: boolean;
 }
 
 interface PendingSend {
@@ -185,6 +187,7 @@ export class BridgeHub {
         queue: new Map(),
         shown: false,
         activityAt: null,
+        unsaved: false,
       });
     }
     this.publish();
@@ -234,6 +237,14 @@ export class BridgeHub {
 
   getSnapshot = (): Readonly<Record<string, AppHealth>> => this.snapshot;
 
+  /**
+   * The apps whose page, as loaded now, said it holds changes not saved yet. Asked before the
+   * frames are reloaded (a change of company). An app that never said so is not listed.
+   */
+  unsavedApps(): string[] {
+    return [...this.states.values()].filter((s) => s.frame && s.unsaved).map((s) => s.app.id);
+  }
+
   // ---------- frames ----------
 
   /** Call when an app's iframe is mounted. `frame` must return its contentWindow. */
@@ -243,6 +254,7 @@ export class BridgeHub {
     this.resetConnection(state);
     state.frame = frame;
     state.loaded = false;
+    state.unsaved = false;
     state.loadTimer = setTimeout(() => {
       state.loadTimer = null;
       if (!state.loaded && !state.ready) this.setHealth(state, "failed");
@@ -258,6 +270,7 @@ export class BridgeHub {
     state.loaded = false;
     state.shown = false;
     state.activityAt = null;
+    state.unsaved = false;
     this.setHealth(state, "idle");
   }
 
@@ -281,6 +294,8 @@ export class BridgeHub {
     if (!state || !state.frame) return;
     this.resetConnection(state);
     state.loaded = true;
+    // A new page holds nothing unsaved until it says so.
+    state.unsaved = false;
     this.setHealth(state, "loading");
     this.ping(state);
     state.readyTimer = setTimeout(() => {
@@ -494,6 +509,11 @@ export class BridgeHub {
         this.handlers.onActivity?.(state.app.id);
         return;
       }
+
+      case "unsaved":
+        // Only from the frame's own page (checked above). No reply.
+        state.unsaved = message.payload.unsaved;
+        return;
 
       case "received": {
         const pending = this.pending.get(message.id);

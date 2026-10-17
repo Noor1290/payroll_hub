@@ -114,7 +114,8 @@ function ConfirmDelete({
       const next = memberships.find((m) => m.company.id !== company.id);
       // Nothing about the deleted company stays in memory or in this browser.
       forgetCompany(company.id);
-      if (next) select(next.company.id);
+      // The deleted company's apps cannot save any more, so there is nothing to ask.
+      if (next) select(next.company.id, { force: true });
       toast.success(`${company.name} deleted`, {
         description: `Removed ${plural(result.employees, "employee")}, ${plural(result.runs, "run")} and ${plural(result.entries, "entry", "entries")}.`,
       });

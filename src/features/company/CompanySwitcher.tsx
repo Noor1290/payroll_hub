@@ -12,6 +12,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import type { Role } from "@/lib/supabase/schemas";
 import { useCompany } from "./company-context";
 import { addCompanyOpen } from "./createCompany";
+import { askBeforeLeaving } from "./leaveGuard";
 
 const TRIGGER_CLASS =
   "flex h-10 max-w-64 min-w-0 items-center gap-2.5 rounded-lg border border-line bg-surface px-3 text-sm shadow-inner-glow transition-colors";
@@ -94,7 +95,12 @@ export function CompanySwitcher() {
         {canAddCompany && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => addCompanyOpen.set(true)}>
+            <DropdownMenuItem
+              // The new company is selected once it is added: ask about unsaved changes first.
+              onSelect={() =>
+                askBeforeLeaving(current?.company.name ?? null, () => addCompanyOpen.set(true))
+              }
+            >
               <span className="grid size-4 shrink-0 place-items-center">
                 <Plus aria-hidden="true" />
               </span>

@@ -110,9 +110,11 @@ function AddCompanyForm({ onDone }: { onDone: () => void }) {
     setBusy(true);
     try {
       const company = await createCompany({ id: user.id, isDemo: user.isDemo }, parsed.data);
-      // Choose it now; it becomes the selected company as soon as the refreshed list has it.
-      select(company.id);
+      // Chosen once the refreshed list has it, so the company shown changes once, straight to
+      // the new one, and the app frames reload once. Unsaved changes in the apps were asked
+      // about before this dialog opened.
       await queryClient.invalidateQueries({ queryKey: ["memberships"] });
+      select(company.id, { force: true });
       toast.success(`${company.name} added`, {
         description: "You are its admin. It is now the selected company.",
       });

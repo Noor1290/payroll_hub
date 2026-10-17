@@ -124,7 +124,8 @@ describe("<AddCompanyDialog>", () => {
       p_brn: "C7654321",
       p_vat: null,
     });
-    expect(select).toHaveBeenCalledWith(NEW_ID);
+    // Unsaved changes in the apps were asked about before the dialog opened (rehearsal fix F1).
+    expect(select).toHaveBeenCalledWith(NEW_ID, { force: true });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["memberships"] });
     expect(toast.success.mock.calls[0]![0]).toBe("New Venture Ltd added");
     expect(screen.queryByRole("dialog")).toBeNull();

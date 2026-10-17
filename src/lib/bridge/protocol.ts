@@ -17,6 +17,11 @@ import { z } from "zod";
  * Also additive: `activity`, which an app sends (at most every 30 seconds, with nothing in it)
  * while its user is working in it. It has no reply. An app with an older bridge.js never
  * sends it and keeps working.
+ *
+ * Also additive: `unsaved`, which an app sends when it starts or stops holding changes that are
+ * not saved yet ({ unsaved: true | false }, nothing else). It has no reply. The dashboard asks
+ * its user before it reloads an app that said true (a change of company). An app with an older
+ * bridge.js never sends it and counts as having nothing unsaved. Rehearsal fix F1.
  */
 
 const MAX_ROWS = 10_000;
@@ -243,6 +248,11 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("ping"), payload: emptyPayloadSchema }),
   z.object({ ...base, type: z.literal("pong"), payload: emptyPayloadSchema }),
   z.object({ ...base, type: z.literal("activity"), payload: emptyPayloadSchema }),
+  z.object({
+    ...base,
+    type: z.literal("unsaved"),
+    payload: z.strictObject({ unsaved: z.boolean() }),
+  }),
   z.object({ ...base, type: z.literal("send-data"), payload: sendDataPayloadSchema }),
   z.object({ ...base, type: z.literal("received"), payload: receivedPayloadSchema }),
   z.object({ ...base, type: z.literal("request-data"), payload: requestDataPayloadSchema }),

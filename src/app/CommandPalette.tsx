@@ -18,6 +18,7 @@ import { Kbd } from "@/components/ui/misc";
 import { useAuth } from "@/features/auth/auth-context";
 import { useCompany } from "@/features/company/company-context";
 import { addCompanyOpen } from "@/features/company/createCompany";
+import { askBeforeLeaving } from "@/features/company/leaveGuard";
 import { linkIcon } from "@/features/links/icons";
 import { hostOf, safeHref } from "@/features/links/linkModel";
 import { useCompanyLinks } from "@/features/links/useLinks";
@@ -123,7 +124,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     value="add company"
                     keywords={["new", "create", "brn"]}
                     icon={Plus}
-                    onSelect={() => run(() => addCompanyOpen.set(true))}
+                    onSelect={() =>
+                      run(() =>
+                        askBeforeLeaving(current?.company.name ?? null, () =>
+                          addCompanyOpen.set(true),
+                        ),
+                      )
+                    }
                   >
                     Add company
                   </Item>

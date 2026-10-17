@@ -17,7 +17,12 @@ export interface CompanyContextValue {
    * for being allowed to create another (see migration 0003).
    */
   canAddCompany: boolean;
-  select: (companyId: string) => void;
+  /**
+   * Shows another company. The app frames then reload, so first the user is asked if an app
+   * holds unsaved changes (leaveGuard.ts). `force` skips that question, for a company that was
+   * just added or deleted.
+   */
+  select: (companyId: string, options?: { force?: boolean }) => void;
 }
 
 export const COMPANY_STORAGE_KEY = "company";

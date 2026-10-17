@@ -9,6 +9,8 @@ interface ConfirmDialogProps {
   title: string;
   children: ReactNode;
   confirmLabel: string;
+  /** What the button that changes nothing says. Default "Cancel". */
+  cancelLabel?: string;
   /** "danger" for actions that remove or overwrite something. */
   tone?: "primary" | "danger";
   busy?: boolean;
@@ -22,6 +24,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
+  cancelLabel = "Cancel",
   tone = "primary",
   busy = false,
   onConfirm,
@@ -41,7 +44,7 @@ export function ConfirmDialog({
           <div className="mt-6 flex justify-end gap-2">
             <Dialog.Close asChild>
               <Button autoFocus disabled={busy}>
-                Cancel
+                {cancelLabel}
               </Button>
             </Dialog.Close>
             <Button variant={tone} disabled={busy} onClick={onConfirm}>

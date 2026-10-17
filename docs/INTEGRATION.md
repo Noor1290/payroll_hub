@@ -45,14 +45,16 @@ Both existing apps are React + Vite, so the steps assume that.
        }): boolean;
        sendToDashboard(type: "send-data" | "request-data", payload: unknown): Promise<PayrollHubReply>;
        requestData(dataType: string, period?: string): Promise<PayrollHubReply>;
+       setUnsaved(unsaved: boolean): void;
        onStatus(listener: (connected: boolean) => void): () => void;
      };
    }
    ```
 
 3. **Start it once**, with the app's id from the dashboard registry (see the per-app sections).
-4. **Show the dashboard buttons only when embedded**: `window.PayrollHubBridge.isEmbedded()`. Standalone, the app must look and behave as it does now.
-5. **Never** change `HUB_ORIGIN`, never add a localhost origin, never use `"*"` as a target origin, and never write received payroll data to `localStorage` or the URL.
+4. **Say when there are unsaved changes**: call `window.PayrollHubBridge.setUnsaved(true)` when the app starts holding changes it has not saved yet, and `setUnsaved(false)` once they are saved or thrown away. When the company changes in the dashboard, every app frame reloads so it shows the new company; before that, the dashboard asks its user if an app said `true` ("Payroll System has unsaved changes." / "Switch anyway?"). Standalone it does nothing.
+5. **Show the dashboard buttons only when embedded**: `window.PayrollHubBridge.isEmbedded()`. Standalone, the app must look and behave as it does now.
+6. **Never** change `HUB_ORIGIN`, never add a localhost origin, never use `"*"` as a target origin, and never write received payroll data to `localStorage` or the URL.
 
 ## `payroll_sys` (app id: `payroll`)
 
@@ -492,6 +494,7 @@ Every message is an envelope:
 | `ready`         | app → dashboard              | `{}`                                                                | a `ping`                         |
 | `ping`          | either                       | `{}`                                                                | `pong`, same id                  |
 | `activity`      | app → dashboard              | `{}`                                                                | none                             |
+| `unsaved`       | app → dashboard              | `{ unsaved: true }` or `{ unsaved: false }`, nothing else           | none                             |
 | `send-data`     | dashboard → app, or app → dashboard | `{ dataType, rows: [...], meta?: { period?: "YYYY-MM", label?, brn?, role? } }` | `received`, same id |
 | `received`      | reply to `send-data`         | `{ ok: true, result? }` or `{ ok: false, error, code?, index? }`    |                                  |
 | `request-data`  | app → dashboard              | `{ dataType, period?: "YYYY-MM", params? }`                         | `response-data`, same id         |
@@ -500,6 +503,8 @@ Every message is an envelope:
 Still version 1. What the payslip app needed was added as optional parts, so an app written before them keeps working unchanged and `bridge.js` did not change: `params` on a request (an object of at most 2 KB, its shape checked per data type), `result` on an ok `received` from the dashboard, `code` on a refused `received`, `brn` and `role` in `meta`, `index` on a refused `received` (the position, from 0, of the payslip at fault in a refused month), more refusal codes, and an answer with no rows for `statutory-rates`, `payslip-template` and `payslip-issue` (`payroll-result` always has at least one).
 
 `activity` (added 13 Oct 2026, also still version 1) is sent by `bridge.js` itself; an app has nothing to do for it. While the user clicks, types, scrolls or touches inside the app, `bridge.js` says so at most once every 30 seconds, at once if it has not said so lately and otherwise when its turn comes. The message has nothing in it: it says that something was done, never what. The dashboard treats it exactly like a key pressed in the dashboard itself, so neither its sign-out for inactivity nor its password gate happens in the middle of work in an app. It counts only from the app that is showing, in a visible tab, and at most once every 5 seconds per app whatever is sent. There is no reply. An app that still carries the older `bridge.js` keeps working and simply does not send it; its user can then be signed out while working in it, as before. A dashboard that does not know the message yet ignores it, so deploy the dashboard first and copy the new `bridge.js` into the apps after.
+
+`unsaved` (added 17 Oct 2026, rehearsal fix F1, also still version 1) is sent by `bridge.js` when the app calls `setUnsaved`, and only when the value changes. It says whether the app holds changes not saved yet, never what they are. The dashboard keeps it per app frame and forgets it when the frame loads a page again. When its user changes company (a switch, or Add company, which selects the new company), the dashboard first asks if any app said `true`, naming the apps, with "Stay on <the company shown>" as the default and "Switch anyway"; then it reloads every app frame. After a company is added or deleted it does not ask again. There is no reply. An app that still carries the older `bridge.js` never sends it and counts as having nothing unsaved: its frame simply reloads. A save stays protected exactly as before: by the BRN check, whatever is answered.
 
 Limits per data type, checked by the dashboard before anything else:
 

@@ -12,6 +12,8 @@ import {
   pickCompany,
   type CompanyContextValue,
 } from "./company-context";
+import { askBeforeLeaving } from "./leaveGuard";
+import { LeaveQuestionDialog } from "./LeaveQuestionDialog";
 
 const NO_MEMBERSHIPS: Membership[] = [];
 
@@ -29,20 +31,31 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
-  const select = useCallback((companyId: string) => {
-    setPreferredId(companyId);
-    preferenceStorage.setItem(COMPANY_STORAGE_KEY, companyId);
-  }, []);
-
   const { refetch } = query;
   const memberships = query.data ?? NO_MEMBERSHIPS;
+  const current = pickCompany(memberships, preferredId);
+  const currentId = current?.company.id ?? null;
+  const currentName = current?.company.name ?? null;
+
+  const select = useCallback(
+    (companyId: string, options: { force?: boolean } = {}) => {
+      const go = () => {
+        setPreferredId(companyId);
+        preferenceStorage.setItem(COMPANY_STORAGE_KEY, companyId);
+      };
+      // The same company changes nothing and reloads nothing.
+      if (options.force || companyId === currentId) go();
+      else askBeforeLeaving(currentName, go);
+    },
+    [currentId, currentName],
+  );
+
   const failure = useMemo(
     () => (query.error ? classifyDataError(query.error) : null),
     [query.error],
   );
 
   const value = useMemo<CompanyContextValue>(() => {
-    const current = pickCompany(memberships, preferredId);
     return {
       status: query.isPending ? "loading" : failure ? "error" : "ready",
       failure,
@@ -53,7 +66,12 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       canAddCompany: canAddCompany(memberships),
       select,
     };
-  }, [memberships, preferredId, query.isPending, failure, refetch, select]);
+  }, [memberships, current, query.isPending, failure, refetch, select]);
 
-  return <CompanyContext.Provider value={value}>{children}</CompanyContext.Provider>;
+  return (
+    <CompanyContext.Provider value={value}>
+      {children}
+      <LeaveQuestionDialog />
+    </CompanyContext.Provider>
+  );
 }

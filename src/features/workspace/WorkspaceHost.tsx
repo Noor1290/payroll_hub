@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Columns2, ExternalLink, Maximize2, RotateCw, TriangleAlert, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -7,6 +7,7 @@ import { Badge, StatusDot } from "@/components/ui/misc";
 import { EmptyState } from "@/components/ui/states";
 import { Tooltip } from "@/components/ui/tooltip";
 import { APPS, appUrl, type AppConfig } from "@/config/apps.config";
+import { useCompany } from "@/features/company/company-context";
 import { bridge, useAppHealth } from "@/lib/bridge/bridge";
 import type { AppHealth } from "@/lib/bridge/hub";
 import { cn } from "@/lib/utils";
@@ -25,9 +26,11 @@ interface AppPaneProps {
   shown: boolean;
   /** The user can actually see it: it is shown and the workspace itself is on screen. */
   inView: boolean;
+  /** The company chosen in the dashboard; null while there is none. */
+  companyId: string | null;
 }
 
-function AppPane({ app, health, shown, inView }: AppPaneProps) {
+function AppPane({ app, health, shown, inView, companyId }: AppPaneProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const pane = useRef<HTMLDivElement>(null);
   const [dismissed, setDismissed] = useState<AppHealth | null>(null);
@@ -45,13 +48,24 @@ function AppPane({ app, health, shown, inView }: AppPaneProps) {
     return () => bridge.setShown(app.id, false);
   }, [app.id, inView]);
 
-  const reload = () => {
+  const reload = useCallback(() => {
     const element = frame.current;
     if (!element) return;
     setDismissed(null);
     bridge.attachFrame(app.id, () => frame.current?.contentWindow ?? null);
     element.src = url;
-  };
+  }, [app.id, url]);
+
+  // The app follows the company chosen in the dashboard: on a change, it starts again from
+  // scratch, so nothing of the company shown before stays on screen (rehearsal fix F1). The
+  // company provider has already asked about unsaved changes. The first company of the session
+  // reloads nothing: the app has not been given anything yet.
+  const companyAt = useRef(companyId);
+  useEffect(() => {
+    const before = companyAt.current;
+    companyAt.current = companyId;
+    if (before !== null && before !== companyId) reload();
+  }, [companyId, reload]);
 
   const showBanner = (health === "no-bridge" || health === "unresponsive") && dismissed !== health;
 
@@ -179,6 +193,7 @@ function AppPane({ app, health, shown, inView }: AppPaneProps) {
  */
 export function WorkspaceHost({ visible }: { visible: boolean }) {
   const health = useAppHealth();
+  const companyId = useCompany().current?.company.id ?? null;
   const [params, setParams] = useSearchParams();
   const [split, setSplit] = useState(false);
   const [lastActive, setLastActive] = useState(ACTIVE_APPS[0]?.id ?? "");
@@ -274,6 +289,7 @@ export function WorkspaceHost({ visible }: { visible: boolean }) {
                 health={health[app.id] ?? "idle"}
                 shown={app.id === activeId || app.id === secondId}
                 inView={visible && (app.id === activeId || app.id === secondId)}
+                companyId={companyId}
               />
             </ErrorBoundary>
           ))}
