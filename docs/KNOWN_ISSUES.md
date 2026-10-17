@@ -37,3 +37,9 @@ Status is one of: **open** (to fix), **watch** (not a fault today; look again if
 - **Risk:** none to data: nothing is read or written. It is a confusing screen on every reload until "Try again".
 - **When to act:** before more people use the payroll app inside the dashboard. Either the dashboard holds such a question until the company has loaded (a few seconds at most), or the app asks once more by itself after a moment.
 - **Fixed (15 Oct 2026, on migration-phase-3):** while someone is signed in and the dashboard is still loading their companies, every app's request and save waits for that, up to 5 seconds, then is answered as before (`whenSignedIn` in `exchangeContext.ts`, called by `answerRequest` and `recordSave` in `deliver.ts`; the "still loading" flag is set by `BridgeDialogs`). Signed out, or loaded, nothing waits. Proven by `signInWait.test.ts` (fails on the old code) and `signInWaitDialogs.test.tsx` for the payroll app, the PDF form filler and the payslip app, which all ask through the same code; none of the three apps needed a change (they wait 15 seconds or more for an answer).
+
+## 5. Two breaks in `npm run test:prove` went out of date with migration 0016 (fixed 17 Oct 2026)
+
+- **Where:** `scripts/prove.mjs`, breaks 107 ("A save of the shared setup with an old revision overwrites") and 108 ("A company setup saved with the shared setup skips its revision check").
+- **What:** both edited `save_payroll_shared_setup` in `0013_payroll_setups.sql`. Migration 0016 replaces that function, so the edited copy was no longer the one the tests ran, and the run ended "134 of 136 breaks caught". The rules they guard were still tested; only the proof that those tests can fail was missing. Same cause as item 3.
+- **Fixed (17 Oct 2026, branch `safety-checks`):** both point at the newest definition, in `0016_shared_setup_needs_admin.sql`, which holds the same text once. A later migration that replaces the function again must move them again.

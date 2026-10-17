@@ -917,7 +917,7 @@ const BREAKS = [
   },
   {
     what: "A save of the shared setup with an old revision overwrites",
-    file: "supabase/migrations/0013_payroll_setups.sql",
+    file: "supabase/migrations/0016_shared_setup_needs_admin.sql",
     find: "    if v_setup.revision <> p_expected_revision then\n      raise exception 'PH_STALE' using errcode = 'P0001';\n    end if;\n\n    update public.payroll_shared_setups s",
     replace: "    update public.payroll_shared_setups s",
     test: "src/features/workspace/payrollSetups.db.test.ts",
@@ -925,7 +925,7 @@ const BREAKS = [
   },
   {
     what: "A company setup saved with the shared setup skips its revision check",
-    file: "supabase/migrations/0013_payroll_setups.sql",
+    file: "supabase/migrations/0016_shared_setup_needs_admin.sql",
     find: "      if v_company.revision <> (v_item ->> 'expected_revision')::integer then\n        raise exception 'PH_STALE' using errcode = 'P0001';\n      end if;\n",
     replace: "",
     test: "src/features/workspace/payrollSetups.db.test.ts",
