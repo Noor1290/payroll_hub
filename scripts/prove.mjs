@@ -1098,6 +1098,48 @@ const BREAKS = [
     test: "src/lib/supabase/database.test.ts",
     mustFail: "the shared setup through the company attached to it",
   },
+
+  // ---------- safety checks against the live project (src/safety) ----------
+  {
+    what: "The non-member check passes a read that returned rows",
+    file: "src/safety/outcome.ts",
+    find: "  if (rows > 0 || (result.count ?? 0) > 0) {",
+    replace: "  if (false) {",
+    test: "src/safety/outcome.test.ts",
+    mustFail: "fails when any row comes back",
+  },
+  {
+    what: "A table drops out of the non-member check",
+    file: "src/safety/nonmemberChecks.ts",
+    find: "  payroll_month_history: {",
+    replace: "  payroll_month_history_old: {",
+    test: "src/safety/nonmemberChecks.test.ts",
+    mustFail: "tries every table the migrations create",
+  },
+  {
+    what: "A write attempt is aimed at a company that is not a TEST company",
+    file: "src/safety/nonmemberChecks.ts",
+    find: "args: (t) => ({ p_from_company_id: t.b,",
+    replace: 'args: (t) => ({ p_from_company_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",',
+    test: "src/safety/nonmemberChecks.test.ts",
+    mustFail: "aims every write at the two TEST companies",
+  },
+  {
+    what: "The keep-awake job counts any refused key as the database answering",
+    file: "src/safety/keepAwake.ts",
+    find: '  if ((status === 401 || status === 403) && postgresCode(text) === "42501") {',
+    replace: "  if (status === 401 || status === 403) {",
+    test: "src/safety/keepAwake.test.ts",
+    mustFail: "fails when the answer did not come from the database",
+  },
+  {
+    what: "The 60-day warning is skipped when the database request failed",
+    file: ".github/workflows/keep-awake.yml",
+    find: "        if: always()",
+    replace: "        if: success()",
+    test: "src/safety/keepAwake.test.ts",
+    mustFail: "checks the 60-day rule even when the database request failed",
+  },
 ];
 
 const gitStatus = () =>

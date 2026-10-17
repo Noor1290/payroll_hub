@@ -218,7 +218,38 @@ If any of these shows data it shouldn't, the fault is in the database rules. Fix
 - **Checked there:** who is refused (viewer, non-member, admin of another company, no user, `anon`), a wrong name refused when the function is called directly, a company with approved and soft-deleted runs deleted with nothing left behind in any table that references `companies`, all-or-nothing on failure, and who may execute the function.
 - **Stand-ins:** PGlite is plain Postgres, not Supabase. The tests create the roles `anon` and `authenticated`, an `auth.users` table with only an id, and `auth.uid()` with Supabase's own definition. A call through the Data API is imitated by switching role and setting the JWT claims. The migrations are run by a role that is not a superuser, as on Supabase.
 - **Not checked there:** Supabase's real sign-in and JWT verification, and two sessions acting at once (PGlite has a single connection). The steps above cover the first on the real project.
-- No check is kept outside the test suite: all of them run in `npm test`.
+- Every check of the migrations runs in `npm test`. The checks against the live project are below.
+
+## Safety checks
+
+Three things run against the live project, never with any key but the public anon key. Their logic is in `src/safety/` (tested by `npm test`); the scripts in `scripts/` only send the requests.
+
+**Sign-ups are off** (`node scripts/check-signup.mjs`). Tries to create an account with a fake `example.com` address, and to sign in anonymously. Both must be refused with Supabase's "sign-ups are off" answer. If an account is ever created, the script says STOP: delete it under Authentication > Users and switch sign-ups off again.
+
+**A non-member sees nothing and changes nothing** (`node scripts/check-nonmember.mjs`). Run it after every new migration and before real data goes in. For every table, database function and the `pdf-forms` bucket, it tries to read, insert, update and delete, first as an anonymous visitor, then signed in as a user who belongs to no company. It prints a table (who, object, action, expected, result, PASS/FAIL) and ends with exit code 0 only if everything passed.
+- Writes are aimed only at the two TEST companies, and are built so that a failed protection stores nothing that cannot be found again: inserts are marked "SAFETY CHECK", updates set a value to what it already is, deletes are limited to one row, and each function call carries one invalid argument that the function checks only after its permission check. After the first write that goes through, no further write is attempted, and a cleanup query (preview first) is printed.
+- Before any write, it confirms that the account really belongs to no company; otherwise it stops.
+- A new table, function or bucket in a migration makes `npm test` fail until it is added to `src/safety/nonmemberChecks.ts`.
+- It needs, in the environment of one terminal only, never in a file:
+
+  ```powershell
+  $env:NONMEMBER_EMAIL = "..."      # the account that belongs to no company
+  $env:NONMEMBER_PASSWORD = "..."
+  $env:TEST_COMPANY_IDS = "<id of TEST Co Ltd>,<id of TEST Co 2 Ltd>"   # Database page > companies
+  node scripts/check-nonmember.mjs
+  ```
+
+  The project URL and anon key come from `.env`. Close the terminal afterwards so the password goes with it.
+
+**Keep-awake** (`.github/workflows/keep-awake.yml`). A free Supabase project is paused after 7 days with little activity. Every second day (and on demand: Actions > Keep Supabase awake > Run workflow) the job sends the database one small request with the anon key. The function it calls is closed to anon, so Postgres itself answers "permission denied": only a running database can give that answer, and nothing is read. If the database does not answer, the run fails and GitHub emails you. It uses the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` settings as the deploy workflow (Variables or Secrets), and runs only once the file is on `main`. GitHub switches scheduled workflows off in a public repository after 60 days without activity: from 45 days after the last commit the job fails on purpose, so the email reaches you in time; push any commit to reset the count.
+
+### Backups on the free plan
+
+The free plan keeps no backups you can download. After every payroll month:
+
+1. In the payroll app and the PDF form filler, press **Back up** (each saves one file).
+2. In Supabase, export the tables: Table Editor > each table > Export > CSV (all tables in `supabase/migrations`, the payroll ones above all: `employees`, `payroll_runs`, `payroll_entries`, `payroll_months`, `payroll_month_history`, `payroll_shared_setups`, `payroll_company_setups`, `issued_payslips`). Download the PDF forms from Storage > `pdf-forms` when they change.
+3. Keep a copy **off this computer** (an encrypted drive, or a cloud folder with two-step sign-in). These files hold real salaries and national IDs: never put them in a repository or paste them into a chat.
 
 ## Add a new app
 
