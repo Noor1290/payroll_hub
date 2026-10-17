@@ -24,7 +24,14 @@ import { useCompany } from "@/features/company/company-context";
 import { RoleBadge } from "@/features/company/CompanySwitcher";
 import { formatCount, formatPeriod } from "@/lib/format";
 import { classifyDataError, type DataFailure } from "@/lib/supabase/errors";
-import { classifyImportError, fetchImportContext, importPayrollRun } from "@/lib/supabase/payroll";
+import {
+  classifyEmployeeDateError,
+  classifyImportError,
+  fetchImportContext,
+  importPayrollRun,
+  storeMissingEmploymentDates,
+  type EmploymentDatesStored,
+} from "@/lib/supabase/payroll";
 import type { ImportResult, Membership } from "@/lib/supabase/schemas";
 import { cn } from "@/lib/utils";
 import { importInbox, type InboxItem } from "./importInbox";
@@ -43,6 +50,8 @@ interface SavedSummary {
   result: ImportResult;
   companyName: string;
   period: string;
+  /** The file's dates of employment, stored after the run (rehearsal fix F6); absent when it had none. */
+  dates?: { ok: true; stored: EmploymentDatesStored } | { ok: false; reason: string };
 }
 
 /** One dropped file. Its contents live in memory only, and are dropped once saved or removed. */
@@ -195,6 +204,21 @@ function SavedPanel({ saved }: { saved: SavedSummary }) {
             `, ${formatCount(result.entriesRemoved)} entries removed that were not in this file`}
           .
         </p>
+        {saved.dates?.ok === true && (
+          <p className="mt-1 text-muted">
+            Dates of employment: {formatCount(saved.dates.stored.stored)} stored for employees who
+            had none
+            {saved.dates.stored.kept > 0 &&
+              `, ${formatCount(saved.dates.stored.kept)} already set and kept as they were`}
+            .
+          </p>
+        )}
+        {saved.dates?.ok === false && (
+          <p className="mt-1 text-danger">
+            The run is saved, but the dates of employment were not stored ({saved.dates.reason}).
+            Set them in the Data explorer.
+          </p>
+        )}
       </div>
       <Button asChild size="sm">
         <Link to={`/explorer?run=${result.runId}`}>
@@ -235,9 +259,27 @@ function SavePlan({
   });
 
   const save = useMutation({
-    mutationFn: (replace: boolean) =>
-      importPayrollRun(viewer, { companyId: company.id, period, rows: item.parsed.rows, replace }),
-    onSuccess: async (result) => {
+    mutationFn: async (replace: boolean) => {
+      const result = await importPayrollRun(viewer, {
+        companyId: company.id,
+        period,
+        rows: item.parsed.rows,
+        replace,
+      });
+      // The run is saved whatever happens next: a failure here only means the dates were not.
+      const fileDates = item.parsed.employmentDates;
+      if (!fileDates) return { result };
+      try {
+        const stored = await storeMissingEmploymentDates(viewer, company.id, fileDates);
+        return { result, dates: { ok: true as const, stored } };
+      } catch (error) {
+        return {
+          result,
+          dates: { ok: false as const, reason: classifyEmployeeDateError(error).title },
+        };
+      }
+    },
+    onSuccess: async ({ result, dates }) => {
       setConfirming(false);
       await Promise.all(
         ["runs", "overview"].map((key) =>
@@ -245,7 +287,7 @@ function SavePlan({
         ),
       );
       await queryClient.invalidateQueries({ queryKey: ["run-entries", result.runId] });
-      onSaved({ result, companyName: company.name, period });
+      onSaved({ result, companyName: company.name, period, ...(dates ? { dates } : {}) });
     },
     onError: (error) => {
       setConfirming(false);
@@ -485,8 +527,12 @@ function ImportCard({
               <p role="status" className="flex items-start gap-2 text-sm text-muted">
                 <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  This file has a "Date of Employment" field. It is ignored: the date is set in the
-                  Data explorer.
+                  {parsed.employmentDates
+                    ? `This file has a date of employment for ${formatCount(Object.keys(parsed.employmentDates).length)} ${Object.keys(parsed.employmentDates).length === 1 ? "employee" : "employees"}. When you save, it is stored for employees who have none yet; a date already set (for example in the Data explorer) is kept.`
+                    : `This file has a "Date of Employment" field but no date written as YYYY-MM-DD, so no date is stored. Dates are set in the Data explorer.`}
+                  {parsed.employmentDatesUnreadable
+                    ? ` ${formatCount(parsed.employmentDatesUnreadable)} ${parsed.employmentDatesUnreadable === 1 ? "date is" : "dates are"} not written as YYYY-MM-DD and ${parsed.employmentDatesUnreadable === 1 ? "is" : "are"} left out.`
+                    : ""}
                 </span>
               </p>
             )}

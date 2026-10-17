@@ -6,6 +6,7 @@ import {
   fetchRunEntries,
   resetSchemaKnowledge,
   setEmployeeDate,
+  storeMissingEmploymentDates,
 } from "./payroll";
 
 vi.mock("@/lib/supabase/client", async () => ({
@@ -123,6 +124,72 @@ describe("setEmployeeDate", () => {
     const failure = classifyEmployeeDateError({ code: "PGRST204", message: "no such column" });
     expect(failure.message).toContain("0008_employee_date_of_employment.sql");
     expect(failure.message).toContain("Nothing was changed");
+  });
+});
+
+describe("storeMissingEmploymentDates (rehearsal fix F6)", () => {
+  const COMPANY = "10000000-0000-4000-8000-000000000001";
+  const E1 = "30000000-0000-4000-8000-000000000001";
+  const E2 = "30000000-0000-4000-8000-000000000002";
+  const E3 = "30000000-0000-4000-8000-000000000003";
+  const dates = { X1: "2019-03-15", X2: "2020-05-05", X3: "2001-06-01", X9: "2015-01-01" };
+
+  it("fills only an empty date, and every update keeps a date set meanwhile (only where still empty)", async () => {
+    fake.reset((calls) => {
+      if (calls.some(([m]) => m === "update")) {
+        // X3's date was typed in the Data explorer between the read and the update.
+        return { data: fake.arg(calls, "eq", 1) === E3 ? [] : [{ id: fake.arg(calls, "eq", 1) }] };
+      }
+      return {
+        data: [
+          { id: E1, national_id: "X1", date_of_employment: null },
+          { id: E2, national_id: "X2", date_of_employment: "2018-01-01" },
+          { id: E3, national_id: "X3", date_of_employment: null },
+        ],
+      };
+    });
+    expect(await storeMissingEmploymentDates(viewer, COMPANY, dates)).toEqual({
+      stored: 1,
+      kept: 2,
+    });
+
+    const [lookup, ...updates] = fake.state.queries;
+    expect(lookup).toEqual([
+      ["from", "employees"],
+      ["select", "id, national_id, date_of_employment"],
+      ["eq", "company_id", COMPANY],
+      ["is", "deleted_at", null],
+      ["in", "national_id", ["X1", "X2", "X3", "X9"]],
+    ]);
+    // X2 already had a date: not even asked. X1 and X3: guarded by "still empty".
+    expect(updates).toEqual([
+      [
+        ["from", "employees"],
+        ["update", { date_of_employment: "2019-03-15" }],
+        ["eq", "id", E1],
+        ["is", "date_of_employment", null],
+        ["select", "id"],
+      ],
+      [
+        ["from", "employees"],
+        ["update", { date_of_employment: "2001-06-01" }],
+        ["eq", "id", E3],
+        ["is", "date_of_employment", null],
+        ["select", "id"],
+      ],
+    ]);
+  });
+
+  it("does nothing without a valid date, and passes a database error on", async () => {
+    expect(await storeMissingEmploymentDates(viewer, COMPANY, { X1: "01/08/2026" })).toEqual({
+      stored: 0,
+      kept: 0,
+    });
+    expect(fake.state.queries).toHaveLength(0);
+    fake.reset(() => ({ error: { code: "42501", message: "permission denied" } }));
+    await expect(
+      storeMissingEmploymentDates(viewer, COMPANY, { X1: "2019-03-15" }),
+    ).rejects.toMatchObject({ code: "42501" });
   });
 });
 

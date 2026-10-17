@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   fieldForJsonKey,
+  isEmploymentDate,
   isHubOwnedKey,
   PAYROLL_FIELDS,
   RESERVED_EXTRA_KEYS,
@@ -29,10 +30,18 @@ export interface ParsedFile {
   /** Total objects found in the file, valid or not. */
   rowCount: number;
   /**
-   * True when a row has a "Date of Employment" key. It is left out of what is stored (the date
-   * is set in the dashboard, never by a file); this only lets the report say so.
+   * True when a row has a "Date of Employment" key. It is never part of the rows stored by the
+   * import itself; see `employmentDates` for what happens to it (rehearsal fix F6).
    */
   dateOfEmploymentIgnored?: boolean;
+  /**
+   * The valid dates of employment in the file ("YYYY-MM-DD"), by national ID, for the rows that
+   * can be imported. After the run is saved they are stored only for employees who have no date
+   * yet; a date already set (e.g. typed in the Data explorer) is never overwritten.
+   */
+  employmentDates?: Record<string, string>;
+  /** How many importable rows have a "Date of Employment" that is not a valid "YYYY-MM-DD" date. */
+  employmentDatesUnreadable?: number;
 }
 
 /** Largest absolute value a numeric(12,2) column can hold. */
@@ -191,6 +200,8 @@ export function parsePayrollRows(data: unknown): ParsedFile {
   const companies: FileCompany[] = [];
   const firstRowById = new Map<string, number>();
   let dateOfEmploymentIgnored = false;
+  const employmentDates: Record<string, string> = {};
+  let employmentDatesUnreadable = 0;
 
   data.forEach((raw, index) => {
     const rowNumber = index + 1;
@@ -206,11 +217,15 @@ export function parsePayrollRows(data: unknown): ParsedFile {
 
     const known: Record<string, unknown> = {};
     const extra: Record<string, unknown> = {};
+    let fileDate: unknown = undefined;
     for (const [key, value] of Object.entries(source)) {
       const field = fieldForJsonKey(key);
       if (field) known[field.jsonKey] = value;
-      // Set in the dashboard, never by a file: left out, so an import cannot change it.
-      else if (isHubOwnedKey(key)) dateOfEmploymentIgnored = true;
+      // Never part of the stored rows: kept aside, and only fills in a date the employee lacks.
+      else if (isHubOwnedKey(key)) {
+        dateOfEmploymentIgnored = true;
+        fileDate = value;
+      }
       // Where a known field is kept inside `extra`: an unknown field must not land on it.
       else if (RESERVED_EXTRA_KEYS.has(key)) fail(key, "is a name the dashboard reserves");
       else extra[key] = value;
@@ -263,6 +278,10 @@ export function parsePayrollRows(data: unknown): ParsedFile {
 
     if (errors.length > before) return;
 
+    if (isEmploymentDate(fileDate)) employmentDates[nationalId!] = fileDate;
+    else if (fileDate !== undefined && fileDate !== null && fileDate !== "")
+      employmentDatesUnreadable++;
+
     rows.push({
       id: String(rowNumber),
       national_id: nationalId!,
@@ -291,6 +310,8 @@ export function parsePayrollRows(data: unknown): ParsedFile {
     company,
     rowCount: data.length,
     ...(dateOfEmploymentIgnored ? { dateOfEmploymentIgnored } : {}),
+    ...(Object.keys(employmentDates).length > 0 ? { employmentDates } : {}),
+    ...(employmentDatesUnreadable > 0 ? { employmentDatesUnreadable } : {}),
   };
 }
 

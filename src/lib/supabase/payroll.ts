@@ -13,6 +13,7 @@ import {
   demoImportRun,
   demoSetEmployeeDate,
   demoSetRunStatus,
+  demoStoreMissingEmploymentDates,
   demoSoftDeleteRun,
 } from "@/lib/demo/demoData";
 import { supabase } from "./client";
@@ -154,6 +155,60 @@ export async function setEmployeeDate(
   if (!data || data.length === 0) {
     throw Object.assign(new Error("No employee was updated."), { code: "42501" });
   }
+}
+
+/** What storeMissingEmploymentDates did. */
+export interface EmploymentDatesStored {
+  /** Dates stored, for employees who had none. */
+  stored: number;
+  /** Employees in the file whose date was already set (it was kept). */
+  kept: number;
+}
+
+/** National IDs per query, so the request stays short. */
+const DATE_LOOKUP_CHUNK = 200;
+
+/**
+ * After an import is saved: stores the file's dates of employment (`national ID -> "YYYY-MM-DD"`)
+ * for this company's current employees who have no date yet (rehearsal fix F6). A date already
+ * set is never overwritten: every update carries "only where the date is still empty", so the
+ * database itself keeps a date someone typed in the meantime. Admins only, like setEmployeeDate.
+ */
+export async function storeMissingEmploymentDates(
+  viewer: Viewer,
+  companyId: string,
+  dates: Readonly<Record<string, string>>,
+): Promise<EmploymentDatesStored> {
+  const ids = Object.keys(dates).filter((id) => isEmploymentDate(dates[id]));
+  if (ids.length === 0) return { stored: 0, kept: 0 };
+  if (import.meta.env.DEV && viewer.isDemo)
+    return demoStoreMissingEmploymentDates(companyId, dates);
+
+  const found: { id: string; national_id: string; date_of_employment: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += DATE_LOOKUP_CHUNK) {
+    const { data, error } = await client()
+      .from("employees")
+      .select("id, national_id, date_of_employment")
+      .eq("company_id", companyId)
+      .is("deleted_at", null)
+      .in("national_id", ids.slice(i, i + DATE_LOOKUP_CHUNK));
+    if (error) throw error;
+    found.push(...((data ?? []) as typeof found));
+  }
+
+  let stored = 0;
+  for (const employee of found) {
+    if (employee.date_of_employment !== null) continue;
+    const { data, error } = await client()
+      .from("employees")
+      .update({ date_of_employment: dates[employee.national_id] })
+      .eq("id", employee.id)
+      .is("date_of_employment", null)
+      .select("id");
+    if (error) throw error;
+    if (data && data.length > 0) stored++;
+  }
+  return { stored, kept: found.length - stored };
 }
 
 /** Explains a failed change to a date of employment. In every case nothing was changed. */

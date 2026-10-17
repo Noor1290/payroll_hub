@@ -52,7 +52,7 @@ function DateForm({ row, onDone }: { row: PayrollRow; onDone: () => void }) {
       <FormField
         label="Date of employment"
         error={error}
-        hint="Sent to apps with this employee's saved runs. An import never changes it."
+        hint="Sent to apps with this employee's saved runs. An import only fills it in when it is empty."
       >
         {(control) => (
           <Input

@@ -243,6 +243,27 @@ describe('parsePayrollFile: a "Date of Employment" key', () => {
     expect(JSON.stringify(result.rows)).not.toContain("1999-01-01");
   });
 
+  it("keeps the valid dates aside, by national ID, and counts the ones not written YYYY-MM-DD (rehearsal fix F6)", () => {
+    const result = parse(
+      { ...base, ID: "X1", "Date of Employment": "2019-03-15" },
+      { ...base, ID: "X2", "Date of Employment": "01/08/2026" },
+      { ...base, ID: "X3", "Date of Employment": "2026-02-30" },
+      { ...base, ID: "X4", "Date of Employment": "" },
+      { ...base, ID: "X5" },
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.employmentDates).toEqual({ X1: "2019-03-15" });
+    expect(result.employmentDatesUnreadable).toBe(2);
+    // The rows the import stores are unchanged: the date is never part of them.
+    expect(JSON.stringify(result.rows)).not.toContain("2019-03-15");
+  });
+
+  it("keeps no date of a row that cannot be imported", () => {
+    const result = parse({ ...base, ID: "X1", Surname: "", "Date of Employment": "2019-03-15" });
+    expect(result.rows).toHaveLength(0);
+    expect(result).not.toHaveProperty("employmentDates");
+  });
+
   it("is not reported for a file without the key", () => {
     expect(parse(base)).not.toHaveProperty("dateOfEmploymentIgnored");
     expect(parsePayrollFile(validSample)).not.toHaveProperty("dateOfEmploymentIgnored");
