@@ -186,9 +186,10 @@ export const PAYROLL_FIELDS: readonly PayrollField[] = [
 ];
 
 /**
- * "Date of Employment" is not part of the payroll app's export. It is typed into the dashboard
- * (employees.date_of_employment, migration 0008) and added to the rows of a saved run when an
- * employee has one, as "YYYY-MM-DD". An employee without one gets no key at all.
+ * "Date of Employment" is kept per employee (employees.date_of_employment, migration 0008), set
+ * from what the payroll app sends (rehearsal fix F6; a different date is replaced since 20 Oct
+ * 2026) or typed in the Data explorer, and added to the rows of a saved run when an employee has
+ * one, as "YYYY-MM-DD". An employee without one gets no key at all.
  */
 export const DATE_OF_EMPLOYMENT = "Date of Employment";
 

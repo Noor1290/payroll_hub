@@ -191,13 +191,30 @@ const BREAKS = [
     mustFail: "is reported as ignored when any row has it",
   },
   {
-    // Rehearsal fix F6: a saved file only fills in a date of employment that is still empty.
-    what: "A saved file overwrites a date of employment already set",
+    // Rehearsal fix F6, and since 20 Oct 2026: a saved file fills an empty date and replaces a
+    // different one, but never a date someone changed between the read and the update.
+    what: "A saved file overwrites a date of employment that was set meanwhile",
     file: "src/lib/supabase/payroll.ts",
     find: '.is("date_of_employment", null)',
     replace: "",
     test: "src/lib/supabase/employeeDate.test.ts",
-    mustFail: "fills only an empty date, and every update keeps a date set meanwhile",
+    mustFail: "fills an empty date and replaces a different one",
+  },
+  {
+    what: "A date changed meanwhile is replaced unseen",
+    file: "src/lib/supabase/payroll.ts",
+    find: ': update.eq("date_of_employment", employee.date_of_employment)',
+    replace: ": update",
+    test: "src/lib/supabase/employeeDate.test.ts",
+    mustFail: "fills an empty date and replaces a different one",
+  },
+  {
+    what: "A later month's different date of employment no longer replaces the one stored",
+    file: "src/lib/supabase/payroll.ts",
+    find: "if (employee.date_of_employment === date) continue;",
+    replace: "if (employee.date_of_employment !== null) continue;",
+    test: "src/lib/supabase/employeeDate.test.ts",
+    mustFail: "fills an empty date and replaces a different one",
   },
   {
     what: "Setting a date is no longer limited to that one employee",

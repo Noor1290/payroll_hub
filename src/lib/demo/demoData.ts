@@ -304,25 +304,27 @@ export async function demoSetEmployeeDate(employeeId: string, value: string | nu
 }
 
 /** Mirrors storeMissingEmploymentDates: fills only an empty date, admins only. */
-export async function demoStoreMissingEmploymentDates(
+export async function demoStoreEmploymentDates(
   companyId: string,
   dates: Readonly<Record<string, string>>,
-): Promise<{ stored: number; kept: number }> {
+): Promise<{ stored: number; changed: number; kept: number }> {
   await pause(300);
   requireAdmin(companyId);
   let stored = 0;
+  let changed = 0;
   let kept = 0;
   for (const employee of employees) {
     if (employee.companyId !== companyId || employee.deleted_at !== null) continue;
     const date = dates[employee.national_id];
     if (date === undefined) continue;
-    if (employee.date_of_employment) kept++;
+    if (employee.date_of_employment === date) kept++;
     else {
+      if (employee.date_of_employment) changed++;
+      else stored++;
       employee.date_of_employment = date;
-      stored++;
     }
   }
-  return { stored, kept };
+  return { stored, changed, kept };
 }
 
 export async function demoFetchImportContext(

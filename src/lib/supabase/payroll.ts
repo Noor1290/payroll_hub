@@ -13,7 +13,7 @@ import {
   demoImportRun,
   demoSetEmployeeDate,
   demoSetRunStatus,
-  demoStoreMissingEmploymentDates,
+  demoStoreEmploymentDates,
   demoSoftDeleteRun,
 } from "@/lib/demo/demoData";
 import { supabase } from "./client";
@@ -157,11 +157,13 @@ export async function setEmployeeDate(
   }
 }
 
-/** What storeMissingEmploymentDates did. */
+/** What storeEmploymentDates did. */
 export interface EmploymentDatesStored {
   /** Dates stored, for employees who had none. */
   stored: number;
-  /** Employees in the file whose date was already set (it was kept). */
+  /** Dates replaced: the employee had a different date. */
+  changed: number;
+  /** Employees whose date was already the one in the file, or was changed by someone else meanwhile (kept). */
   kept: number;
 }
 
@@ -170,19 +172,20 @@ const DATE_LOOKUP_CHUNK = 200;
 
 /**
  * After an import is saved: stores the file's dates of employment (`national ID -> "YYYY-MM-DD"`)
- * for this company's current employees who have no date yet (rehearsal fix F6). A date already
- * set is never overwritten: every update carries "only where the date is still empty", so the
- * database itself keeps a date someone typed in the meantime. Admins only, like setEmployeeDate.
+ * for this company's current employees (rehearsal fix F6). Since 20 Oct 2026 (the Date type in the
+ * payroll app) the payroll app is where the date is kept, so a date that differs from the file's
+ * is replaced by it. Every update carries "only where the date is still the one just read", so a
+ * date someone changed in the meantime is kept, never overwritten unseen. Admins only, like
+ * setEmployeeDate.
  */
-export async function storeMissingEmploymentDates(
+export async function storeEmploymentDates(
   viewer: Viewer,
   companyId: string,
   dates: Readonly<Record<string, string>>,
 ): Promise<EmploymentDatesStored> {
   const ids = Object.keys(dates).filter((id) => isEmploymentDate(dates[id]));
-  if (ids.length === 0) return { stored: 0, kept: 0 };
-  if (import.meta.env.DEV && viewer.isDemo)
-    return demoStoreMissingEmploymentDates(companyId, dates);
+  if (ids.length === 0) return { stored: 0, changed: 0, kept: 0 };
+  if (import.meta.env.DEV && viewer.isDemo) return demoStoreEmploymentDates(companyId, dates);
 
   const found: { id: string; national_id: string; date_of_employment: string | null }[] = [];
   for (let i = 0; i < ids.length; i += DATE_LOOKUP_CHUNK) {
@@ -197,18 +200,25 @@ export async function storeMissingEmploymentDates(
   }
 
   let stored = 0;
+  let changed = 0;
   for (const employee of found) {
-    if (employee.date_of_employment !== null) continue;
-    const { data, error } = await client()
+    const date = dates[employee.national_id];
+    if (employee.date_of_employment === date) continue;
+    const update = client()
       .from("employees")
-      .update({ date_of_employment: dates[employee.national_id] })
-      .eq("id", employee.id)
-      .is("date_of_employment", null)
-      .select("id");
+      .update({ date_of_employment: date })
+      .eq("id", employee.id);
+    const { data, error } = await (employee.date_of_employment === null
+      ? update.is("date_of_employment", null)
+      : update.eq("date_of_employment", employee.date_of_employment)
+    ).select("id");
     if (error) throw error;
-    if (data && data.length > 0) stored++;
+    if (data && data.length > 0) {
+      if (employee.date_of_employment === null) stored++;
+      else changed++;
+    }
   }
-  return { stored, kept: found.length - stored };
+  return { stored, changed, kept: found.length - stored - changed };
 }
 
 /** Explains a failed change to a date of employment. In every case nothing was changed. */

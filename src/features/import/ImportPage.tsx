@@ -29,7 +29,7 @@ import {
   classifyImportError,
   fetchImportContext,
   importPayrollRun,
-  storeMissingEmploymentDates,
+  storeEmploymentDates,
   type EmploymentDatesStored,
 } from "@/lib/supabase/payroll";
 import type { ImportResult, Membership } from "@/lib/supabase/schemas";
@@ -208,8 +208,9 @@ function SavedPanel({ saved }: { saved: SavedSummary }) {
           <p className="mt-1 text-muted">
             Dates of employment: {formatCount(saved.dates.stored.stored)} stored for employees who
             had none
-            {saved.dates.stored.kept > 0 &&
-              `, ${formatCount(saved.dates.stored.kept)} already set and kept as they were`}
+            {saved.dates.stored.changed > 0 &&
+              `, ${formatCount(saved.dates.stored.changed)} changed to the date in this file`}
+            {saved.dates.stored.kept > 0 && `, ${formatCount(saved.dates.stored.kept)} already the same`}
             .
           </p>
         )}
@@ -270,7 +271,7 @@ function SavePlan({
       const fileDates = item.parsed.employmentDates;
       if (!fileDates) return { result };
       try {
-        const stored = await storeMissingEmploymentDates(viewer, company.id, fileDates);
+        const stored = await storeEmploymentDates(viewer, company.id, fileDates);
         return { result, dates: { ok: true as const, stored } };
       } catch (error) {
         return {
@@ -528,7 +529,7 @@ function ImportCard({
                 <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
                 <span>
                   {parsed.employmentDates
-                    ? `This file has a date of employment for ${formatCount(Object.keys(parsed.employmentDates).length)} ${Object.keys(parsed.employmentDates).length === 1 ? "employee" : "employees"}. When you save, it is stored for employees who have none yet; a date already set (for example in the Data explorer) is kept.`
+                    ? `This file has a date of employment for ${formatCount(Object.keys(parsed.employmentDates).length)} ${Object.keys(parsed.employmentDates).length === 1 ? "employee" : "employees"}. When you save, it is stored for each of them, replacing a different date already set (for example in the Data explorer).`
                     : `This file has a "Date of Employment" field but no date written as YYYY-MM-DD, so no date is stored. Dates are set in the Data explorer.`}
                   {parsed.employmentDatesUnreadable
                     ? ` ${formatCount(parsed.employmentDatesUnreadable)} ${parsed.employmentDatesUnreadable === 1 ? "date is" : "dates are"} not written as YYYY-MM-DD and ${parsed.employmentDatesUnreadable === 1 ? "is" : "are"} left out.`
