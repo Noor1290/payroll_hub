@@ -36,8 +36,8 @@ export interface ParsedFile {
   dateOfEmploymentIgnored?: boolean;
   /**
    * The valid dates of employment in the file ("YYYY-MM-DD"), by national ID, for the rows that
-   * can be imported. After the run is saved they are stored only for employees who have no date
-   * yet; a date already set (e.g. typed in the Data explorer) is never overwritten.
+   * can be imported. After the run is saved they are stored (storeEmploymentDates): an empty date
+   * is filled and, since 20 Oct 2026, a different one is replaced.
    */
   employmentDates?: Record<string, string>;
   /** How many importable rows have a "Date of Employment" that is not a valid "YYYY-MM-DD" date. */
