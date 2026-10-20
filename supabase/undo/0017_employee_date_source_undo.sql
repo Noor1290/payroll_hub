@@ -1,0 +1,17 @@
+-- =====================================================================
+-- UNDO of migration 0017_employee_date_source.sql. NOT a migration: kept outside
+-- supabase/migrations on purpose, and every line is commented out, so running this file as it
+-- is does nothing.
+--
+-- What it would do: drop the two columns 0017 added to public.employees. The dates of employment
+-- themselves (date_of_employment, migration 0008) are kept; only the record of which month each
+-- came from, and whether it was typed in the Data explorer, is lost. After it, the dashboard
+-- falls back to filling empty dates only (it never replaces one without knowing the month).
+--
+-- To use it, only when the owner decides: remove the "-- " in front of the three statements
+-- below, then run it in Supabase dashboard -> SQL Editor.
+-- =====================================================================
+
+-- alter table public.employees drop column if exists date_of_employment_typed;
+-- alter table public.employees drop column if exists date_of_employment_month;
+-- notify pgrst, 'reload schema';

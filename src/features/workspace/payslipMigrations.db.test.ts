@@ -188,7 +188,7 @@ describe("the migrations' own checks", () => {
   }, SETUP_TIMEOUT);
   afterAll(() => db?.close());
 
-  it.each(["0008", "0009", "0010", "0011"])(
+  it.each(["0008", "0009", "0010", "0011", "0017"])(
     "%s can be run a second time and reports every check as true",
     async (number) => {
       const check = await selfCheck(db, number);
@@ -287,6 +287,71 @@ describe("0008: employees.date_of_employment", () => {
         "select surname || ' ' || date_of_employment::text as result from public.employees",
       ),
     ).toBe("DOE-SMITH 2019-03-04");
+  });
+});
+
+describe("0017: where the date of employment came from", () => {
+  let db: PGlite;
+  beforeAll(async () => {
+    db = await freshDatabase();
+  }, SETUP_TIMEOUT);
+  afterAll(() => db?.close());
+
+  const setSource = (user: string, month: string | null, typed: boolean | null) =>
+    one<string>(
+      db,
+      user,
+      `update public.employees
+         set date_of_employment = '2019-03-04', date_of_employment_month = $1::date,
+             date_of_employment_typed = $2
+       where id = $3
+       returning coalesce(date_of_employment_month::text, '-') || ' ' || coalesce(date_of_employment_typed::text, '-') as result`,
+      [month, typed, EMPLOYEE],
+    );
+
+  it("adds two empty columns: no existing row is changed", async () => {
+    expect(
+      await scalar(
+        db,
+        `select count(*)::text as result from public.employees
+          where date_of_employment_month is not null or date_of_employment_typed is not null`,
+      ),
+    ).toBe("0");
+  });
+
+  it("lets an admin record where the date came from, and clear it", async () => {
+    expect((await setSource(A, "2026-10-01", false)).result).toBe("2026-10-01 false");
+    expect((await setSource(A, "2026-11-01", true)).result).toBe("2026-11-01 true");
+    expect((await setSource(A, null, null)).result).toBe("- -");
+  });
+
+  it("changes nothing for a viewer or a stranger: no row is theirs to update", async () => {
+    expect((await setSource(V, "2026-10-01", true)).result).toBeUndefined();
+    expect((await setSource(O, "2026-10-01", true)).result).toBeUndefined();
+  });
+
+  it.each(["2026-10-15", "1899-12-01", "2101-01-01"])("refuses a month written as %s", async (month) => {
+    expect((await setSource(A, month, false)).error).toMatch(/23514/);
+  });
+
+  it("an import leaves them as they are", async () => {
+    await setSource(A, "2026-10-01", true);
+    const numbers = Object.fromEntries(
+      ["basic_salary", "govt_increment", "new_basic_salary", "allowances", "emoluments", "travelling", "gross_pay", "csg", "nsf", "paye", "total_deductions", "net_pay", "levy", "prgf", "total_mra_contributions", "edf", "edf_monthly", "total"].map((column) => [column, 100]),
+    );
+    const imported = await one(
+      db,
+      A,
+      "select public.import_payroll_run($1::uuid, $2::date, $3::jsonb, $4) as result",
+      [ABC, "2026-12-01", JSON.stringify([{ national_id: "X1", surname: "DOE", age_60_plus: false, extra: {}, ...numbers }]), false],
+    );
+    expect(imported.error).toBeNull();
+    expect(
+      await scalar(
+        db,
+        "select date_of_employment_month::text || ' ' || date_of_employment_typed::text as result from public.employees",
+      ),
+    ).toBe("2026-10-01 true");
   });
 });
 

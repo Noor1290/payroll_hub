@@ -5,6 +5,7 @@ import {
   type NumericColumn,
   type PayrollRow,
 } from "@/config/payrollFields";
+import { decideEmploymentDate } from "@/features/import/employmentDateRule";
 import { toRpcRow, type ExistingEmployee, type ExistingRun } from "@/features/import/importPlan";
 import {
   demoFetchImportContext,
@@ -13,6 +14,7 @@ import {
   demoImportRun,
   demoSetEmployeeDate,
   demoSetRunStatus,
+  demoNewestRunMonth,
   demoStoreEmploymentDates,
   demoSoftDeleteRun,
 } from "@/lib/demo/demoData";
@@ -83,10 +85,15 @@ const entrySelect = (withDate: boolean) =>
 
 /** Set once a read shows the database has no employees.date_of_employment (migration 0008). */
 let dateColumnMissing = false;
+/** Set once a read shows the database has no employees.date_of_employment_month (migration 0017). */
+let sourceColumnsMissing = false;
+const DATE_COLUMNS = "id, national_id, date_of_employment";
+const SOURCE_COLUMNS = "date_of_employment_month, date_of_employment_typed";
 
 /** For tests: forget what was learnt about the database. */
 export function resetSchemaKnowledge(): void {
   dateColumnMissing = false;
+  sourceColumnsMissing = false;
 }
 
 /**
@@ -133,8 +140,12 @@ export async function fetchRunEntries(viewer: Viewer, runId: string): Promise<Pa
 }
 
 /**
- * Sets or clears an employee's date of employment. Admins only: the database refuses anyone
- * else by changing no row, which is reported as "not allowed".
+ * Sets or clears an employee's date of employment, typed in the Data explorer. Admins only: the
+ * database refuses anyone else by changing no row, which is reported as "not allowed".
+ *
+ * A typed date is recorded as typed, against the company's newest saved month now (migration
+ * 0017): the payroll app replaces it only with a date sent for a newer month. Against a database
+ * without migration 0017 only the date is saved, as before.
  */
 export async function setEmployeeDate(
   viewer: Viewer,
@@ -146,80 +157,204 @@ export async function setEmployeeDate(
   }
   if (import.meta.env.DEV && viewer.isDemo) return demoSetEmployeeDate(employeeId, value);
 
-  const { data, error } = await client()
-    .from("employees")
-    .update({ date_of_employment: value })
-    .eq("id", employeeId)
-    .select("id");
-  if (error) throw error;
-  if (!data || data.length === 0) {
-    throw Object.assign(new Error("No employee was updated."), { code: "42501" });
+  const save = async (change: Record<string, unknown>) => {
+    const { data, error } = await client()
+      .from("employees")
+      .update(change)
+      .eq("id", employeeId)
+      .select("id");
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw Object.assign(new Error("No employee was updated."), { code: "42501" });
+    }
+  };
+  if (sourceColumnsMissing) return save({ date_of_employment: value });
+
+  // Cleared: nothing is recorded about where it came from either.
+  let source: Record<string, unknown> = {
+    date_of_employment_month: null,
+    date_of_employment_typed: null,
+  };
+  if (value !== null) {
+    const { data, error } = await client()
+      .from("employees")
+      .select("company_id")
+      .eq("id", employeeId);
+    if (error) throw error;
+    const companyId = (data as { company_id: string }[] | null)?.[0]?.company_id;
+    if (!companyId) throw Object.assign(new Error("No employee was updated."), { code: "42501" });
+    source = {
+      date_of_employment_month: await newestRunMonth(viewer, companyId),
+      date_of_employment_typed: true,
+    };
   }
+  try {
+    await save({ date_of_employment: value, ...source });
+  } catch (error) {
+    if (!isMissingColumn(error)) throw error;
+    sourceColumnsMissing = true;
+    await save({ date_of_employment: value });
+  }
+}
+
+/** The company's newest saved month ("YYYY-MM-01"), or null when it has no run. */
+export async function newestRunMonth(viewer: Viewer, companyId: string): Promise<string | null> {
+  if (import.meta.env.DEV && viewer.isDemo) return demoNewestRunMonth(companyId);
+  const { data, error } = await client()
+    .from("payroll_runs")
+    .select("period")
+    .eq("company_id", companyId)
+    .is("deleted_at", null)
+    .order("period", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return (data as { period: string }[] | null)?.[0]?.period ?? null;
 }
 
 /** What storeEmploymentDates did. */
 export interface EmploymentDatesStored {
   /** Dates stored, for employees who had none. */
   stored: number;
-  /** Dates replaced: the employee had a different date. */
+  /** Dates replaced: a different date from the same or an older month. */
   changed: number;
-  /** Employees whose date was already the one in the file, or was changed by someone else meanwhile (kept). */
+  /** Employees whose date was already the one sent, or was changed by someone else meanwhile. */
   kept: number;
+  /** Dates kept because they came from a newer month (or were typed in the Data explorer since). */
+  keptNewer: number;
+}
+
+/** Where the dates come from: the month sent, and the company's newest saved month before it. */
+export interface EmploymentDatesSource {
+  /** "YYYY-MM-01". */
+  period: string;
+  /** "YYYY-MM-01", or null when the company had no run before this import. */
+  newestBefore: string | null;
 }
 
 /** National IDs per query, so the request stays short. */
 const DATE_LOOKUP_CHUNK = 200;
 
+type EmployeeDateRow = {
+  id: string;
+  national_id: string;
+  date_of_employment: string | null;
+  date_of_employment_month?: string | null;
+  date_of_employment_typed?: boolean | null;
+};
+
 /**
  * After an import is saved: stores the file's dates of employment (`national ID -> "YYYY-MM-DD"`)
- * for this company's current employees (rehearsal fix F6). Since 20 Oct 2026 (the Date type in the
- * payroll app) the payroll app is where the date is kept, so a date that differs from the file's
- * is replaced by it. Every update carries "only where the date is still the one just read", so a
- * date someone changed in the meantime is kept, never overwritten unseen. Admins only, like
+ * for this company's current employees (rehearsal fix F6), by the rule in employmentDateRule.ts:
+ * an empty date is filled; a different one is replaced only when it came from the same or an
+ * older month (a typed one, or one stored before migration 0017: only by a newer month). Every
+ * update carries "only where the date, and where it came from, are still the ones just read", so
+ * a change made in the meantime is kept, never overwritten unseen. Against a database without
+ * migration 0017 an empty date is filled and a date already set is kept. Admins only, like
  * setEmployeeDate.
  */
 export async function storeEmploymentDates(
   viewer: Viewer,
   companyId: string,
   dates: Readonly<Record<string, string>>,
+  source: EmploymentDatesSource,
 ): Promise<EmploymentDatesStored> {
+  const counts = { stored: 0, changed: 0, kept: 0, keptNewer: 0 };
   const ids = Object.keys(dates).filter((id) => isEmploymentDate(dates[id]));
-  if (ids.length === 0) return { stored: 0, changed: 0, kept: 0 };
-  if (import.meta.env.DEV && viewer.isDemo) return demoStoreEmploymentDates(companyId, dates);
+  if (ids.length === 0) return counts;
+  if (import.meta.env.DEV && viewer.isDemo)
+    return demoStoreEmploymentDates(companyId, dates, source);
 
-  const found: { id: string; national_id: string; date_of_employment: string | null }[] = [];
-  for (let i = 0; i < ids.length; i += DATE_LOOKUP_CHUNK) {
-    const { data, error } = await client()
-      .from("employees")
-      .select("id, national_id, date_of_employment")
-      .eq("company_id", companyId)
-      .is("deleted_at", null)
-      .in("national_id", ids.slice(i, i + DATE_LOOKUP_CHUNK));
-    if (error) throw error;
-    found.push(...((data ?? []) as typeof found));
-  }
-
-  let stored = 0;
-  let changed = 0;
-  for (const employee of found) {
-    const date = dates[employee.national_id];
-    if (employee.date_of_employment === date) continue;
-    const update = client()
-      .from("employees")
-      .update({ date_of_employment: date })
-      .eq("id", employee.id);
-    const { data, error } = await (employee.date_of_employment === null
-      ? update.is("date_of_employment", null)
-      : update.eq("date_of_employment", employee.date_of_employment)
-    ).select("id");
-    if (error) throw error;
-    if (data && data.length > 0) {
-      if (employee.date_of_employment === null) stored++;
-      else changed++;
+  const lookup = async (withSource: boolean) => {
+    const found: EmployeeDateRow[] = [];
+    for (let i = 0; i < ids.length; i += DATE_LOOKUP_CHUNK) {
+      const { data, error } = await client()
+        .from("employees")
+        .select(withSource ? `${DATE_COLUMNS}, ${SOURCE_COLUMNS}` : DATE_COLUMNS)
+        .eq("company_id", companyId)
+        .is("deleted_at", null)
+        .in("national_id", ids.slice(i, i + DATE_LOOKUP_CHUNK));
+      if (error) throw error;
+      found.push(...((data ?? []) as unknown as EmployeeDateRow[]));
+    }
+    return found;
+  };
+  let found: EmployeeDateRow[];
+  if (sourceColumnsMissing) {
+    found = await lookup(false);
+  } else {
+    try {
+      found = await lookup(true);
+    } catch (error) {
+      if (!isMissingColumn(error)) throw error;
+      sourceColumnsMissing = true;
+      found = await lookup(false);
     }
   }
-  return { stored, changed, kept: found.length - stored - changed };
+  const withSource = !sourceColumnsMissing;
+
+  for (const employee of found) {
+    // Only national IDs taken from `dates` were looked up.
+    const date = dates[employee.national_id]!;
+    const month = employee.date_of_employment_month ?? null;
+    const typed = employee.date_of_employment_typed ?? null;
+    // Without migration 0017 nothing says which month a date came from: one already set is kept.
+    const decision = withSource
+      ? decideEmploymentDate(
+          { date: employee.date_of_employment, month, typed },
+          date,
+          source.period,
+          source.newestBefore,
+        )
+      : employee.date_of_employment === null
+        ? "store"
+        : "same";
+    if (decision === "same") {
+      counts.kept++;
+      continue;
+    }
+    if (decision === "keep-newer") {
+      counts.keptNewer++;
+      continue;
+    }
+
+    let update = client()
+      .from("employees")
+      .update(
+        withSource
+          ? {
+              date_of_employment: date,
+              date_of_employment_month: source.period,
+              date_of_employment_typed: false,
+            }
+          : { date_of_employment: date },
+      )
+      .eq("id", employee.id);
+    // Only where nothing changed since it was read.
+    update =
+      employee.date_of_employment === null
+        ? update.is("date_of_employment", null)
+        : update.eq("date_of_employment", employee.date_of_employment);
+    if (withSource) {
+      update =
+        month === null
+          ? update.is("date_of_employment_month", null)
+          : update.eq("date_of_employment_month", month);
+      update =
+        typed === null
+          ? update.is("date_of_employment_typed", null)
+          : update.eq("date_of_employment_typed", typed);
+    }
+    const { data, error } = await update.select("id");
+    if (error) throw error;
+    if (!data || data.length === 0) counts.kept++;
+    else if (decision === "store") counts.stored++;
+    else if (decision === "replace") counts.changed++;
+    // "same-newer": the same date, now known to come from a newer month.
+    else counts.kept++;
+  }
+  return counts;
 }
+
 
 /** Explains a failed change to a date of employment. In every case nothing was changed. */
 export function classifyEmployeeDateError(error: unknown): DataFailure {

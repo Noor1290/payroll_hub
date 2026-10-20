@@ -29,6 +29,7 @@ import {
   classifyImportError,
   fetchImportContext,
   importPayrollRun,
+  newestRunMonth,
   storeEmploymentDates,
   type EmploymentDatesStored,
 } from "@/lib/supabase/payroll";
@@ -211,6 +212,8 @@ function SavedPanel({ saved }: { saved: SavedSummary }) {
             {saved.dates.stored.changed > 0 &&
               `, ${formatCount(saved.dates.stored.changed)} changed to the date in this file`}
             {saved.dates.stored.kept > 0 && `, ${formatCount(saved.dates.stored.kept)} already the same`}
+            {saved.dates.stored.keptNewer > 0 &&
+              `, ${formatCount(saved.dates.stored.keptNewer)} kept because their date came from a newer month`}
             .
           </p>
         )}
@@ -261,6 +264,18 @@ function SavePlan({
 
   const save = useMutation({
     mutationFn: async (replace: boolean) => {
+      const fileDates = item.parsed.employmentDates;
+      // The company's newest saved month BEFORE this run is saved: a date of employment stored
+      // before migration 0017 counts as typed against it (employmentDateRule.ts).
+      let newestBefore: string | null = null;
+      let beforeFailed: unknown = null;
+      if (fileDates) {
+        try {
+          newestBefore = await newestRunMonth(viewer, company.id);
+        } catch (error) {
+          beforeFailed = error;
+        }
+      }
       const result = await importPayrollRun(viewer, {
         companyId: company.id,
         period,
@@ -268,10 +283,10 @@ function SavePlan({
         replace,
       });
       // The run is saved whatever happens next: a failure here only means the dates were not.
-      const fileDates = item.parsed.employmentDates;
       if (!fileDates) return { result };
       try {
-        const stored = await storeEmploymentDates(viewer, company.id, fileDates);
+        if (beforeFailed) throw beforeFailed;
+        const stored = await storeEmploymentDates(viewer, company.id, fileDates, { period, newestBefore });
         return { result, dates: { ok: true as const, stored } };
       } catch (error) {
         return {
@@ -529,7 +544,7 @@ function ImportCard({
                 <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
                 <span>
                   {parsed.employmentDates
-                    ? `This file has a date of employment for ${formatCount(Object.keys(parsed.employmentDates).length)} ${Object.keys(parsed.employmentDates).length === 1 ? "employee" : "employees"}. When you save, it is stored for each of them, replacing a different date already set (for example in the Data explorer).`
+                    ? `This file has a date of employment for ${formatCount(Object.keys(parsed.employmentDates).length)} ${Object.keys(parsed.employmentDates).length === 1 ? "employee" : "employees"}. When you save, it is stored for each of them. A different date already set is replaced only if it came from this month or an earlier one; a date typed in the Data explorer is replaced only by a newer month than the newest saved when it was typed.`
                     : `This file has a "Date of Employment" field but no date written as YYYY-MM-DD, so no date is stored. Dates are set in the Data explorer.`}
                   {parsed.employmentDatesUnreadable
                     ? ` ${formatCount(parsed.employmentDatesUnreadable)} ${parsed.employmentDatesUnreadable === 1 ? "date is" : "dates are"} not written as YYYY-MM-DD and ${parsed.employmentDatesUnreadable === 1 ? "is" : "are"} left out.`

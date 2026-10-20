@@ -1,4 +1,5 @@
 import { NUMERIC_COLUMNS, type NumericColumn, type PayrollRow } from "@/config/payrollFields";
+import { decideEmploymentDate } from "@/features/import/employmentDateRule";
 import type { ExistingEmployee, ExistingRun } from "@/features/import/importPlan";
 import { sumMoney } from "@/lib/format";
 import type {
@@ -65,6 +66,9 @@ interface DemoEmployee extends ExistingEmployee {
   id: string;
   companyId: string;
   date_of_employment: string | null;
+  /** Where the date came from (migration 0017); absent, as in a database row stored before it. */
+  date_of_employment_month?: string | null;
+  date_of_employment_typed?: boolean | null;
 }
 interface DemoRun {
   id: string;
@@ -301,30 +305,52 @@ export async function demoSetEmployeeDate(employeeId: string, value: string | nu
   if (!employee) throw Object.assign(new Error("No employee was updated."), { code: "42501" });
   requireAdmin(employee.companyId);
   employee.date_of_employment = value;
+  // Typed: against the company's newest saved month now (setEmployeeDate).
+  employee.date_of_employment_month = value === null ? null : (liveRuns(employee.companyId)[0]?.period ?? null);
+  employee.date_of_employment_typed = value === null ? null : true;
 }
 
-/** Mirrors storeMissingEmploymentDates: fills only an empty date, admins only. */
+/** Mirrors newestRunMonth. */
+export async function demoNewestRunMonth(companyId: string): Promise<string | null> {
+  await pause(100);
+  return liveRuns(companyId)[0]?.period ?? null;
+}
+
+/** Mirrors storeEmploymentDates: the same rule (employmentDateRule.ts), admins only. */
 export async function demoStoreEmploymentDates(
   companyId: string,
   dates: Readonly<Record<string, string>>,
-): Promise<{ stored: number; changed: number; kept: number }> {
+  source: { period: string; newestBefore: string | null },
+): Promise<{ stored: number; changed: number; kept: number; keptNewer: number }> {
   await pause(300);
   requireAdmin(companyId);
-  let stored = 0;
-  let changed = 0;
-  let kept = 0;
+  const counts = { stored: 0, changed: 0, kept: 0, keptNewer: 0 };
   for (const employee of employees) {
     if (employee.companyId !== companyId || employee.deleted_at !== null) continue;
     const date = dates[employee.national_id];
     if (date === undefined) continue;
-    if (employee.date_of_employment === date) kept++;
+    const decision = decideEmploymentDate(
+      {
+        date: employee.date_of_employment,
+        month: employee.date_of_employment_month ?? null,
+        typed: employee.date_of_employment_typed ?? null,
+      },
+      date,
+      source.period,
+      source.newestBefore,
+    );
+    if (decision === "keep-newer") counts.keptNewer++;
+    else if (decision === "same") counts.kept++;
     else {
-      if (employee.date_of_employment) changed++;
-      else stored++;
+      if (decision === "store") counts.stored++;
+      else if (decision === "replace") counts.changed++;
+      else counts.kept++;
       employee.date_of_employment = date;
+      employee.date_of_employment_month = source.period;
+      employee.date_of_employment_typed = false;
     }
   }
-  return { stored, changed, kept };
+  return counts;
 }
 
 export async function demoFetchImportContext(
