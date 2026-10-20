@@ -266,10 +266,10 @@ const BREAKS = [
   {
     what: "Setting a date is no longer limited to that one employee",
     file: "src/lib/supabase/payroll.ts",
-    find: '    .update({ date_of_employment: value })\n    .eq("id", employeeId)\n',
-    replace: "    .update({ date_of_employment: value })\n",
+    find: '      .update(change)\n      .eq("id", employeeId)\n',
+    replace: "      .update(change)\n",
     test: "src/lib/supabase/employeeDate.test.ts",
-    mustFail: "updates that one employee and nothing else",
+    mustFail: "updates that one employee, recorded as typed",
   },
 
   // ---------- Stage B: protocol and saves that take time (item 4) ----------
