@@ -1004,6 +1004,8 @@ describe("delete_company after 0011", () => {
       rates: 2,
       templates: 2,
       template_versions: 1,
+      // Migration 0018: nothing was chosen for the payslips here.
+      template_in_use: 0,
       members: 2,
     });
 

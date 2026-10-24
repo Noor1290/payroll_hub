@@ -1,0 +1,206 @@
+-- =====================================================================
+-- UNDO of migration 0018_payslip_template_in_use.sql. NOT a migration: kept outside
+-- supabase/migrations on purpose, and every line is commented out, so running this file as it
+-- is does nothing.
+--
+-- What it would do, in this order:
+--   1. Put back delete_company exactly as migration 0014 defines it (copied below, unchanged).
+--      It must come first: dropping the table while the 0018 delete_company is in place would
+--      make every delete of a company fail.
+--   2. Drop the three functions 0018 added.
+--   3. Drop the table public.payslip_template_in_use. Only the choice of "Used for the
+--      payslips" per company is lost; every template, published version and issued payslip
+--      stays as it is. The payslip app then goes back to choosing in memory (one published
+--      template, or it asks).
+-- No other function, table, policy or grant is touched.
+--
+-- To use it, only when the owner decides: remove the "-- " at the start of every line below
+-- this header, then run it in Supabase dashboard -> SQL Editor.
+-- =====================================================================
+
+-- -- ---------- delete_company: as in 0013, plus the payroll months ----------
+-- create or replace function public.delete_company(
+--   p_company_id   uuid,
+--   p_confirm_name text
+-- )
+-- returns jsonb
+-- language plpgsql
+-- security definer
+-- set search_path = ''
+-- as $$
+-- declare
+--   v_user              uuid := (select auth.uid());
+--   v_company           public.companies%rowtype;
+--   v_issued            integer;
+--   v_entries           integer;
+--   v_runs              integer;
+--   v_employees         integer;
+--   v_details           integer;
+--   v_links             integer;
+--   v_rates             integer;
+--   v_template_versions integer;
+--   v_templates         integer;
+--   v_pdf_history       integer;
+--   v_pdf_templates     integer;
+--   v_month_history     integer;
+--   v_months            integer;
+--   v_shared_id         uuid;
+--   v_setup_history     integer;
+--   v_setups            integer;
+--   v_shared_history    integer := 0;
+--   v_shared_setups     integer := 0;
+--   v_members           integer;
+-- begin
+--   -- ---------- who is calling ----------
+--   if v_user is null then
+--     raise exception 'PH_NOT_SIGNED_IN' using errcode = '42501';
+--   end if;
+--
+--   -- Admin of THIS company. A company that does not exist gives the same answer, so the
+--   -- function cannot be used to find out which ids exist.
+--   if p_company_id is null or not exists (
+--     select 1
+--     from public.company_members m
+--     where m.company_id = p_company_id and m.user_id = v_user and m.role = 'admin'
+--   ) then
+--     raise exception 'PH_NOT_ADMIN' using errcode = '42501';
+--   end if;
+--
+--   -- Lock the company row for the rest of the transaction, so nothing (an import, a rename,
+--   -- a save of rates, of a template or of a month, an issue of payslips, another delete) can
+--   -- change it or what belongs to it meanwhile.
+--   select * into v_company
+--   from public.companies
+--   where id = p_company_id
+--   for update;
+--
+--   if not found then
+--     raise exception 'PH_NOT_ADMIN' using errcode = '42501';
+--   end if;
+--
+--   -- ---------- the caller must name what they are deleting ----------
+--   -- Compared with the name as it is now, after trimming both. Case-sensitive.
+--   if p_confirm_name is null or btrim(p_confirm_name) <> btrim(v_company.name) then
+--     raise exception 'PH_NAME_MISMATCH' using errcode = '22023';
+--   end if;
+--
+--   -- ---------- delete, children first ----------
+--   -- Issued payslips must go before employees and before template versions: both references
+--   -- are ON DELETE RESTRICT.
+--   delete from public.issued_payslips p where p.company_id = p_company_id;
+--   get diagnostics v_issued = row_count;
+--
+--   -- Entries must go before employees: payroll_entries.employee_id is ON DELETE RESTRICT.
+--   delete from public.payroll_entries pe
+--   where pe.run_id in (select r.id from public.payroll_runs r where r.company_id = p_company_id);
+--   get diagnostics v_entries = row_count;
+--
+--   delete from public.payroll_runs r where r.company_id = p_company_id;
+--   get diagnostics v_runs = row_count;
+--
+--   delete from public.employees e where e.company_id = p_company_id;
+--   get diagnostics v_employees = row_count;
+--
+--   delete from public.company_details d where d.company_id = p_company_id;
+--   get diagnostics v_details = row_count;
+--
+--   delete from public.company_links l where l.company_id = p_company_id;
+--   get diagnostics v_links = row_count;
+--
+--   delete from public.statutory_rates s where s.company_id = p_company_id;
+--   get diagnostics v_rates = row_count;
+--
+--   -- Published versions before the templates they belong to.
+--   delete from public.payslip_template_versions v where v.company_id = p_company_id;
+--   get diagnostics v_template_versions = row_count;
+--
+--   delete from public.payslip_templates t where t.company_id = p_company_id;
+--   get diagnostics v_templates = row_count;
+--
+--   -- Kept revisions before the PDF templates they belong to. The files themselves are in the
+--   -- Storage bucket: the dashboard removes them before it calls this function.
+--   delete from public.pdf_template_history h where h.company_id = p_company_id;
+--   get diagnostics v_pdf_history = row_count;
+--
+--   delete from public.pdf_templates t where t.company_id = p_company_id;
+--   get diagnostics v_pdf_templates = row_count;
+--
+--   -- The months, with their history, before the column setup revisions they point at (those
+--   -- references are ON DELETE RESTRICT).
+--   delete from public.payroll_month_history h where h.company_id = p_company_id;
+--   get diagnostics v_month_history = row_count;
+--
+--   delete from public.payroll_months pm where pm.company_id = p_company_id;
+--   get diagnostics v_months = row_count;
+--
+--   -- The company's payroll setup. Its shared setup is locked first, in the same order as the
+--   -- saves take their locks, so a save of the shared setup cannot run into this half way.
+--   select cs.shared_setup_id into v_shared_id
+--   from public.payroll_company_setups cs
+--   where cs.company_id = p_company_id;
+--
+--   if v_shared_id is not null then
+--     perform 1 from public.payroll_shared_setups s where s.id = v_shared_id for update;
+--   end if;
+--
+--   delete from public.payroll_company_setup_history h where h.company_id = p_company_id;
+--   get diagnostics v_setup_history = row_count;
+--
+--   delete from public.payroll_company_setups cs where cs.company_id = p_company_id;
+--   get diagnostics v_setups = row_count;
+--
+--   -- A shared setup that no other company uses any more goes too, with its revisions: nobody
+--   -- else could read it, and it would otherwise be left behind for good.
+--   if v_shared_id is not null and not exists (
+--     select 1 from public.payroll_company_setups cs where cs.shared_setup_id = v_shared_id
+--   ) and not exists (
+--     select 1 from public.payroll_company_setup_history h where h.shared_setup_id = v_shared_id
+--   ) and not exists (
+--     select 1 from public.payroll_months pm where pm.shared_setup_id = v_shared_id
+--   ) then
+--     delete from public.payroll_shared_setup_history h where h.shared_setup_id = v_shared_id;
+--     get diagnostics v_shared_history = row_count;
+--
+--     delete from public.payroll_shared_setups s where s.id = v_shared_id;
+--     get diagnostics v_shared_setups = row_count;
+--   end if;
+--
+--   delete from public.company_members m where m.company_id = p_company_id;
+--   get diagnostics v_members = row_count;
+--
+--   delete from public.companies c where c.id = p_company_id;
+--
+--   -- Counts only: nothing about the company's data is returned.
+--   return jsonb_build_object(
+--     'company_id',                    p_company_id,
+--     'issued_payslips',               v_issued,
+--     'entries',                       v_entries,
+--     'runs',                          v_runs,
+--     'employees',                     v_employees,
+--     'details',                       v_details,
+--     'links',                         v_links,
+--     'rates',                         v_rates,
+--     'templates',                     v_templates,
+--     'template_versions',             v_template_versions,
+--     'pdf_templates',                 v_pdf_templates,
+--     'pdf_template_history',          v_pdf_history,
+--     'payroll_months',                v_months,
+--     'payroll_month_history',         v_month_history,
+--     'payroll_company_setups',        v_setups,
+--     'payroll_company_setup_history', v_setup_history,
+--     'payroll_shared_setups',         v_shared_setups,
+--     'payroll_shared_setup_history',  v_shared_history,
+--     'members',                       v_members
+--   );
+-- end;
+-- $$;
+--
+-- -- Unchanged, and repeated so this file is enough on its own.
+-- revoke all on function public.delete_company(uuid, text) from public, anon;
+-- grant execute on function public.delete_company(uuid, text) to authenticated;
+--
+-- drop function if exists public.set_payslip_template_in_use(uuid, uuid, integer);
+-- drop function if exists public.publish_payslip_template_copy(uuid, text, jsonb, integer);
+-- drop function if exists public.payroll_run_columns(uuid);
+-- drop table if exists public.payslip_template_in_use;
+-- notify pgrst, 'reload schema';

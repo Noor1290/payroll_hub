@@ -99,7 +99,7 @@ function fakeApi(override: Partial<Record<keyof Api, (...args: never[]) => ApiRe
             ? { data: { can_change: false, companies: 0, admin_of: 0 } }
             : name === "issued_payslips_for_month"
               ? { data: [] }
-              : spec?.expect.kind === "read" && ["set_updated_at", "payroll_month_employee_count", "payroll_month_value_keys", "payroll_month_rename_key"].includes(name)
+              : spec?.expect.kind === "read" && ["set_updated_at", "payroll_month_employee_count", "payroll_month_value_keys", "payroll_month_rename_key", "payroll_run_columns"].includes(name)
                 ? refused
                 : spec?.expect.kind === "read"
                   ? { data: false }

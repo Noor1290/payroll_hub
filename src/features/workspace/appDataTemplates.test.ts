@@ -95,6 +95,7 @@ describe("payslip-template: list", () => {
           updated_by_you: true,
           published_version: 2,
           published_at: "2026-09-02T09:00:00+04:00",
+          in_use_version: null,
         },
         {
           template_id: T2,
@@ -104,6 +105,7 @@ describe("payslip-template: list", () => {
           updated_by_you: false,
           published_version: null,
           published_at: null,
+          in_use_version: null,
         },
       ],
     });

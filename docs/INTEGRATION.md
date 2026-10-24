@@ -317,7 +317,7 @@ Requests, by `params.action`:
 
 | `params`                                         | Answer rows                                                                                                                     |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `{ action: "list", brn? }`                       | One per template, by name, without bodies: `template_id`, `name`, `draft_revision`, `updated_at`, `updated_by_you`, `published_version` and `published_at` (both `null` when never published). |
+| `{ action: "list", brn? }`                       | One per template, by name, without bodies: `template_id`, `name`, `draft_revision`, `updated_at`, `updated_by_you`, `published_version` and `published_at` (both `null` when never published), and `in_use_version`: the version of this template used for the company's payslips, or `null` (see "The template used for the payslips" below). |
 | `{ action: "load", template_id, brn? }`          | One row, the draft: `template_id`, `name`, `draft_revision`, `body`, `updated_at`, `updated_by_you`.                            |
 | `{ action: "load", template_id, version, brn? }` | One row, that published version: `template_id`, `name` (as it was when published), `version`, `body`, `published_at`, `published_by_you`. |
 
@@ -328,6 +328,9 @@ Saves, by the row's `action`:
 | `{ action: "save-draft", brn, name, body, expected_revision: 0 }` (a new template; `template_id` absent or `null`) | `{ template_id, name, draft_revision: 1, updated_at }` |
 | `{ action: "save-draft", brn, template_id, name, body, expected_revision }`           | `{ template_id, name, draft_revision, updated_at }`         |
 | `{ action: "publish", brn, template_id, expected_revision }`                          | `{ template_id, version, draft_revision, published_at }`    |
+| `{ action: "use", brn, template_id, version }` (both `null` to clear the choice)      | `{ action: "use", template_id, version }`                   |
+| `{ action: "publish-copy", brn, company_brn, name, body, expected_revision }`         | `{ action: "publish-copy", brn, company, template_id, name, version, draft_revision, created, published, published_at }` |
+| `{ action: "publish-summary", brn, name, published, skipped, failed, unconfirmed }`  | `{ action: "publish-summary" }`                              |
 
 `expected_revision` is the `draft_revision` the app last saw. A save-draft always sends the whole draft (name and body); renaming is a save-draft with the new name. Publishing publishes exactly the draft revision named, or is refused as `stale`.
 
@@ -337,7 +340,36 @@ Limits:
 - A company has at most 50 templates (`too-large`).
 - A name is 1 to 80 characters after trimming, and unique in its company whatever the capitals (`invalid`).
 - No images or other embedded files: a body in which any text or key contains a `data:` URI is refused (`invalid`). A logo is not part of a template in this stage.
-- There is no action to delete or archive a template, and a published version can never be removed. Anything other than the four actions above is `invalid`. (Follow-up: docs/FUTURE_WORK.md, section 9c.)
+- There is no action to delete or archive a template, and a published version can never be removed. Anything other than the actions above is `invalid`. (Follow-up: docs/FUTURE_WORK.md, section 9c.)
+
+#### The template used for the payslips, and publishing to several companies
+
+Added with migration `supabase/migrations/0018_payslip_template_in_use.sql`. Until it is run, `list` gives `in_use_version: null` everywhere and the three messages below are refused as `unavailable`, naming that file.
+
+**The template used for the payslips.** A company may have one published version chosen for its payslips; nothing is chosen for any company at first. `list` says which (`in_use_version` on that template's row). `use` sets it, for the selected company, admins only; `template_id` and `version` must name one of its published versions (`not-found` otherwise), or both be `null` to clear it. Anyone may read it; when nothing is chosen the app keeps its own rule (one published template, or it asks).
+
+**The check before publishing to several companies.** A request:
+
+| `params`                                  | Answer rows |
+| ----------------------------------------- | ----------- |
+| `{ action: "check", brn, name, page? }`   | One per company the user is an ADMIN of and that has a BRN, the selected company first (`selected: true`), then by name: `{ brn, company, selected, templates, template, payroll }`. 50 companies per answer: `page` 0 (or absent) is the first 50, `page` 1 the next 50, and so on, up to 999; a page with fewer than 50 rows is the last. There is no limit on the number of companies. |
+
+- `brn` is required and must be the selected company's, and the user must be an admin of it (`forbidden`). The companies are read from the database at that moment; a company the user is only a member of, or not a member of, is never in the answer.
+- `templates`: how many templates the company has (at most 50).
+- `template`: its template with that `name`, capitals ignored, or `null`: `{ template_id, name, draft_revision, published_version, unpublished_changes, latest_is_same }`. `unpublished_changes` is `true` when the draft is not exactly its latest published version (or it was never published): publishing to it would replace that draft. `latest_is_same` is `true` when its latest published version already is exactly the selected company's saved draft with that name (the one being published): publishing to it then adds no version and only makes that version the one used for its payslips.
+- `payroll`: its newest saved run, or `null` when it has none: `{ period: "YYYY-MM", employees, columns }`. `columns` are the keys "Get from dashboard" gives that run's rows (the standard fields, "Employee CSG" and "Employee NSF" when some row has them, and the company's own columns), names only. "Date of Employment" is not listed: it belongs to the employee. The database function behind it (`payroll_run_columns`) returns key names only, never a value, and only to an admin of that company.
+- No prompt and no password gate, as for the other template messages: nothing in it is per employee.
+
+**Publishing to one company.** A save, one company per message, so that each company gets all of it or none and one failure does not stop the others:
+
+- `company_brn` names the company: the selected one, or another the user is an ADMIN of (`forbidden` otherwise, checked against the database, and again by the database function).
+- `name` and `body` are what is published, with the same limits as `save-draft`.
+- `expected_revision` is that company's `template.draft_revision` from the check, or `0` when it had no template with that name. If that is no longer so (someone saved there since, or made a template with that name), the save is refused as `stale` and nothing is stored there.
+- In one step: its template with that name gets the body as its draft and a new published version (unless its latest version already is exactly that: `published: false`), or a new template is made, published as version 1 (`created: true`); and that version becomes the one used for its payslips. Issued payslips are never touched.
+- The answer names the company (`brn`, `company`). Each company is a row in the Transfer log, but has NO toast of its own, published or refused: the batch has one toast (below).
+
+**The end of a batch.** After the last company, the app sends `publish-summary` with the counts of companies published to (`published`, including those that already had that version and now use it), not ticked (`skipped`), refused (`failed`) and not confirmed (`unconfirmed`), each 0 to 100,000, at least one of them above 0. The dashboard stores nothing and adds no Transfer log row; it shows ONE toast, a success when nothing failed and a warning otherwise, for example `Payslip template "Monthly payslip" published to 4 companies; 2 skipped, 1 not published.` A count of 0 is left out of it. Publishing to the selected company only (`publish`) keeps its own toast, as before.
+- After `unavailable` or no answer: run the check again and compare that company's template before sending it again (its `draft_revision` and `published_version` will have moved if it went through).
 
 Ready-to-paste example:
 

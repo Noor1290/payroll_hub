@@ -740,8 +740,8 @@ const BREAKS = [
   },
   {
     what: "delete_company forgets the issued payslips",
-    // The newest definition is the one that counts (0014 since Phase 3).
-    file: "supabase/migrations/0014_payroll_months.sql",
+    // The newest definition is the one that counts (0018 since multi-company publishing).
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
     find: "  delete from public.issued_payslips p where p.company_id = p_company_id;\n",
     replace: "",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -760,10 +760,10 @@ const BREAKS = [
   {
     what: "The dashboard names an old migration when delete_company is missing",
     file: "src/features/company/deleteCompany.ts",
-    find: 'const MIGRATION = "0014_payroll_months.sql";',
-    replace: 'const MIGRATION = "0013_payroll_setups.sql";',
+    find: 'const MIGRATION = "0018_payslip_template_in_use.sql";',
+    replace: 'const MIGRATION = "0014_payroll_months.sql";',
     test: "src/features/company/deleteCompanyMigration.test.ts",
-    mustFail: "is defined last in 0014, the file the dashboard names",
+    mustFail: "is defined last in 0018, the file the dashboard names",
   },
   {
     what: "The delete dialog hides the issued payslips that will go",
@@ -1006,8 +1006,8 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the company's payroll setup behind",
-    // The newest definition is the one that counts (0014 since Phase 3).
-    file: "supabase/migrations/0014_payroll_months.sql",
+    // The newest definition is the one that counts (0018 since multi-company publishing).
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
     find: "  delete from public.payroll_company_setups cs where cs.company_id = p_company_id;\n  get diagnostics v_setups = row_count;\n",
     replace: "  v_setups := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1075,7 +1075,8 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the company's months behind",
-    file: "supabase/migrations/0014_payroll_months.sql",
+    // The newest definition is the one that counts (0018 since multi-company publishing).
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
     find: "  delete from public.payroll_months pm where pm.company_id = p_company_id;\n  get diagnostics v_months = row_count;\n",
     replace: "  v_months := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1236,6 +1237,104 @@ const BREAKS = [
     replace: 'args: () => ({ p_setup_id: SAFETY_SETUP_ID, p_name: "SAFETY CHECK",',
     test: "src/safety/nonmemberChecks.test.ts",
     mustFail: "asks for a new shared setup only with an empty name",
+  },
+
+  // ---------- Publishing a template to several companies (migration 0018) ----------
+  {
+    what: "Anyone signed in can see a company's newest run columns",
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    find: "    where m.company_id = p_company_id and m.user_id = v_user and m.role = 'admin'\n  ) then\n    raise exception 'PH_NOT_ADMIN' using errcode = '42501';\n  end if;\n\n  -- The newest saved run",
+    replace: "  ) or true then\n    null;\n  end if;\n\n  -- The newest saved run",
+    test: "src/features/workspace/templateInUse.db.test.ts",
+    mustFail: "is for admins of that company only, checked in the database",
+  },
+  {
+    what: "The run columns function returns what is stored, not only the key names",
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    find: "    select distinct jsonb_object_keys(e.extra) as key",
+    replace: "    select distinct e.extra::text as key",
+    test: "src/features/workspace/templateInUse.db.test.ts",
+    mustFail: "never a value",
+  },
+  {
+    what: "Publishing to a company overwrites a draft saved there after the check",
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    find: "    if v_template.draft_revision <> p_expected_revision then",
+    replace: "    if false then",
+    test: "src/features/workspace/templateInUse.db.test.ts",
+    mustFail: "refuses, changing nothing, when that company's draft moved on",
+  },
+  {
+    what: "Publishing to a company does not make it the one used for its payslips",
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    find: "  values (p_company_id, v_version.template_id, v_version.version, v_user, now())",
+    replace: "  select p_company_id, v_version.template_id, v_version.version, v_user, now() where false",
+    test: "src/features/workspace/templateInUse.db.test.ts",
+    mustFail: "makes a new template at version 1 in a company that has none with that name",
+  },
+  {
+    what: "delete_company leaves the template used for the payslips behind",
+    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    find: "  delete from public.payslip_template_in_use u where u.company_id = p_company_id;\n  get diagnostics v_in_use = row_count;\n",
+    replace: "  v_in_use := 0;\n",
+    test: "src/features/company/deleteCompanyMigration.test.ts",
+    mustFail: "deletes from every table that belongs to a company",
+  },
+  {
+    what: "The dashboard publishes to a company where the user is only a member",
+    file: "src/features/workspace/appData.ts",
+    find: '(membership) => membership.role === "admin" && membership.company.brn,',
+    replace: "(membership) => Boolean(membership.company.brn),",
+    test: "src/features/workspace/appDataTemplatesMulti.test.ts",
+    mustFail: "refuses a company where the user is only a member, or not a member",
+  },
+  {
+    what: "A member of the selected company may run the check before publishing",
+    file: "src/features/workspace/appData.ts",
+    find: '        return refuse("forbidden", "Only an admin of this company can publish a template.");',
+    replace: "        void 0;",
+    test: "src/features/workspace/appDataTemplatesMulti.test.ts",
+    mustFail: "is refused to a member who is not an admin of the selected company",
+  },
+  {
+    what: "The check says every company already has the version being published",
+    file: "src/features/workspace/appData.ts",
+    find: "              sameJson(latest.body, published),",
+    replace: "              true,",
+    test: "src/features/workspace/appDataTemplatesMulti.test.ts",
+    mustFail: "answers one row per company the user is an ADMIN of",
+  },
+  {
+    what: "Each company of a batch shows its own toast",
+    file: "src/features/workspace/appData.ts",
+    find: '      { silent: action === "publish-copy" },',
+    replace: "      { silent: false },",
+    test: "src/features/workspace/appDataTemplatesMulti.test.ts",
+    mustFail: "logs each company published to, with no toast of its own",
+  },
+  {
+    what: "A refused company of a batch still shows a toast",
+    file: "src/features/workspace/deliver.ts",
+    find: "    if (!silent) toast.error(",
+    replace: "    if (silent || !silent) toast.error(",
+    test: "src/features/workspace/appDataTemplatesMulti.test.ts",
+    mustFail: "logs each company published to, with no toast of its own",
+  },
+  {
+    what: "Every page of the check gives the first companies again",
+    file: "src/features/workspace/appData.ts",
+    find: "            .slice(page * CHECK_PAGE, (page + 1) * CHECK_PAGE)",
+    replace: "            .slice(0, CHECK_PAGE)",
+    test: "src/features/workspace/appDataTemplatesMulti.test.ts",
+    mustFail: "companies at a time, so any number of companies can be checked",
+  },
+  {
+    what: "The check lists the hub-owned date as a payroll column",
+    file: "src/config/payrollFields.ts",
+    find: "    if (!out.includes(key) && !RESERVED_EXTRA_KEYS.has(key) && !isHubOwnedKey(key)) out.push(key);",
+    replace: "    if (!out.includes(key) && !RESERVED_EXTRA_KEYS.has(key)) out.push(key);",
+    test: "src/features/workspace/appDataTemplatesMulti.test.ts",
+    mustFail: "answers one row per company the user is an ADMIN of",
   },
 ];
 

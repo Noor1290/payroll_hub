@@ -148,6 +148,13 @@
         <button id="templateImage" type="button">Save draft with an image</button>
         <button id="templateLarge" type="button">Save draft over 150 KB</button>
       </div>
+      <div class="row">
+        <label>Other company BRN <input type="text" id="copyBrn" value="C0000001" /></label>
+        <button id="templateCheck" type="button">Check my companies</button>
+        <button id="templateCopy" type="button">Publish to the other company</button>
+        <button id="templateUse" type="button">Use this version</button>
+        <button id="templateUseNone" type="button">Use the built-in</button>
+      </div>
       <strong>Issued payslips</strong>
       <p>
         Uses the month, template id and version above. Get a run from the dashboard first: its
@@ -384,6 +391,40 @@
             var large = body();
             large.padding = new Array(152000).join("x");
             save("Save draft over 150 KB", "payslip-template", draft(large, false));
+          };
+          // Migration 0018: the check before publishing to several companies, a copy to one, the choice.
+          $("templateCheck").onclick = function () {
+            ask("Check my companies", "payslip-template", {
+              action: "check",
+              brn: brn(),
+              name: $("templateName").value,
+            });
+          };
+          $("templateCopy").onclick = function () {
+            save("Publish to the other company", "payslip-template", {
+              action: "publish-copy",
+              brn: brn(),
+              company_brn: $("copyBrn").value.trim(),
+              name: $("templateName").value,
+              body: body(),
+              expected_revision: number("draftRevision"),
+            });
+          };
+          $("templateUse").onclick = function () {
+            save("Use this version", "payslip-template", {
+              action: "use",
+              brn: brn(),
+              template_id: $("templateId").value.trim(),
+              version: number("version"),
+            });
+          };
+          $("templateUseNone").onclick = function () {
+            save("Use the built-in", "payslip-template", {
+              action: "use",
+              brn: brn(),
+              template_id: null,
+              version: null,
+            });
           };
           // One fake payslip per national ID in the box. The figures are invented.
           var payslips = function (ids) {

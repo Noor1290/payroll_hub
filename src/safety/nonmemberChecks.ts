@@ -122,6 +122,12 @@ export const TABLES: Record<string, TableSpec> = {
     rlsWrites: false,
     insert: (company) => ({ company_id: company, template_id: ZERO_ID, version: 0, name: MARKER, body: {} }),
   },
+  payslip_template_in_use: {
+    companyColumn: "company_id",
+    rlsWrites: false,
+    // A version 0 that no template has: refused by its check and its keys even without the grant.
+    insert: (company) => ({ company_id: company, template_id: ZERO_ID, version: 0 }),
+  },
   issued_payslips: {
     companyColumn: "company_id",
     rlsWrites: false,
@@ -252,6 +258,11 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     args: () => ({}),
     expect: { kind: "read", ok: () => false, expected: "refused (trigger only)" },
   },
+  // 0018: an admin's read of key names only. A non-member must be refused before anything is read.
+  payroll_run_columns: {
+    args: (t) => ({ p_company_id: t.a }),
+    expect: { kind: "read", ok: () => false, expected: "refused" },
+  },
   payroll_month_employee_count: {
     args: () => ({ p_employees: [] }),
     expect: { kind: "read", ok: () => false, expected: "refused (internal)" },
@@ -296,6 +307,16 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
   // Guard: no template.
   publish_payslip_template: {
     args: (t) => ({ p_company_id: t.a, p_template_id: null, p_expected_revision: null }),
+    expect: NOT_ADMIN,
+  },
+  // Guard: a template without its version, refused after the permission check.
+  set_payslip_template_in_use: {
+    args: (t) => ({ p_company_id: t.a, p_template_id: ZERO_ID, p_version: null }),
+    expect: NOT_ADMIN,
+  },
+  // Guard: no name.
+  publish_payslip_template_copy: {
+    args: (t) => ({ p_company_id: t.a, p_name: "", p_body: {}, p_expected_revision: 0 }),
     expect: NOT_ADMIN,
   },
   // Guard: the 15th is not the first day of a month.

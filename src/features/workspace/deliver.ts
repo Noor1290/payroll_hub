@@ -189,7 +189,15 @@ export async function recordSave(
   save: () => Promise<ReceivedPayload>,
   describe: (result: Record<string, unknown>) => string,
   count: (result: Record<string, unknown>) => number = () => 1,
-  { quiet = false }: { quiet?: boolean } = {},
+  {
+    quiet = false,
+    silent = false,
+  }: {
+    /** No toast when it is saved; a refusal still shows one. */
+    quiet?: boolean;
+    /** No toast at all: one step of a batch whose app sends one summary at the end. */
+    silent?: boolean;
+  } = {},
 ): Promise<ReceivedPayload> {
   const id = crypto.randomUUID();
   const name = getApp(appId)?.name ?? appId;
@@ -212,10 +220,12 @@ export async function recordSave(
   }
   if (ack.ok) {
     finishExchange(id, { ok: true, rowCount: count(ack.result ?? {}) });
-    if (!quiet) toast.success(describe(ack.result ?? {}), { description: `Saved from ${name}.` });
+    if (!quiet && !silent) {
+      toast.success(describe(ack.result ?? {}), { description: `Saved from ${name}.` });
+    }
   } else {
     finishExchange(id, { ok: false, code: ack.code });
-    toast.error(`${name} could not save ${what}`, { description: ack.error });
+    if (!silent) toast.error(`${name} could not save ${what}`, { description: ack.error });
   }
   return ack;
 }

@@ -33,6 +33,11 @@ export interface DeletePreview {
   rates: number;
   templates: number;
   templateVersions: number;
+  /**
+   * 0 or 1: which published version the company's payslips use (migration 0018). It goes with
+   * the templates and is not listed on its own. Zero if that table doesn't exist yet.
+   */
+  templateInUse: number;
   /** Issued payslips, every revision (migration 0011). Zero if that table doesn't exist yet. */
   issuedPayslips: number;
   /**
@@ -112,6 +117,7 @@ export async function fetchDeletePreview(
     rates,
     templates,
     templateVersions,
+    templateInUse,
     issuedPayslips,
     pdfTemplates,
     pdfTemplateRevisions,
@@ -133,6 +139,7 @@ export async function fetchDeletePreview(
     db.from("statutory_rates").select("id", head).eq("company_id", companyId),
     db.from("payslip_templates").select("id", head).eq("company_id", companyId),
     db.from("payslip_template_versions").select("id", head).eq("company_id", companyId),
+    db.from("payslip_template_in_use").select("company_id", head).eq("company_id", companyId),
     db.from("issued_payslips").select("id", head).eq("company_id", companyId),
     db.from("pdf_templates").select("id", head).eq("company_id", companyId),
     db.from("pdf_template_history").select("revision", head).eq("company_id", companyId),
@@ -144,7 +151,7 @@ export async function fetchDeletePreview(
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
-  // These tables come from later migrations (0005, 0006, 0009 to 0014). Until they are run
+  // These tables come from later migrations (0005, 0006, 0009 to 0014, 0018). Until they are run
   // there is nothing in them to delete, and deleting a company must keep working.
   const optional = (result: { error: unknown; count: number | null }) => {
     if (result.error) {
@@ -164,6 +171,7 @@ export async function fetchDeletePreview(
     rates: optional(rates),
     templates: optional(templates),
     templateVersions: optional(templateVersions),
+    templateInUse: optional(templateInUse),
     issuedPayslips: optional(issuedPayslips),
     pdfTemplates: optional(pdfTemplates),
     pdfTemplateRevisions: optional(pdfTemplateRevisions),
@@ -231,7 +239,7 @@ export interface DeleteCompanyFailure extends DataFailure {
  * to a company replaces the function, so an older file must never be named here: run after
  * the newer ones, it would put back a function that does not know their tables.
  */
-const MIGRATION = "0014_payroll_months.sql";
+const MIGRATION = "0018_payslip_template_in_use.sql";
 const RUN_MIGRATIONS = `The owner needs to run the files in supabase/migrations that the database has not had yet, in order, up to ${MIGRATION}, in the Supabase SQL editor.`;
 
 const failure = (

@@ -1,13 +1,17 @@
 import { z } from "zod";
 import {
+  demoFetchRunColumns,
   demoFetchTemplateDraft,
+  demoFetchTemplateInUse,
   demoFetchTemplates,
   demoFetchTemplateVersion,
   demoPublishTemplate,
+  demoPublishTemplateCopy,
   demoSaveTemplateDraft,
+  demoSetTemplateInUse,
 } from "@/lib/demo/demoAppData";
 import { supabase } from "./client";
-import { NotConfiguredError } from "./errors";
+import { isMissingTable, NotConfiguredError } from "./errors";
 import type { Viewer } from "./queries";
 
 /**
@@ -18,6 +22,11 @@ import type { Viewer } from "./queries";
 
 /** The file the owner runs to set this up; named in messages when the tables are not there. */
 export const TEMPLATES_MIGRATION = "0010_payslip_templates.sql";
+/**
+ * The one used for the payslips, publishing to several companies, and the column names of a
+ * company's newest run (0018_payslip_template_in_use.sql).
+ */
+export const IN_USE_MIGRATION = "0018_payslip_template_in_use.sql";
 
 /** A company never has more than this (the function refuses the next one). */
 const MAX_TEMPLATES = 50;
@@ -198,4 +207,127 @@ export async function publishTemplate(
   });
   if (error) throw error;
   return publishedSchema.parse(data);
+}
+
+const inUseSchema = z.object({ template_id: z.uuid(), version: z.number().int().min(1) });
+export type TemplateInUse = z.infer<typeof inUseSchema>;
+
+/**
+ * The published version the company's payslips use (migration 0018), or null when none was
+ * chosen. Against a database without 0018 it is null too: nothing can have been chosen there.
+ */
+export async function fetchTemplateInUse(
+  viewer: Viewer,
+  companyId: string,
+): Promise<TemplateInUse | null> {
+  if (import.meta.env.DEV && viewer.isDemo) return demoFetchTemplateInUse(companyId);
+  if (!supabase) throw new NotConfiguredError();
+
+  const { data, error } = await supabase
+    .from("payslip_template_in_use")
+    .select("template_id, version")
+    .eq("company_id", companyId)
+    .limit(1);
+  if (error) {
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
+  return z.array(inUseSchema).parse(data)[0] ?? null;
+}
+
+const setInUseSchema = z.object({
+  template_id: z.uuid().nullable(),
+  version: z.number().int().min(1).nullable(),
+});
+export type SetInUse = z.infer<typeof setInUseSchema>;
+
+/** Names the version used for the payslips, or clears it (both null), through the database function. */
+export async function setTemplateInUse(
+  viewer: Viewer,
+  companyId: string,
+  templateId: string | null,
+  version: number | null,
+): Promise<SetInUse> {
+  if (import.meta.env.DEV && viewer.isDemo) {
+    return demoSetTemplateInUse(companyId, templateId, version);
+  }
+  if (!supabase) throw new NotConfiguredError();
+
+  const { data, error } = await supabase.rpc("set_payslip_template_in_use", {
+    p_company_id: companyId,
+    p_template_id: templateId,
+    p_version: version,
+  });
+  if (error) throw error;
+  return setInUseSchema.parse(data);
+}
+
+const copySchema = z.object({
+  template_id: z.uuid(),
+  name: z.string(),
+  version: z.number().int().min(1),
+  draft_revision: z.number().int().min(1),
+  /** A new template was made in that company. */
+  created: z.boolean(),
+  /** A new version was added; false when its latest version already was exactly this. */
+  published: z.boolean(),
+  published_at: z.string(),
+});
+export type PublishedCopy = z.infer<typeof copySchema>;
+
+export interface CopyInput {
+  name: string;
+  body: Record<string, unknown>;
+  /** The draft revision of that company's template with this name when it was checked; 0 for none. */
+  expectedRevision: number;
+}
+
+/**
+ * Publishes a body to one company through `publish_payslip_template_copy`: its template with the
+ * same name (capitals ignored) gets a new version, or a new template is made at version 1, and
+ * that version becomes the one used for its payslips. All of it or nothing; the database checks
+ * that the caller is an admin of that company.
+ */
+export async function publishTemplateCopy(
+  viewer: Viewer,
+  companyId: string,
+  input: CopyInput,
+): Promise<PublishedCopy> {
+  if (import.meta.env.DEV && viewer.isDemo) return demoPublishTemplateCopy(companyId, input);
+  if (!supabase) throw new NotConfiguredError();
+
+  const { data, error } = await supabase.rpc("publish_payslip_template_copy", {
+    p_company_id: companyId,
+    p_name: input.name,
+    p_body: input.body,
+    p_expected_revision: input.expectedRevision,
+  });
+  if (error) throw error;
+  return copySchema.parse(data);
+}
+
+const runColumnsSchema = z.object({
+  /** "YYYY-MM-01" of the newest saved run, or null when the company has none. */
+  period: z
+    .string()
+    .regex(/^\d{4}-\d{2}-01$/)
+    .nullable(),
+  employees: z.number().int().min(0),
+  /** Key names only, never a value. */
+  keys: z.array(z.string()),
+});
+export type RunColumns = z.infer<typeof runColumnsSchema>;
+
+/**
+ * The newest saved run's month, its number of employees and the names of the keys stored in its
+ * entries' `extra`, through `payroll_run_columns`. The database checks the caller is an admin of
+ * the company and returns names only, never a value.
+ */
+export async function fetchRunColumns(viewer: Viewer, companyId: string): Promise<RunColumns> {
+  if (import.meta.env.DEV && viewer.isDemo) return demoFetchRunColumns(companyId);
+  if (!supabase) throw new NotConfiguredError();
+
+  const { data, error } = await supabase.rpc("payroll_run_columns", { p_company_id: companyId });
+  if (error) throw error;
+  return runColumnsSchema.parse(data);
 }

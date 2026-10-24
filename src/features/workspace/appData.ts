@@ -1,5 +1,7 @@
+import { toast } from "sonner";
 import { z } from "zod";
 import {
+  getApp,
   PAYROLL_RESULT,
   PAYSLIP_ISSUE,
   PAYSLIP_TEMPLATE,
@@ -18,6 +20,7 @@ import {
   type ResponseDataPayload,
   type SendDataPayload,
 } from "@/lib/bridge/protocol";
+import { exportColumns } from "@/config/payrollFields";
 import { formatCount, formatPeriod } from "@/lib/format";
 import { ISSUED_PAYSLIPS_KEY, queryClient } from "@/lib/queryClient";
 import {
@@ -32,13 +35,19 @@ import {
   issuePayslips,
 } from "@/lib/supabase/issuedPayslips";
 import {
+  fetchRunColumns,
   fetchTemplateDraft,
+  fetchTemplateInUse,
   fetchTemplates,
   fetchTemplateVersion,
+  IN_USE_MIGRATION,
   publishTemplate,
+  publishTemplateCopy,
   saveTemplateDraft,
+  setTemplateInUse,
   TEMPLATES_MIGRATION,
 } from "@/lib/supabase/payslipTemplates";
+import { fetchMemberships, type Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import {
   fetchStatutoryRates,
@@ -320,6 +329,14 @@ const templateParamsSchema = z.discriminatedUnion("action", [
     template_id: templateIdSchema,
     version: z.number().int().min(1).optional(),
   }),
+  /** Before publishing to several companies: every company the user is an admin of, checked. */
+  z.strictObject({
+    action: z.literal("check"),
+    brn: brnSchema,
+    name: templateNameSchema,
+    /** The companies come CHECK_PAGE at a time, page 0 first; a short page is the last. */
+    page: z.number().int().min(0).max(999).optional(),
+  }),
 ]);
 
 /** What a save may ask for: one command per row. */
@@ -340,7 +357,152 @@ const templateSaveSchema = z.discriminatedUnion("action", [
     template_id: templateIdSchema,
     expected_revision: z.number().int().min(1),
   }),
+  /** Publishes a body to ONE company the user is an admin of (the selected one, or another). */
+  z.strictObject({
+    action: z.literal("publish-copy"),
+    brn: brnSchema,
+    company_brn: brnSchema,
+    name: templateNameSchema,
+    body: z.record(z.string(), z.unknown()),
+    /** That company's draft revision of the template with this name when it was checked; 0 for none. */
+    expected_revision: z.number().int().min(0),
+  }),
+  /** The version used for the selected company's payslips; both null to clear the choice. */
+  z.strictObject({
+    action: z.literal("use"),
+    brn: brnSchema,
+    template_id: templateIdSchema.nullable(),
+    version: z.number().int().min(1).nullable(),
+  }),
 ]);
+
+/** How many companies one page of a check covers: an answer about templates has at most 50 rows. */
+export const CHECK_PAGE = 50;
+
+/** The end of publishing to several companies: how it went, for ONE toast. Counts only. */
+const companyCount = z.number().int().min(0).max(100_000);
+const copySummarySchema = z.strictObject({
+  action: z.literal("publish-summary"),
+  brn: brnSchema,
+  name: templateNameSchema,
+  published: companyCount,
+  skipped: companyCount,
+  failed: companyCount,
+  unconfirmed: companyCount,
+});
+
+/** Compares JSON by content: the database returns an object's keys in its own order. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, i) => sameJson(item, b[i]))
+    );
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const keysA = Object.keys(a).sort();
+    const keysB = Object.keys(b).sort();
+    return (
+      sameJson(keysA, keysB) &&
+      keysA.every((key) =>
+        sameJson((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+      )
+    );
+  }
+  return a === b;
+}
+
+/** The companies the user is an admin of and that have a BRN, read from the database now. */
+async function adminCompanies(viewer: Viewer): Promise<Membership[]> {
+  return (await fetchMemberships(viewer)).filter(
+    (membership) => membership.role === "admin" && membership.company.brn,
+  );
+}
+
+interface CompanyChecked {
+  row: Record<string, unknown> & { template: Record<string, unknown> | null };
+  /** Its template's draft body and latest published version, to compare with the one published. */
+  draftBody: Record<string, unknown> | null;
+  latest: { name: string; body: Record<string, unknown> } | null;
+}
+
+/**
+ * One company, as the check before publishing sees it: its template with that name (and whether
+ * its draft holds changes that were never published), how many templates it has, and the month,
+ * size and column NAMES of its newest saved run. No payroll value is read: the database function
+ * returns key names only.
+ */
+async function checkCompany(
+  viewer: Viewer,
+  membership: Membership,
+  wanted: string,
+  selected: boolean,
+): Promise<CompanyChecked> {
+  const { company } = membership;
+  const [list, run] = await Promise.all([
+    fetchTemplates(viewer, company.id),
+    fetchRunColumns(viewer, company.id),
+  ]);
+  const match = list.find((template) => template.name.trim().toLowerCase() === wanted);
+  let template: Record<string, unknown> | null = null;
+  let draftBody: CompanyChecked["draftBody"] = null;
+  let latestVersion: CompanyChecked["latest"] = null;
+  if (match) {
+    const [draft, latest] = await Promise.all([
+      fetchTemplateDraft(viewer, company.id, match.id),
+      match.published
+        ? fetchTemplateVersion(viewer, company.id, match.id, match.published.version)
+        : Promise.resolve(null),
+    ]);
+    if (draft) {
+      draftBody = draft.draft_body;
+      latestVersion = latest ? { name: latest.name, body: latest.body } : null;
+      template = {
+        template_id: draft.id,
+        name: draft.name,
+        draft_revision: draft.draft_revision,
+        published_version: match.published?.version ?? null,
+        // Never published, or the draft is not the latest version: publishing would replace it.
+        unpublished_changes:
+          !latest || latest.name !== draft.name || !sameJson(latest.body, draft.draft_body),
+      };
+    }
+  }
+  return {
+    row: {
+      brn: company.brn,
+      company: company.name.slice(0, 120),
+      selected,
+      templates: list.length,
+      template,
+      payroll: run.period
+        ? {
+            period: run.period.slice(0, 7),
+            employees: run.employees,
+            columns: exportColumns(run.keys),
+          }
+        : null,
+    },
+    draftBody,
+    latest: latestVersion,
+  };
+}
+
+/** The selected company's saved draft of the template with that name, or null when it has none. */
+async function selectedDraftBody(
+  viewer: Viewer,
+  companyId: string,
+  wanted: string,
+): Promise<Record<string, unknown> | null> {
+  const match = (await fetchTemplates(viewer, companyId)).find(
+    (template) => template.name.trim().toLowerCase() === wanted,
+  );
+  return match
+    ? ((await fetchTemplateDraft(viewer, companyId, match.id))?.draft_body ?? null)
+    : null;
+}
 
 /** A `data:` URI anywhere in a text: an image or another file embedded in the body. */
 const EMBEDDED_FILE = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+/i;
@@ -383,7 +545,10 @@ export async function answerTemplateRequest(
 
   try {
     if (params.data.action === "list") {
-      const templates = await fetchTemplates(viewer, company.id);
+      const [templates, inUse] = await Promise.all([
+        fetchTemplates(viewer, company.id),
+        fetchTemplateInUse(viewer, company.id),
+      ]);
       return answer(
         templates.map((template) => ({
           template_id: template.id,
@@ -393,6 +558,47 @@ export async function answerTemplateRequest(
           updated_by_you: you(template.updated_by),
           published_version: template.published?.version ?? null,
           published_at: template.published?.published_at ?? null,
+          // The version of THIS template used for the payslips (migration 0018), or null.
+          in_use_version: inUse?.template_id === template.id ? inUse.version : null,
+        })),
+      );
+    }
+
+    if (params.data.action === "check") {
+      if (current.membership.role !== "admin") {
+        return refuse("forbidden", "Only an admin of this company can publish a template.");
+      }
+      const wanted = params.data.name.trim().toLowerCase();
+      const page = params.data.page ?? 0;
+      const admin = (await adminCompanies(viewer)).sort(
+        (a, b) =>
+          Number(b.company.id === company.id) - Number(a.company.id === company.id) ||
+          a.company.name.localeCompare(b.company.name) ||
+          a.company.id.localeCompare(b.company.id),
+      );
+      const [checked, published] = await Promise.all([
+        Promise.all(
+          admin
+            .slice(page * CHECK_PAGE, (page + 1) * CHECK_PAGE)
+            .map((membership) =>
+              checkCompany(viewer, membership, wanted, membership.company.id === company.id),
+            ),
+        ),
+        // What is published is the selected company's saved draft of that name.
+        selectedDraftBody(viewer, company.id, wanted),
+      ]);
+      return answer(
+        checked.map(({ row, latest }) => ({
+          ...row,
+          template: row.template && {
+            ...row.template,
+            // Its latest version already is exactly that: publishing adds no version there.
+            latest_is_same:
+              published !== null &&
+              latest !== null &&
+              latest.name === row.template.name &&
+              sameJson(latest.body, published),
+          },
         })),
       );
     }
@@ -425,7 +631,10 @@ export async function answerTemplateRequest(
       },
     ]);
   } catch (error) {
-    return refusalFor(error, TEMPLATES_MIGRATION);
+    return refusalFor(
+      error,
+      params.data.action === "check" ? IN_USE_MIGRATION : TEMPLATES_MIGRATION,
+    );
   }
 }
 
@@ -439,6 +648,70 @@ export async function saveTemplate(payload: SendDataPayload): Promise<ReceivedPa
     return refuse("forbidden", "Only an admin of this company can save or publish a template.");
   }
   const companyId = current.membership.company.id;
+
+  if (row.data.action === "use") {
+    if ((row.data.template_id === null) !== (row.data.version === null)) {
+      return refuse(
+        "invalid",
+        "The template choice couldn't be saved because the request was incomplete. Nothing was changed.",
+      );
+    }
+    try {
+      const set = await setTemplateInUse(
+        current.viewer,
+        companyId,
+        row.data.template_id,
+        row.data.version,
+      );
+      return { ok: true, result: { action: "use", ...set } };
+    } catch (error) {
+      return refusalFor(error, IN_USE_MIGRATION);
+    }
+  }
+
+  if (row.data.action === "publish-copy") {
+    const command = row.data;
+    if (jsonBytes(command.body) > TEMPLATE_BODY_BYTES) {
+      return refuse("too-large", "The template is larger than the dashboard accepts (150 KB).");
+    }
+    if (hasEmbeddedFile(command.body)) {
+      return refuse("invalid", "A template cannot contain images or other embedded files.");
+    }
+    try {
+      // Read from the database now: only a company the user is an admin of can be named.
+      const wanted = normaliseBrn(command.company_brn);
+      const target = (await adminCompanies(current.viewer)).find(
+        (membership) => normaliseBrn(membership.company.brn!) === wanted,
+      );
+      if (!target) {
+        return refuse("forbidden", "Only an admin of that company can publish a template to it.");
+      }
+      const copy = await publishTemplateCopy(current.viewer, target.company.id, {
+        name: command.name,
+        body: command.body,
+        expectedRevision: command.expected_revision,
+      });
+      return {
+        ok: true,
+        result: {
+          action: "publish-copy",
+          brn: target.company.brn,
+          company: target.company.name.slice(0, 120),
+          ...copy,
+        },
+      };
+    } catch (error) {
+      const refusal = refusalFor(error, IN_USE_MIGRATION);
+      if (refusal.code === "stale") {
+        return {
+          ...refusal,
+          error:
+            "That company's template was changed since it was checked. Nothing was published there. Check again.",
+        };
+      }
+      return refusal;
+    }
+  }
 
   try {
     if (row.data.action === "publish") {
@@ -469,8 +742,58 @@ export async function saveTemplate(payload: SendDataPayload): Promise<ReceivedPa
   }
 }
 
-/** The toast for a saved draft or a publication. A name and numbers only. */
+const companies = (count: number) =>
+  `${formatCount(count)} ${count === 1 ? "company" : "companies"}`;
+
+/**
+ * The one toast for publishing to several companies, from the app's summary at the end: how
+ * many were published to, skipped, refused, and not confirmed. A name and counts only.
+ */
+export function describeCopies(summary: z.infer<typeof copySummarySchema>): string {
+  const head =
+    summary.published > 0
+      ? `Payslip template "${summary.name}" published to ${companies(summary.published)}`
+      : `Payslip template "${summary.name}" was not published to any company`;
+  const rest = [
+    summary.skipped > 0 ? `${formatCount(summary.skipped)} skipped` : null,
+    summary.failed > 0 ? `${formatCount(summary.failed)} not published` : null,
+    summary.unconfirmed > 0 ? `${formatCount(summary.unconfirmed)} not confirmed` : null,
+  ].filter(Boolean);
+  return rest.length > 0 ? `${head}; ${rest.join(", ")}.` : `${head}.`;
+}
+
+/**
+ * The app's summary after publishing to several companies. Each company was already a row in the
+ * Transfer log, without a toast; this shows the one toast for the whole batch and stores nothing.
+ */
+export function summariseCopies(appId: string, payload: SendDataPayload): ReceivedPayload {
+  const row = copySummarySchema.safeParse(payload.rows[0]);
+  if (!row.success) return invalid(row.error);
+  const current = context(row.data.brn);
+  if ("ok" in current) return current;
+  const { published, skipped, failed, unconfirmed } = row.data;
+  if (published + skipped + failed + unconfirmed === 0) {
+    return refuse("invalid", "The summary names no company.");
+  }
+  const text = describeCopies(row.data);
+  const description = `From ${getApp(appId)?.name ?? appId}. Each company is a row in the Transfer log.`;
+  if (failed + unconfirmed > 0) toast.warning(text, { description });
+  else toast.success(text, { description });
+  return { ok: true, result: { action: "publish-summary" } };
+}
+
+/** The toast for a saved draft, a publication or the choice of template. Names and numbers only. */
 export function describeTemplateSave(result: Record<string, unknown>): string {
+  if (result.action === "publish-copy") {
+    return result.published
+      ? `Payslip template "${String(result.name)}" published to ${String(result.company)} (version ${String(result.version)})`
+      : `Payslip template "${String(result.name)}" (version ${String(result.version)}) is now used for the payslips of ${String(result.company)}`;
+  }
+  if (result.action === "use") {
+    return result.version === null
+      ? "The payslips now use the built-in template"
+      : `Payslip template version ${String(result.version)} is now used for the payslips`;
+  }
   return "version" in result
     ? `Payslip template published (version ${String(result.version)})`
     : `Payslip template "${String(result.name)}" saved as a draft (revision ${String(result.draft_revision)})`;
@@ -732,14 +1055,21 @@ registerDataType(STATUTORY_RATES, {
 registerDataType(PAYSLIP_TEMPLATE, {
   request: (appId, payload) =>
     answerRequest(appId, PAYSLIP_TEMPLATE, () => answerTemplateRequest(payload)),
-  save: (appId, payload) =>
-    recordSave(
+  save: (appId, payload) => {
+    const action = (payload.rows[0] as { action?: unknown } | undefined)?.action;
+    // The end of a batch: one toast for all of it, nothing stored, nothing more in the log.
+    if (action === "publish-summary") return Promise.resolve(summariseCopies(appId, payload));
+    return recordSave(
       appId,
       PAYSLIP_TEMPLATE,
       "the payslip template",
       () => saveTemplate(payload),
       describeTemplateSave,
-    ),
+      undefined,
+      // One company of a batch: logged like any save, but without a toast of its own.
+      { silent: action === "publish-copy" },
+    );
+  },
 });
 
 registerDataType(PAYSLIP_ISSUE, {

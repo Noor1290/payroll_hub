@@ -1,14 +1,19 @@
 import type {
+  CopyInput,
   DraftInput,
+  PublishedCopy,
   PublishedTemplate,
+  RunColumns,
   SavedDraft,
+  SetInUse,
   TemplateDraft,
+  TemplateInUse,
   TemplateSummary,
   TemplateVersion,
 } from "@/lib/supabase/payslipTemplates";
 import type { IssuedMonth, IssuedPayslip, PayslipInput } from "@/lib/supabase/issuedPayslips";
 import type { RatesInput, RatesVersion, SavedRates } from "@/lib/supabase/statutoryRates";
-import { demoHasEmployee, demoMemberships } from "./demoData";
+import { demoHasEmployee, demoMemberships, demoRunColumns } from "./demoData";
 
 /**
  * FAKE statutory rates, payslip templates and issued payslips for dev-only demo mode, so the
@@ -271,6 +276,116 @@ export async function demoPublishTemplate(
   };
 }
 
+// ---------- the template used for the payslips, and publishing to several companies (0018) ----------
+
+type StoredInUse = TemplateInUse & { company_id: string };
+
+/** Nothing is chosen for any company at first, as after the migration. */
+const inUse: StoredInUse[] = [];
+
+export async function demoFetchTemplateInUse(companyId: string): Promise<TemplateInUse | null> {
+  await pause(150);
+  const found = inUse.find((row) => row.company_id === companyId);
+  return found ? { template_id: found.template_id, version: found.version } : null;
+}
+
+function storeInUse(companyId: string, templateId: string, version: number) {
+  const found = inUse.find((row) => row.company_id === companyId);
+  if (found) Object.assign(found, { template_id: templateId, version });
+  else inUse.push({ company_id: companyId, template_id: templateId, version });
+}
+
+/** Mirrors set_payslip_template_in_use: admin only; a published version of that company, or both null. */
+export async function demoSetTemplateInUse(
+  companyId: string,
+  templateId: string | null,
+  version: number | null,
+): Promise<SetInUse> {
+  await pause(300);
+  requireAdmin(companyId);
+  if ((templateId === null) !== (version === null)) throw fail("PH_INVALID_INPUT", "22023");
+  if (templateId === null || version === null) {
+    const at = inUse.findIndex((row) => row.company_id === companyId);
+    if (at >= 0) inUse.splice(at, 1);
+    return { template_id: null, version: null };
+  }
+  const exists = versions.some(
+    (row) =>
+      row.company_id === companyId && row.template_id === templateId && row.version === version,
+  );
+  if (!exists) throw fail("PH_NOT_FOUND", "P0002");
+  storeInUse(companyId, templateId, version);
+  return { template_id: templateId, version };
+}
+
+/** Mirrors publish_payslip_template_copy: one company, all or nothing, then used for its payslips. */
+export async function demoPublishTemplateCopy(
+  companyId: string,
+  input: CopyInput,
+): Promise<PublishedCopy> {
+  await pause(500);
+  requireAdmin(companyId);
+  const name = input.name.trim();
+  const own = templates.filter((row) => row.company_id === companyId);
+  let found = own.find((row) => row.name.toLowerCase() === name.toLowerCase());
+  const now = new Date().toISOString();
+  let created = false;
+  if (!found) {
+    if (input.expectedRevision !== 0) throw fail("PH_STALE", "P0001");
+    if (own.length >= 50) throw fail("PH_LIMIT", "54000");
+    found = {
+      company_id: companyId,
+      id: crypto.randomUUID(),
+      name,
+      draft_body: input.body,
+      draft_revision: 1,
+      updated_by: DEMO_USER_ID,
+      updated_at: now,
+    };
+    templates.push(found);
+    created = true;
+  } else {
+    if (found.draft_revision !== input.expectedRevision) throw fail("PH_STALE", "P0001");
+    if (!sameJson(found.draft_body, input.body)) {
+      found.draft_body = input.body;
+      found.draft_revision += 1;
+      found.updated_at = now;
+    }
+  }
+  let latest = latestVersion(found.id);
+  let published = false;
+  if (!latest || latest.name !== found.name || !sameJson(latest.body, found.draft_body)) {
+    latest = {
+      company_id: companyId,
+      template_id: found.id,
+      version: (latest?.version ?? 0) + 1,
+      name: found.name,
+      body: found.draft_body,
+      published_by: DEMO_USER_ID,
+      published_at: now,
+    };
+    versions.push(latest);
+    published = true;
+  }
+  storeInUse(companyId, found.id, latest.version);
+  return {
+    template_id: found.id,
+    name: found.name,
+    version: latest.version,
+    draft_revision: found.draft_revision,
+    created,
+    published,
+    published_at: latest.published_at,
+  };
+}
+
+/** Mirrors payroll_run_columns: admin only, key names only. */
+export async function demoFetchRunColumns(companyId: string): Promise<RunColumns> {
+  await pause(200);
+  requireAdmin(companyId);
+  return demoRunColumns(companyId);
+}
+
 // ---------- issued payslips ----------
 
 type StoredPayslip = IssuedPayslip & { company_id: string; period: string };
@@ -421,13 +536,14 @@ export function demoAppDataCounts(companyId: string) {
     rates: own(rates),
     templates: own(templates),
     templateVersions: own(versions),
+    templateInUse: own(inUse),
     issuedPayslips: own(issued),
   };
 }
 
 /** Removes everything a deleted demo company had here. */
 export function demoForgetAppData(companyId: string): void {
-  for (const rows of [rates, templates, versions, issued]) {
+  for (const rows of [rates, templates, versions, inUse, issued]) {
     for (let i = rows.length - 1; i >= 0; i--) {
       if (rows[i]!.company_id === companyId) rows.splice(i, 1);
     }

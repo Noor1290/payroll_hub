@@ -310,6 +310,20 @@ export async function demoSetEmployeeDate(employeeId: string, value: string | nu
   employee.date_of_employment_typed = value === null ? null : true;
 }
 
+/** Mirrors payroll_run_columns (0018) without its admin check: the newest run's key names, never a value. */
+export function demoRunColumns(companyId: string): {
+  period: string | null;
+  employees: number;
+  keys: string[];
+} {
+  ensureSeeded();
+  const latest = liveRuns(companyId)[0];
+  if (!latest) return { period: null, employees: 0, keys: [] };
+  const own = entries.filter((entry) => entry.runId === latest.id);
+  const keys = [...new Set(own.flatMap((entry) => Object.keys(entry.extra)))].sort();
+  return { period: latest.period, employees: own.length, keys };
+}
+
 /** Mirrors newestRunMonth. */
 export async function demoNewestRunMonth(companyId: string): Promise<string | null> {
   await pause(100);

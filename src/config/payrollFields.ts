@@ -306,3 +306,21 @@ export function toExportRow(
   }
   return out;
 }
+
+/**
+ * The keys toExportRow gives a run's rows, from the keys stored in their `extra` (names only:
+ * no row and no value is needed). Every field that is not `inExtra` is always there; an `inExtra`
+ * field only when some row stores it; then the company's own columns, as toExportRow passes them
+ * along. "Date of Employment" is not listed: it comes from the employee, not from the run.
+ */
+export function exportColumns(extraKeys: readonly string[]): string[] {
+  const stored = new Set(extraKeys);
+  const out: string[] = [];
+  for (const field of PAYROLL_FIELDS) {
+    if (!field.inExtra || stored.has(field.column)) out.push(field.jsonKey);
+  }
+  for (const key of extraKeys) {
+    if (!out.includes(key) && !RESERVED_EXTRA_KEYS.has(key) && !isHubOwnedKey(key)) out.push(key);
+  }
+  return out;
+}

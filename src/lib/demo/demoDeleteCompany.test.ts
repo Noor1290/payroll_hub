@@ -64,6 +64,7 @@ describe("demoDeleteCompany", () => {
       rates: 0,
       templates: 0,
       templateVersions: 0,
+      templateInUse: 0,
       issuedPayslips: 0,
       pdfTemplates: 0,
       pdfTemplateRevisions: 0,
