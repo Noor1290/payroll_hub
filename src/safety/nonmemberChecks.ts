@@ -281,6 +281,11 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
   import_payroll_run: { args: (t) => ({ p_company_id: t.a, p_period: "2026-09-01", p_rows: [], p_replace: false }), expect: NOT_ADMIN },
   // Guard: no name and no BRN. (It adds a company, so it cannot be aimed at a TEST company.)
   create_company: { args: () => ({ p_name: "", p_address: null, p_brn: "", p_vat: null }), expect: NOT_ADMIN },
+  // Guard: no month at all (1 to 24 are needed).
+  import_payroll_company: {
+    args: (t) => ({ p_company_id: t.a, p_new_company: null, p_setup: null, p_expected: null, p_months: [] }),
+    expect: NOT_ADMIN,
+  },
   // Guard: the typed name is not the company's.
   delete_company: { args: (t) => ({ p_company_id: t.a, p_confirm_name: `${MARKER}: not the company name` }), expect: NOT_ADMIN },
   // Guard: the 15th is not the first day of a month.

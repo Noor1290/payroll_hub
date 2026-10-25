@@ -1418,6 +1418,47 @@ const BREAKS = [
     test: "src/features/workspace/payrollBatch.test.tsx",
     mustFail: "needs a month or a range of up to 24 months",
   },
+  // ---------- Importing such a file (payroll-import, migration 0019) ----------
+  {
+    what: "Import: a company the user only views is sent to the database",
+    file: "src/features/workspace/payrollImportData.ts",
+    find: '    if (found && found.role !== "admin") return NOT_ADMIN;',
+    replace: "    if (false) return NOT_ADMIN;",
+    test: "src/features/workspace/payrollImport.test.ts",
+    mustFail: "refuses at once, storing nothing",
+  },
+  {
+    what: "Import: a company is saved while the gate is locked",
+    file: "src/features/workspace/payrollImportData.ts",
+    find: "  if (!isUnlocked()) return SAVE_LOCKED;",
+    replace: "",
+    test: "src/features/workspace/payrollImport.test.ts",
+    mustFail: "refuses at once, storing nothing",
+  },
+  {
+    what: "Import: a company the user already has is made again",
+    file: "src/features/workspace/payrollImportData.ts",
+    find: "    if (found && command.new_company) {",
+    replace: "    if (false) {",
+    test: "src/features/workspace/payrollImport.test.ts",
+    mustFail: "makes a new company only for a BRN the user has no company with",
+  },
+  {
+    what: "Import: a draft run is reported as approved",
+    file: "src/features/workspace/payrollImportData.ts",
+    find: '          .filter((run) => run.status === "approved" && wanted.has(run.period.slice(0, 7)))',
+    replace: "          .filter((run) => wanted.has(run.period.slice(0, 7)))",
+    test: "src/features/workspace/payrollImport.test.ts",
+    mustFail: "says, per BRN, admin",
+  },
+  {
+    what: "Migration 0019: an approved month is replaced",
+    file: "supabase/migrations/0019_import_payroll_company.sql",
+    find: "          and r.status = 'approved' and r.deleted_at is null",
+    replace: "          and false",
+    test: "src/features/workspace/payrollImport.db.test.ts",
+    mustFail: "never replaces a month whose run is approved",
+  },
 ];
 
 const gitStatus = () =>

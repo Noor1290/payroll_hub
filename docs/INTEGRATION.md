@@ -170,6 +170,23 @@ Added for "Several companies…" in the payroll app (25 Oct 2026, branch `multi-
 - The app works out the figures itself, with the company's column setup as it is now, as its Employee Table and Totals show every month. The dashboard never looks inside a body or a month.
 - Every request is a row in the Transfer log (a `load` counts one row: the company), never with a value.
 
+### Payroll app: importing such a file (`payroll-import`)
+
+Added for "Several companies…" > Import (Stage 2), database side in `supabase/migrations/0019_import_payroll_company.sql`. The app reads the file itself (by its hidden sheet, never by the headings) and matches each sheet to a company by BRN, never by name. National IDs and salaries, so: admins only, with the password gate open (`locked` otherwise, nothing read or stored), and NO dialog: the preview the user confirms in the app is the confirmation (the owner's decision). `brn` is the selected company's (`wrong-company` otherwise).
+
+| Kind | What the app sends | What comes back |
+| --- | --- | --- |
+| request | `params: { action: "check", brn, from, to, companies: [brn, ...] }` (1 to 200 BRNs, the range as for `payroll-batch`) | one row per BRN: `{ brn, status: "absent" }` (the user has no company with that BRN, whether or not one exists); `{ brn, status: "member", name }` (a member, not an admin); or `{ brn, status: "admin", name, address, setup, months, approved }`: `setup` as `payroll-batch` gives it, or `null`; `months` the saved months of the range, `{ period, revision, employee_count }` (no employee); `approved` the months of the range whose saved run is approved |
+| save | `{ action: "company", brn, company_brn, new_company?: { name, address }, setup?: { shared_setup_id, create, name?, shared_body?, company_body }, expected?: { shared_revision, company_revision }, months: [{ period, employees, expected_revision, replace }] }` | `result: { action, brn, company, created, attached, shared_created, shared_setup_id, months: [{ period, revision, employee_count, replaced }] }` |
+| save | `{ action: "summary", brn, created, added, replaced, skipped, failed }` | `result: { action }`. Stores nothing: the one toast for the whole import |
+
+- **`company`** is ONE company of the file, stored ALL or NOTHING by `import_payroll_company` (migration 0019): if any part is refused, nothing of that company is stored, not the company, not its setup, not a month. One company refused does not affect the others: each is its own message.
+  - `new_company` only for a BRN the user has no company with (`stale` otherwise); a company is then made with that name, BRN and address, the user its admin (as `create_company`: an admin of at least one company; a BRN already used by a company the user cannot see is refused as `invalid`, "…you are not a member of it. It was not added."). Without it, the user must be an admin of that company (`forbidden`, "Only an admin of that company can import its months.").
+  - `setup` only for a company with no column setup yet: attached to the shared setup `shared_setup_id` (the selected company's, when the file's is the same), or to a new one made from the file (`create: true`, with `name` and `shared_body`), with `company_body` as its own setup. For a company that has a setup, `expected` names the revisions the file was checked against; if someone saved since, `stale`.
+  - `months`: 1 to 24, each named once: `period` `"YYYY-MM"`, `employees` as `payroll-month` stores them (1 MB at most), `expected_revision` (0 for a month not saved yet), `replace`. A saved month is replaced only with `replace: true`, as a new revision whose previous content is kept (History and Restore undo it), and never when its run is approved: `forbidden`, "The month YYYY-MM has an approved run in the dashboard, so it is never replaced. Nothing of this company was saved."
+- A company made here is added to the dashboard's company list. Each company is a row in the Transfer log without a toast; `summary` shows the one toast ("Payroll imported from Excel: 2 companies added to the dashboard, 14 months added, 3 months replaced; 4 months skipped, 1 company not imported.").
+- After `unavailable` or no answer: `check` that company again before sending it again (its months then have a newer revision if it was stored).
+
 ## `pdf-form-filler` (app id: `pdf-editor`)
 
 This app **receives** payroll results.
@@ -587,6 +604,7 @@ Limits per data type, checked by the dashboard before anything else:
 | `payslip-issue`    | exactly 1, holding 1 to 1,000 payslips | 4 MB (each payslip: 16 KB)   | 0 to 5,000        |
 | `payslip-batch`    | none: request only                  | none                            | 0 to 5,000        |
 | `payroll-batch`    | none: request only                  | none                            | 0 to 500          |
+| `payroll-import`   | exactly 1                           | 25 MB (24 months of 1 MB)       | 0 to 200          |
 | `pdf-template`     | exactly 1                           | 270 KB (the body itself: 250 KB) | 0 to 200         |
 | `pdf-file`         | exactly 1, holding one file         | 7.1 MB (a 5 MB file as base64)  | exactly 1         |
 

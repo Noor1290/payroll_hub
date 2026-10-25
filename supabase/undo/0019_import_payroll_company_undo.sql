@@ -1,0 +1,25 @@
+-- =====================================================================
+-- UNDO of migration 0019_import_payroll_company.sql. NOT a migration: kept outside
+-- supabase/migrations on purpose, and every line is commented out, so running this file as it
+-- is does nothing.
+--
+-- What it would do: drop the one function 0019 added, public.import_payroll_company. Nothing
+-- it stored is touched: companies, column setups and months imported with it stay exactly as
+-- they are (they are ordinary companies, setups and months). The payroll app's "Several
+-- companies…" > Import then answers that the dashboard is not set up for it; the export keeps
+-- working (it needs no migration).
+-- No other function, table, policy or grant is touched.
+--
+-- To use it, only when the owner decides: remove the "-- " at the start of every line below
+-- this header, then run it in Supabase dashboard -> SQL Editor.
+-- =====================================================================
+
+-- drop function if exists public.import_payroll_company(uuid, jsonb, jsonb, jsonb, jsonb);
+--
+-- notify pgrst, 'reload schema';
+--
+-- -- ---------- verification: one row, every column true ----------
+-- select
+--   (select count(*) = 0 from pg_proc where proname = 'import_payroll_company') as function_gone,
+--   (select count(*) = 1 from pg_proc where proname = 'save_payroll_month') as months_still_saved,
+--   (select count(*) = 1 from pg_proc where proname = 'create_company') as companies_still_created;

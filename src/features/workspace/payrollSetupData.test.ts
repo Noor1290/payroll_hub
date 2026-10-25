@@ -104,8 +104,8 @@ describe("the data type", () => {
     );
     expect(users.map((app) => app.id)).toEqual(["payroll"]);
     expect(getApp("payroll")).toMatchObject({
-      accepts: ["payroll-setup", "payroll-month", "payroll-batch"],
-      produces: ["payroll-result", "payroll-setup", "payroll-month"],
+      accepts: ["payroll-setup", "payroll-month", "payroll-batch", "payroll-import"],
+      produces: ["payroll-result", "payroll-setup", "payroll-month", "payroll-import"],
     });
     expect(DATA_RULES["payroll-setup"]).toMatchObject({ sendRows: 1, answerRows: [0, 500] });
   });

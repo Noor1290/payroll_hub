@@ -69,6 +69,11 @@ export const PAYROLL_MONTH = "payroll-month";
  * only.
  */
 export const PAYROLL_BATCH = "payroll-batch";
+/**
+ * The payroll app's import of such a file: what the dashboard has for each company of it, then
+ * one company at a time, all of it or nothing (migration 0019). Admins only, behind the gate.
+ */
+export const PAYROLL_IMPORT = "payroll-import";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -104,8 +109,8 @@ export const APPS: readonly AppConfig[] = [
     icon: Calculator,
     accentColor: "var(--accent)",
     status: "active",
-    accepts: [PAYROLL_SETUP, PAYROLL_MONTH, PAYROLL_BATCH],
-    produces: [PAYROLL_RESULT, PAYROLL_SETUP, PAYROLL_MONTH],
+    accepts: [PAYROLL_SETUP, PAYROLL_MONTH, PAYROLL_BATCH, PAYROLL_IMPORT],
+    produces: [PAYROLL_RESULT, PAYROLL_SETUP, PAYROLL_MONTH, PAYROLL_IMPORT],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: [],
   },

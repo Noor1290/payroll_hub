@@ -90,6 +90,10 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // Read only: nothing is ever sent. An answer lists the user's companies, the companies allowed,
   // or one company (its month and its column setup are inside that one row).
   "payroll-batch": { sendRows: 0, sendBytes: 0, answerRows: [0, 500] },
+  // One command per message: one company of an Excel file, with up to 24 months (1 MB each at
+  // most, MONTH_BYTES) and its column setup; or the summary at the end. An answer is one row per
+  // company of the file (200 at most).
+  "payroll-import": { sendRows: 1, sendBytes: 25_000_000, answerRows: [0, 200] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 
