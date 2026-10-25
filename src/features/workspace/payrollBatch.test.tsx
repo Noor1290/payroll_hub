@@ -120,14 +120,26 @@ const request = (params: Record<string, unknown>, appId = "payroll") =>
 
 /** Asks, then answers the dashboard's question as the user would: unlocked, then "Send". */
 async function askAndAllow(companies: string[]) {
-  const pending = request({ action: "ask", brn: "C1234567", period: "2026-09", companies });
+  const pending = request({
+    action: "ask",
+    brn: "C1234567",
+    from: "2026-09",
+    to: "2026-09",
+    companies,
+  });
   await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
   const asked = dataRequests.get()[0]!;
   grantUnlock(10);
   asked.respond(await asked.question!.answer());
   return { answer: await pending, asked };
 }
-const LOAD = { action: "load", brn: "C1234567", period: "2026-09", company_brn: "C1234567" };
+const LOAD = {
+  action: "load",
+  brn: "C1234567",
+  from: "2026-09",
+  to: "2026-09",
+  company_brn: "C1234567",
+};
 
 beforeEach(() => {
   members = [
@@ -197,7 +209,8 @@ describe("ask: one question naming the month and every company", () => {
     const pending = request({
       action: "ask",
       brn: "C1234567",
-      period: "2026-09",
+      from: "2026-09",
+      to: "2026-09",
       companies: ["C1234567", " c3333333 "],
     });
     await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
@@ -235,7 +248,8 @@ describe("ask: one question naming the month and every company", () => {
     void request({
       action: "ask",
       brn: "C1234567",
-      period: "2026-09",
+      from: "2026-09",
+      to: "2026-09",
       companies: many.map((one) => one.companies.brn),
     });
     await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
@@ -250,7 +264,8 @@ describe("ask: one question naming the month and every company", () => {
         await request({
           action: "ask",
           brn: "C1234567",
-          period: "2026-09",
+          from: "2026-09",
+          to: "2026-09",
           companies: ["C1234567", brn],
         }),
       ).toEqual({
@@ -262,13 +277,22 @@ describe("ask: one question naming the month and every company", () => {
     expect(dataRequests.get()).toHaveLength(0);
   });
 
-  it("needs a month and 1 to 200 companies, always named", async () => {
+  it("needs a month or a range of up to 24 months, and 1 to 200 companies, always named", async () => {
     const ask = (more: Record<string, unknown>) =>
-      request({ action: "ask", brn: "C1234567", period: "2026-09", ...more });
+      request({ action: "ask", brn: "C1234567", from: "2026-09", to: "2026-09", ...more });
     expect(await ask({})).toMatchObject({ ok: false, code: "invalid" });
     expect(await ask({ companies: [] })).toMatchObject({ ok: false, code: "invalid" });
     expect(await ask({ all: true })).toMatchObject({ ok: false, code: "invalid" });
-    expect(await ask({ companies: ["C1234567"], period: "2026-13" })).toMatchObject({
+    expect(await ask({ companies: ["C1234567"], from: "2026-13", to: "2026-13" })).toMatchObject({
+      ok: false,
+      code: "invalid",
+    });
+    // "to" before "from", and more than 24 months.
+    expect(await ask({ companies: ["C1234567"], from: "2026-09", to: "2026-08" })).toMatchObject({
+      ok: false,
+      code: "invalid",
+    });
+    expect(await ask({ companies: ["C1234567"], from: "2026-01", to: "2028-01" })).toMatchObject({
       ok: false,
       code: "invalid",
     });
@@ -281,7 +305,8 @@ describe("ask: one question naming the month and every company", () => {
     const pending = request({
       action: "ask",
       brn: "C1234567",
-      period: "2026-09",
+      from: "2026-09",
+      to: "2026-09",
       companies: ["C3333333"],
     });
     await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
@@ -297,18 +322,136 @@ describe("ask: one question naming the month and every company", () => {
   });
 });
 
+describe("a range of months", () => {
+  /** ABC has July, August and October 2026 saved, and nothing else. */
+  const saved = ["2026-07", "2026-08", "2026-10"];
+  const rangeDatabase = () =>
+    database((calls) => {
+      if (table(calls) !== "payroll_months" || eqValue(calls, "company_id") !== ABC)
+        return undefined;
+      const asked = calls.find(([method, column]) => method === "in" && column === "period")?.[2];
+      const wanted = new Set((asked as string[]).map((period) => period.slice(0, 7)));
+      // The database answers in any order: the dashboard puts them oldest first.
+      return {
+        data: [...saved]
+          .reverse()
+          .filter((month) => wanted.has(month))
+          .map((month, n) => ({
+            period: `${month}-01`,
+            revision: n + 1,
+            shared_revision: month < "2026-09" ? 6 : 7,
+            company_revision: 4,
+            employee_count: 1,
+            employees: EMPLOYEES,
+            updated_by: ME,
+            updated_at: "t",
+          })),
+      };
+    });
+
+  it("asks once, naming the range and every company, with the months in the warning", async () => {
+    void request({
+      action: "ask",
+      brn: "C1234567",
+      from: "2026-07",
+      to: "2027-06",
+      companies: ["C1234567", "C3333333"],
+    });
+    await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
+    const asked = dataRequests.get()[0]!;
+    expect(asked.question).toMatchObject({
+      what: "the July 2026 to June 2027 payroll of 2 companies",
+      of: "ABC Co Ltd and DEF Ltd",
+    });
+    expect(asked.question!.warning).toBe(
+      "This sends each company's saved months, with national IDs and salaries, and its column setup, to the app, one company at a time, for the next 15 minutes, to make one Excel file.",
+    );
+  });
+
+  it("loads every saved month of the 12, oldest first, each with the setup revisions it was saved with", async () => {
+    rangeDatabase();
+    const pending = request({
+      action: "ask",
+      brn: "C1234567",
+      from: "2026-07",
+      to: "2027-06",
+      companies: ["C1234567"],
+    });
+    await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
+    grantUnlock(10);
+    const asked = dataRequests.get()[0]!;
+    asked.respond(await asked.question!.answer());
+    expect(await pending).toMatchObject({ ok: true, meta: { brn: "C1234567" } });
+    const answer = await request({ ...LOAD, from: "2026-07", to: "2027-06" });
+    expect(answer).toMatchObject({
+      ok: true,
+      rows: [
+        {
+          from: "2026-07",
+          to: "2027-06",
+          months: [
+            { period: "2026-07", shared_revision: 6 },
+            { period: "2026-08", shared_revision: 6 },
+            { period: "2026-10", shared_revision: 7 },
+          ],
+        },
+      ],
+    });
+    expect((answer as { meta: Record<string, unknown> }).meta.period).toBeUndefined();
+    const query = fake.state.queries.find((calls) => table(calls) === "payroll_months")!;
+    const periods = query.find(([method, column]) => method === "in" && column === "period")?.[2];
+    expect(periods).toEqual([
+      "2026-07-01",
+      "2026-08-01",
+      "2026-09-01",
+      "2026-10-01",
+      "2026-11-01",
+      "2026-12-01",
+      "2027-01-01",
+      "2027-02-01",
+      "2027-03-01",
+      "2027-04-01",
+      "2027-05-01",
+      "2027-06-01",
+    ]);
+  });
+
+  it("allows only the range asked for, not a part or a larger one", async () => {
+    const pending = request({
+      action: "ask",
+      brn: "C1234567",
+      from: "2026-07",
+      to: "2027-06",
+      companies: ["C1234567"],
+    });
+    await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
+    grantUnlock(10);
+    const asked = dataRequests.get()[0]!;
+    asked.respond(await asked.question!.answer());
+    await pending;
+    for (const [from, to] of [
+      ["2026-07", "2026-07"],
+      ["2026-08", "2027-06"],
+      ["2026-07", "2027-07"],
+    ]) {
+      expect(await request({ ...LOAD, from, to })).toMatchObject({ ok: false, code: "denied" });
+    }
+  });
+});
+
 describe("load: one company at a time, only as allowed", () => {
   it("is refused when nothing was allowed, and reads nothing", async () => {
     grantUnlock(10);
     expect(await request(LOAD)).toEqual({
       ok: false,
       code: "denied",
-      error: "That company and month were not allowed in the dashboard for this app. Ask again.",
+      error:
+        "That company and those months were not allowed in the dashboard for this app. Ask again.",
     });
     expect(fake.state.queries).toHaveLength(0);
   });
 
-  it("gives one company's month exactly as saved, with its column setup, and never a user id", async () => {
+  it("gives one company's months exactly as saved, with its column setup, and never a user id", async () => {
     await askAndAllow(["C1234567", "C3333333"]);
     const answer = await request(LOAD);
     expect(answer).toEqual({
@@ -320,7 +463,8 @@ describe("load: one company at a time, only as allowed", () => {
           brn: "C1234567",
           name: "ABC Co Ltd",
           address: "1 Fake Street",
-          period: "2026-09",
+          from: "2026-09",
+          to: "2026-09",
           setup: {
             shared_setup_id: SHARED,
             shared_name: "Shared column setup",
@@ -329,14 +473,17 @@ describe("load: one company at a time, only as allowed", () => {
             company_body: ABC_BODY,
             company_revision: 4,
           },
-          month: {
-            revision: 3,
-            shared_revision: 7,
-            company_revision: 4,
-            employee_count: 1,
-            employees: EMPLOYEES,
-            updated_at: "2026-10-02T09:00:00+04:00",
-          },
+          months: [
+            {
+              period: "2026-09",
+              revision: 3,
+              shared_revision: 7,
+              company_revision: 4,
+              employee_count: 1,
+              employees: EMPLOYEES,
+              updated_at: "2026-10-02T09:00:00+04:00",
+            },
+          ],
         },
       ],
     });
@@ -349,12 +496,12 @@ describe("load: one company at a time, only as allowed", () => {
     await askAndAllow(["C3333333"]);
     expect(await request({ ...LOAD, company_brn: "C3333333" })).toMatchObject({
       ok: true,
-      rows: [{ brn: "C3333333", setup: { company_body: { columns: [] } }, month: null }],
+      rows: [{ brn: "C3333333", setup: { company_body: { columns: [] } }, months: [] }],
     });
     database((calls) => (table(calls) === "payroll_company_setups" ? { data: null } : undefined));
     expect(await request({ ...LOAD, company_brn: "C3333333" })).toMatchObject({
       ok: true,
-      rows: [{ brn: "C3333333", setup: null, month: null }],
+      rows: [{ brn: "C3333333", setup: null, months: [] }],
     });
   });
 
@@ -364,7 +511,7 @@ describe("load: one company at a time, only as allowed", () => {
       ok: false,
       code: "denied",
     });
-    expect(await request({ ...LOAD, period: "2026-08" })).toMatchObject({
+    expect(await request({ ...LOAD, from: "2026-08", to: "2026-08" })).toMatchObject({
       ok: false,
       code: "denied",
     });
@@ -414,7 +561,7 @@ describe("load: one company at a time, only as allowed", () => {
     expect(
       await answerBatchRequest("payroll", {
         dataType: "payslip-batch",
-        params: { ...LOAD },
+        params: { action: "load", brn: "C1234567", period: "2026-09", company_brn: "C1234567" },
       }),
     ).toMatchObject({ ok: false, code: "denied" });
   });
@@ -443,12 +590,13 @@ describe("the question in the dashboard", () => {
   };
   afterEach(() => cleanup());
 
-  it("names the month and every company, and what it sends", async () => {
+  it("names the month and every company, and what it sends (one month)", async () => {
     grantUnlock(10);
     void request({
       action: "ask",
       brn: "C1234567",
-      period: "2026-09",
+      from: "2026-09",
+      to: "2026-09",
       companies: ["C1234567", "C3333333"],
     });
     await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));

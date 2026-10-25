@@ -1403,12 +1403,20 @@ const BREAKS = [
     mustFail: "is refused when the user is no longer an admin of that company",
   },
   {
-    what: "Excel of several companies: the month of another period is read",
+    what: "Excel of several companies: only the first month of the range is read",
     file: "src/features/workspace/payrollBatchData.ts",
-    find: "    fetchMonths(viewer, company.id, [`${period}-01`]),",
-    replace: "    fetchMonths(viewer, company.id, [`${period}-02`]),",
+    find: "      monthsInRange(from, to).map((month) => `${month}-01`),",
+    replace: "      [`${from}-01`],",
     test: "src/features/workspace/payrollBatch.test.tsx",
-    mustFail: "gives one company's month exactly as saved",
+    mustFail: "loads every saved month of the 12, oldest first",
+  },
+  {
+    what: "Excel of several companies: a range longer than 24 months is accepted",
+    file: "src/features/workspace/payrollBatchData.ts",
+    find: "  from <= to && monthsInRange(from, to).length <= EXPORT_MAX_MONTHS;",
+    replace: "  from <= to;",
+    test: "src/features/workspace/payrollBatch.test.tsx",
+    mustFail: "needs a month or a range of up to 24 months",
   },
 ];
 
