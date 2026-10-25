@@ -3,7 +3,7 @@ import { PAYSLIP_BATCH } from "@/config/apps.config";
 import { toExportRow } from "@/config/payrollFields";
 import { handleDataRequest, registerDataType } from "@/lib/bridge/bridge";
 import type { RequestDataPayload, ResponseDataPayload } from "@/lib/bridge/protocol";
-import { formatCount, formatPeriod } from "@/lib/format";
+import { formatPeriod } from "@/lib/format";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { fetchIssuedPayslips } from "@/lib/supabase/issuedPayslips";
 import { fetchRunEntries, fetchRuns } from "@/lib/supabase/payroll";
@@ -13,7 +13,7 @@ import {
   fetchTemplateVersion,
   IN_USE_MIGRATION,
 } from "@/lib/supabase/payslipTemplates";
-import { fetchMemberships, type Viewer } from "@/lib/supabase/queries";
+import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import { fetchStatutoryRates } from "@/lib/supabase/statutoryRates";
 import { isUnlocked, registerLockCleanup } from "@/lib/unlock";
@@ -26,7 +26,16 @@ import {
   refusalFor,
   refuse,
 } from "./appData";
+import {
+  adminCompanies,
+  BATCH_ALLOWED_MS,
+  batchPermits,
+  countCompanies as companies,
+  listNames,
+} from "./batchAccess";
 import { answerRequest } from "./deliver";
+
+export { BATCH_ALLOWED_MS };
 
 /**
  * Payslips for several companies at once (docs/INTEGRATION.md, "payslip-batch"). Download only:
@@ -49,8 +58,6 @@ const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
 /** The most companies an `ask` may name; for more, it asks for all of the user's companies. */
 export const ASK_MAX_COMPANIES = 100;
-/** How long agreeing in the dialog allows the loads. */
-export const BATCH_ALLOWED_MS = 15 * 60_000;
 
 const paramsSchema = z.discriminatedUnion("action", [
   // The BRN is optional here, as on other lists: the answer says which company is selected.
@@ -75,20 +82,12 @@ const paramsSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-/** What the user allowed in the dialog. One at a time; a new ask replaces it. */
-interface Allowed {
-  appId: string;
-  userId: string;
-  selectedCompanyId: string;
-  period: string;
-  brns: ReadonlySet<string>;
-  until: number;
-}
-let allowed: Allowed | null = null;
+/** What the user allowed in the dialog (batchAccess.ts). One at a time; a new ask replaces it. */
+const permits = batchPermits();
 
 /** Forgets what was allowed. For tests, and when the gate locks or the user signs out. */
 export function forgetBatchAllowed(): void {
-  allowed = null;
+  permits.forget();
 }
 registerSessionCleanup(forgetBatchAllowed);
 registerLockCleanup(forgetBatchAllowed);
@@ -102,30 +101,8 @@ const NOT_ALLOWED = refuse(
   "That company and month were not allowed in the dashboard for this app. Ask again.",
 );
 
-/** The companies the user is an admin of and that have a BRN, read from the database now. */
-async function adminCompanies(viewer: Viewer, selectedId: string): Promise<Membership[]> {
-  return (await fetchMemberships(viewer))
-    .filter((membership) => membership.role === "admin" && membership.company.brn)
-    .sort(
-      (a, b) =>
-        Number(b.company.id === selectedId) - Number(a.company.id === selectedId) ||
-        a.company.name.localeCompare(b.company.name) ||
-        a.company.id.localeCompare(b.company.id),
-    );
-}
-
-const companies = (count: number) =>
-  `${formatCount(count)} ${count === 1 ? "company" : "companies"}`;
-
 /** "ABC Co Ltd, DEF Ltd and GHI Ltd" or "ABC Co Ltd, DEF Ltd, GHI Ltd and 7 more". */
-function someNames(names: readonly string[]): string {
-  const shown = names.slice(0, 3);
-  const rest = names.length - shown.length;
-  if (rest > 0) return `${shown.join(", ")} and ${formatCount(rest)} more`;
-  return shown.length > 1
-    ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)!}`
-    : shown.join("");
-}
+const someNames = (names: readonly string[]) => listNames(names, 3);
 
 /**
  * The template a company's payslips use, by the owner's rule: the version chosen in the dashboard
@@ -248,14 +225,14 @@ export async function answerBatchRequest(
           const granted = (chosen as Membership[]).filter((one) =>
             stillBrns.has(normaliseBrn(one.company.brn!)),
           );
-          allowed = {
+          permits.allow({
             appId,
             userId: again.viewer.id,
             selectedCompanyId: again.membership.company.id,
             period,
             brns: new Set(granted.map((one) => normaliseBrn(one.company.brn!))),
             until: Date.now() + BATCH_ALLOWED_MS,
-          };
+          });
           return {
             ok: true,
             dataType: PAYSLIP_BATCH,
@@ -271,15 +248,14 @@ export async function answerBatchRequest(
 
     const { period, company_brn: companyBrn } = params.data;
     const wanted = normaliseBrn(companyBrn);
-    const permit = allowed;
     if (
-      !permit ||
-      permit.until < Date.now() ||
-      permit.appId !== appId ||
-      permit.userId !== viewer.id ||
-      permit.selectedCompanyId !== membership.company.id ||
-      permit.period !== period ||
-      !permit.brns.has(wanted)
+      !permits.allows({
+        appId,
+        userId: viewer.id,
+        selectedCompanyId: membership.company.id,
+        period,
+        brn: wanted,
+      })
     ) {
       return NOT_ALLOWED;
     }

@@ -63,6 +63,12 @@ export const PAYROLL_SETUP = "payroll-setup";
  * at a time, every save recorded (migration 0014). Admins only, behind the password gate.
  */
 export const PAYROLL_MONTH = "payroll-month";
+/**
+ * The payroll app's months of several companies at once, for one Excel file: the user's admin
+ * companies, then, once allowed in the dialog, one company's month with its column setup. Read
+ * only.
+ */
+export const PAYROLL_BATCH = "payroll-batch";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -98,7 +104,7 @@ export const APPS: readonly AppConfig[] = [
     icon: Calculator,
     accentColor: "var(--accent)",
     status: "active",
-    accepts: [PAYROLL_SETUP, PAYROLL_MONTH],
+    accepts: [PAYROLL_SETUP, PAYROLL_MONTH, PAYROLL_BATCH],
     produces: [PAYROLL_RESULT, PAYROLL_SETUP, PAYROLL_MONTH],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: [],

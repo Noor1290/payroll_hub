@@ -1331,7 +1331,7 @@ const BREAKS = [
   // ---------- Payslips for several companies (payslip-batch) ----------
   {
     what: "Several companies: a company the user only views can be chosen",
-    file: "src/features/workspace/payslipBatchData.ts",
+    file: "src/features/workspace/batchAccess.ts",
     find: '    .filter((membership) => membership.role === "admin" && membership.company.brn)',
     replace: "    .filter((membership) => Boolean(membership.company.brn))",
     test: "src/features/workspace/payslipBatch.test.tsx",
@@ -1347,9 +1347,9 @@ const BREAKS = [
   },
   {
     what: "Several companies: a company that was not allowed can be loaded",
-    file: "src/features/workspace/payslipBatchData.ts",
-    find: "      !permit.brns.has(wanted)\n",
-    replace: "      false\n",
+    file: "src/features/workspace/batchAccess.ts",
+    find: "        permit.brns.has(normaliseBrn(load.brn))\n",
+    replace: "        true\n",
     test: "src/features/workspace/payslipBatch.test.tsx",
     mustFail: "is refused for a company or a month that was not allowed",
   },
@@ -1368,6 +1368,47 @@ const BREAKS = [
     replace: "    if (!out.includes(key) && !RESERVED_EXTRA_KEYS.has(key)) out.push(key);",
     test: "src/features/workspace/appDataTemplatesMulti.test.ts",
     mustFail: "answers one row per company the user is an ADMIN of",
+  },
+  // ---------- Several companies in one Excel file (payroll-batch) ----------
+  {
+    what: "Excel of several companies: a company the user only views can be asked for",
+    file: "src/features/workspace/payrollBatchData.ts",
+    find: "      if (chosen.some((one) => one === null)) {",
+    replace: "      if (false) {",
+    test: "src/features/workspace/payrollBatch.test.tsx",
+    mustFail: "refuses at once, without asking, a company where the user is only a member",
+  },
+  {
+    what: "Excel of several companies: the question says 'and N more' instead of naming every company",
+    file: "src/features/workspace/payrollBatchData.ts",
+    find: "        of: listNames(names),",
+    replace: "        of: listNames(names, 3),",
+    test: "src/features/workspace/payrollBatch.test.tsx",
+    mustFail: "names every company, however many",
+  },
+  {
+    what: "Excel of several companies: locking the gate keeps what was allowed",
+    file: "src/features/workspace/payrollBatchData.ts",
+    find: "registerLockCleanup(forgetPayrollBatchAllowed);\n",
+    replace: "",
+    test: "src/features/workspace/payrollBatch.test.tsx",
+    mustFail: "locking forgets what was allowed",
+  },
+  {
+    what: "Excel of several companies: a load for a former admin is answered",
+    file: "src/features/workspace/payrollBatchData.ts",
+    find: '    if (!target) {\n      return refuse(\n        "forbidden",\n        "Only an admin of that company can export',
+    replace: '    if (false) {\n      return refuse(\n        "forbidden",\n        "Only an admin of that company can export',
+    test: "src/features/workspace/payrollBatch.test.tsx",
+    mustFail: "is refused when the user is no longer an admin of that company",
+  },
+  {
+    what: "Excel of several companies: the month of another period is read",
+    file: "src/features/workspace/payrollBatchData.ts",
+    find: "    fetchMonths(viewer, company.id, [`${period}-01`]),",
+    replace: "    fetchMonths(viewer, company.id, [`${period}-02`]),",
+    test: "src/features/workspace/payrollBatch.test.tsx",
+    mustFail: "gives one company's month exactly as saved",
   },
 ];
 

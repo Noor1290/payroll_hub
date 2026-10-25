@@ -36,6 +36,7 @@ import "./pdfData";
 import "./payrollSetupData";
 import "./payrollMonthData";
 import "./payslipBatchData";
+import "./payrollBatchData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";
 

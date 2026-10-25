@@ -212,7 +212,7 @@ const toDate = (period: string) => `${period}-01`;
  * Reads through the query cache under a gated key, so locking cancels a read in flight and
  * drops what it read; nothing is kept once the app has its answer.
  */
-async function gatedRead<T>(key: unknown[], read: () => Promise<T>): Promise<T | Refusal> {
+export async function gatedRead<T>(key: unknown[], read: () => Promise<T>): Promise<T | Refusal> {
   const queryKey = [PAYROLL_MONTHS_KEY, ...key];
   try {
     const value = await queryClient.fetchQuery({

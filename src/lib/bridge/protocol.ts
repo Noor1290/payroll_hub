@@ -87,6 +87,9 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // the setup it is saved with (a shared setup and its companies' setups). An answer lists a
   // company's months (100 years at most), a few months with their employees, or a history.
   "payroll-month": { sendRows: 1, sendBytes: 2_200_000, answerRows: [0, 1_200] },
+  // Read only: nothing is ever sent. An answer lists the user's companies, the companies allowed,
+  // or one company (its month and its column setup are inside that one row).
+  "payroll-batch": { sendRows: 0, sendBytes: 0, answerRows: [0, 500] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 

@@ -760,6 +760,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
     "accepts": [
       "payroll-setup",
       "payroll-month",
+      "payroll-batch",
     ],
     "expectedFields": [],
     "id": "payroll",

@@ -99,6 +99,14 @@
       <strong>Produces payroll results</strong>
       <p>Sends the fake October sample to the dashboard, as the real payroll app would.</p>
       <button id="send" type="button">Send to dashboard</button>
+      <strong>Several companies in one Excel file (payroll-batch)</strong>
+      <div class="row">
+        <label>Month <input type="text" id="excelMonth" value="2026-10" /></label>
+        <button id="excelCompanies" type="button">List my admin companies</button>
+        <button id="excelAsk" type="button">Ask for all of them</button>
+        <button id="excelLoad" type="button">Load the first</button>
+      </div>
+      <pre id="excelAnswer">No answer yet.</pre>
     </div>
 
     <div class="card" id="consumer" hidden>
@@ -520,6 +528,50 @@
                 ? "Dashboard received " + rows.length + " rows"
                 : "Dashboard said: " + reply.error,
             );
+          };
+          // payroll-batch: the companies, ONE question for all of them, then one company per load.
+          var listed = [];
+          var askBatch = async function (what, params) {
+            log(what);
+            var reply = await Bridge.sendToDashboard("request-data", {
+              dataType: "payroll-batch",
+              params: params,
+            });
+            $("excelAnswer").textContent = JSON.stringify(reply, null, 2).slice(0, 4000);
+            log(
+              reply.ok
+                ? what + ": " + reply.rows.length + " rows"
+                : "Dashboard said: " + reply.error,
+            );
+            return reply;
+          };
+          var selectedBrn = function () {
+            var one = listed.find(function (row) {
+              return row.selected;
+            });
+            return one ? one.brn : "";
+          };
+          $("excelCompanies").onclick = async function () {
+            var reply = await askBatch("List my admin companies", { action: "companies" });
+            if (reply.ok) listed = reply.rows;
+          };
+          $("excelAsk").onclick = function () {
+            askBatch("Ask for all of them", {
+              action: "ask",
+              brn: selectedBrn(),
+              period: $("excelMonth").value,
+              companies: listed.map(function (row) {
+                return row.brn;
+              }),
+            });
+          };
+          $("excelLoad").onclick = function () {
+            askBatch("Load the first", {
+              action: "load",
+              brn: selectedBrn(),
+              period: $("excelMonth").value,
+              company_brn: listed.length ? listed[0].brn : "",
+            });
           };
         } else {
           if (appId === "payslip") payslipCard();
