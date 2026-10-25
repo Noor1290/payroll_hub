@@ -70,6 +70,9 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // One command holding a whole month (ISSUE_MAX_PAYSLIPS payslips of PAYSLIP_BYTES each at
   // most). An answer has one row per employee.
   "payslip-issue": { sendRows: 1, sendBytes: 4_000_000, answerRows: [0, 5_000] },
+  // Read only: nothing is ever sent. An answer lists the user's companies, the companies allowed,
+  // or one company (its run's rows are inside that one row).
+  "payslip-batch": { sendRows: 0, sendBytes: 0, answerRows: [0, 5_000] },
   // One command per message. The body may be 250 KB (PDF_TEMPLATE_BODY_BYTES); an answer
   // lists a company's templates (50 at most) or one template's kept revisions (200 at most).
   "pdf-template": { sendRows: 1, sendBytes: 270_000, answerRows: [0, 200] },

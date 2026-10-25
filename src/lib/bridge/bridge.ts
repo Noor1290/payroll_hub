@@ -44,6 +44,11 @@ export interface IncomingBatch {
 export interface RequestQuestion {
   /** What the app wants, to finish "It wants …" and "Send …". No values. */
   what: string;
+  /**
+   * Whose data it is, when not only the selected company's: names that replace "of <company>"
+   * after `what` (payslips for several companies). No values.
+   */
+  of?: string;
   /** What agreeing sends to the app, in one sentence. */
   warning: string;
   /**

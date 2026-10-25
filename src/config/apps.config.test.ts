@@ -32,6 +32,8 @@ describe("app registry", () => {
       "statutory-rates",
       "payslip-template",
       "payslip-issue",
+      // Several companies at once: it may ask, never send.
+      "payslip-batch",
     ]);
     expect(payslip.produces).toEqual(["statutory-rates", "payslip-template", "payslip-issue"]);
     expect(payslip.expectedFields).toEqual(getApp("pdf-editor")!.expectedFields);

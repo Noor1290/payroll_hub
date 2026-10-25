@@ -20,7 +20,7 @@ import { importInbox } from "@/features/import/importInbox";
 import { heldBatch } from "@/features/transfer/transferSource";
 import { parsePayrollRows } from "@/features/import/parsePayroll";
 import { dataRequests, incomingBatches, useAppHealth } from "@/lib/bridge/bridge";
-import type { DataRequest, IncomingBatch } from "@/lib/bridge/bridge";
+import type { DataRequest, IncomingBatch, RequestQuestion } from "@/lib/bridge/bridge";
 import type { ResponseDataPayload } from "@/lib/bridge/protocol";
 import { formatCount, formatPeriod } from "@/lib/format";
 import { classifyDataError } from "@/lib/supabase/errors";
@@ -35,6 +35,7 @@ import { exchangeContextLoading } from "./exchangeContext";
 import "./pdfData";
 import "./payrollSetupData";
 import "./payrollMonthData";
+import "./payslipBatchData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";
 
@@ -172,6 +173,23 @@ function IncomingDialog({ batch }: { batch: IncomingBatch }) {
   );
 }
 
+/** " of <company>", or ": <the companies>" when the request is about several (payslip-batch). */
+function WhoseData({ question, company }: { question?: RequestQuestion; company: string }) {
+  if (question && "of" in question) {
+    return question.of ? (
+      <>
+        : <span className="text-fg">{question.of}</span>
+      </>
+    ) : null;
+  }
+  return (
+    <>
+      {" "}
+      of <span className="text-fg">{company}</span>
+    </>
+  );
+}
+
 /** Shown when an app asks the dashboard for saved data. Nothing is sent without the user's say-so. */
 function RequestDialog({ request }: { request: DataRequest }) {
   const { user } = useAuth();
@@ -293,7 +311,8 @@ function RequestDialog({ request }: { request: DataRequest }) {
                   ) : !unlocked ? (
                     <>
                       <p>
-                        It wants {what} of <span className="text-fg">{current.company.name}</span>.
+                        It wants {what}
+                        <WhoseData question={question} company={current.company.name} />.
                       </p>
                       <p>
                         Saved payroll data is locked. Confirm your password to answer this request;
@@ -303,7 +322,8 @@ function RequestDialog({ request }: { request: DataRequest }) {
                   ) : (
                     <>
                       <p>
-                        It wants {what} of <span className="text-fg">{current.company.name}</span>.
+                        It wants {what}
+                        <WhoseData question={question} company={current.company.name} />.
                       </p>
                       <p>
                         {question?.warning ??

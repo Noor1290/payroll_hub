@@ -243,7 +243,7 @@ What is NOT sent to the dashboard: the values last typed into a form and the Peo
 
 ## Payslip app (app id: `payslip`)
 
-The dashboard's registry entry is active and loads the app from `https://noor1290.github.io/payslip/` (keep the trailing slash). It is registered for four data types:
+The dashboard's registry entry is active and loads the app from `https://noor1290.github.io/payslip/` (keep the trailing slash). It is registered for five data types:
 
 | Data type          | The app may ask for it | The app may save it | Asked of the dashboard's user        |
 | ------------------ | ---------------------- | ------------------- | ------------------------------------ |
@@ -251,6 +251,7 @@ The dashboard's registry entry is active and loads the app from `https://noor129
 | `statutory-rates`  | yes                    | yes                 | nothing                              |
 | `payslip-template` | yes                    | yes                 | nothing                              |
 | `payslip-issue`    | yes, admins only       | yes, admins only    | to ask: a prompt, and the password gate open; to save: no prompt, but the gate must already be open |
+| `payslip-batch`    | yes, admins only       | no                  | the list of companies: nothing; a month of several companies: ONE prompt, and the password gate open |
 
 **Every answer to a request for the last three says who the user is: `meta.role`**, `"admin"` or `"member"`, the signed-in user's role in the company the answer is about. Use it to show read-only from the start instead of finding out from a `forbidden`. It is a hint: the database still decides, and a save can still be refused. It is not on the acknowledgement of a save, and not on `payroll-result`.
 
@@ -498,6 +499,25 @@ else if (typeof reply.index === "number") showMessage(`${nameOf(selected[reply.i
 else showMessage(reply.error);
 ```
 
+### `payslip-batch`
+
+Payslips for several companies at once, download only: nothing is ever saved through this data type. Each company the app works on is one the user is an ADMIN of, read from the database at each request; everything else stays scoped to the selected company. `brn` must be the selected company's (`wrong-company` otherwise); it is required on `ask` and `load`.
+
+| `params`                                                     | Asked of the user | Answer rows |
+| ------------------------------------------------------------ | ----------------- | ----------- |
+| `{ action: "companies", brn? }`                              | nothing           | One per company the user is an admin of and that has a BRN, the selected company first, then by name: `{ brn, name, selected }`. Names only. `meta.brn` is the selected company: the BRN to send on `ask` and `load`. |
+| `{ action: "ask", brn, period, companies: [brn, ...] }` or `{ action: "ask", brn, period, all: true }` | ONE prompt, in the same dialog as a saved run, with the password gate open | The companies allowed: `{ brn, name }`. `meta.period` is the month. |
+| `{ action: "load", brn, period, company_brn }`               | nothing more      | ONE row for that company (below). |
+
+- **`ask`** names 1 to 100 companies, or `all: true` for every company the user is an admin of (an app with more than 100 chosen asks for all and loads only its own). A company the user is not an admin of is refused at once as `forbidden` ("Only companies where you are an admin can be chosen."), without asking. The prompt says which month and which companies ("It wants the September 2026 payroll of 10 companies: ABC Co Ltd, DEF Ltd, GHI Ltd and 7 more."). `denied`, `timeout` and `locked` as for `payroll-result`.
+- **Agreeing allows `load`** for those companies and that month only, for this app, this user and the company selected now, for 15 minutes. It is kept in the dashboard's memory only and is forgotten when the password gate locks, on sign-out, or when the app asks again. A `load` outside it is refused as `denied` ("That company and month were not allowed in the dashboard for this app. Ask again."), with nothing read.
+- **`load`** needs the gate open (`locked` otherwise, nothing read) and the user to be an admin of that company still (`forbidden`, "Only an admin of that company can make its payslips."). Its one row: `{ brn, company, period, run, employees, template, template_reason, rates, issued }`:
+  - `run`: whether the company has a saved run for that month; `employees`: its rows, exactly as `payroll-result` gives them (none when there is no run).
+  - `template`: the template its payslips use, `{ template_id, name, version, body }`: the version chosen for the payslips (`in_use_version`); otherwise its one published template's latest version; otherwise `null`, with `template_reason` `"none"` (no published template) or `"several"` (more than one, none chosen).
+  - `rates`: every version of its statutory rates, as `statutory-rates` gives them.
+  - `issued`: the payslips already issued for that month, the latest revision of each, as `payslip-issue` `load` gives them (`issued_by_you`, never a user id). The app downloads one that is issued and unchanged exactly as it was stored.
+- Every request is a row in the Transfer log (a `load` counts one row: the company), never with a value.
+
 ## How to check it works
 
 The bridge only trusts the **deployed** dashboard at `https://noor1290.github.io`. It will not connect to a dashboard running on `localhost`; there the app shows as "Not connected (local run)". So:
@@ -546,6 +566,7 @@ Limits per data type, checked by the dashboard before anything else:
 | `statutory-rates`  | exactly 1                           | 4 KB                            | 0 to 1,000        |
 | `payslip-template` | exactly 1                           | 160 KB (the body itself: 150 KB) | 0 to 50          |
 | `payslip-issue`    | exactly 1, holding 1 to 1,000 payslips | 4 MB (each payslip: 16 KB)   | 0 to 5,000        |
+| `payslip-batch`    | none: request only                  | none                            | 0 to 5,000        |
 | `pdf-template`     | exactly 1                           | 270 KB (the body itself: 250 KB) | 0 to 200         |
 | `pdf-file`         | exactly 1, holding one file         | 7.1 MB (a 5 MB file as base64)  | exactly 1         |
 

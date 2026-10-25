@@ -44,6 +44,11 @@ export const STATUTORY_RATES = "statutory-rates";
 export const PAYSLIP_TEMPLATE = "payslip-template";
 /** Payslips as they were issued, a month at a time, in numbered revisions (migration 0011). */
 export const PAYSLIP_ISSUE = "payslip-issue";
+/**
+ * Payslips for several companies at once: the user's admin companies, then, once allowed in the
+ * dialog, one company's run of a month with its template and rates. Read only (download only).
+ */
+export const PAYSLIP_BATCH = "payslip-batch";
 /** A company's PDF form templates: fields and company details, every revision kept (migration 0012). */
 export const PDF_TEMPLATE = "pdf-template";
 /** The blank PDF forms themselves, in the Storage bucket under the hash of their content (migration 0012). */
@@ -119,7 +124,7 @@ export const APPS: readonly AppConfig[] = [
     icon: ReceiptText,
     accentColor: "var(--warn)",
     status: "active",
-    accepts: [PAYROLL_RESULT, STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE],
+    accepts: [PAYROLL_RESULT, STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE, PAYSLIP_BATCH],
     produces: [STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,

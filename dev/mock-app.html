@@ -155,6 +155,11 @@
         <button id="templateUse" type="button">Use this version</button>
         <button id="templateUseNone" type="button">Use the built-in</button>
       </div>
+      <div class="row">
+        <button id="batchCompanies" type="button">List my admin companies</button>
+        <button id="batchAsk" type="button">Ask for this and the other company</button>
+        <button id="batchLoad" type="button">Load the other company</button>
+      </div>
       <strong>Issued payslips</strong>
       <p>
         Uses the month, template id and version above. Get a run from the dashboard first: its
@@ -424,6 +429,26 @@
               brn: brn(),
               template_id: null,
               version: null,
+            });
+          };
+          // payslip-batch: several companies at once (read only).
+          $("batchCompanies").onclick = function () {
+            ask("List my admin companies", "payslip-batch", { action: "companies" });
+          };
+          $("batchAsk").onclick = function () {
+            ask("Ask for this and the other company", "payslip-batch", {
+              action: "ask",
+              brn: brn(),
+              period: $("month").value,
+              companies: [brn(), $("copyBrn").value.trim()],
+            });
+          };
+          $("batchLoad").onclick = function () {
+            ask("Load the other company", "payslip-batch", {
+              action: "load",
+              brn: brn(),
+              period: $("month").value,
+              company_brn: $("copyBrn").value.trim(),
             });
           };
           // One fake payslip per national ID in the box. The figures are invented.

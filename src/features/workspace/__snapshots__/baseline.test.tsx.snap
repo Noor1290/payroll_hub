@@ -827,6 +827,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
       "statutory-rates",
       "payslip-template",
       "payslip-issue",
+      "payslip-batch",
     ],
     "expectedFields": [
       "ID | string | required | sensitive",
