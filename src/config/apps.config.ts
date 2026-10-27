@@ -1,4 +1,4 @@
-import { Calculator, FileText, ReceiptText, type LucideIcon } from "lucide-react";
+import { Calculator, FileSpreadsheet, FileText, ReceiptText, type LucideIcon } from "lucide-react";
 import { DEMO_MODE } from "./env";
 import { HOSTING } from "./origins";
 import { DATE_OF_EMPLOYMENT, PAYROLL_FIELDS } from "./payrollFields";
@@ -74,6 +74,11 @@ export const PAYROLL_BATCH = "payroll-batch";
  * one company at a time, all of it or nothing (migration 0019). Admins only, behind the gate.
  */
 export const PAYROLL_IMPORT = "payroll-import";
+/**
+ * The MRA return files (CSG / PACO and PRGF) of one or several companies: the user's admin
+ * companies, then, once allowed in the dialog, one company's saved run of a month. Read only.
+ */
+export const MRA_BATCH = "mra-batch";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -137,6 +142,20 @@ export const APPS: readonly AppConfig[] = [
     status: "active",
     accepts: [PAYROLL_RESULT, STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE, PAYSLIP_BATCH],
     produces: [STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE],
+    protocolVersion: PROTOCOL_VERSION,
+    expectedFields: payrollExportFields,
+  },
+  {
+    id: "mra-returns",
+    name: "MRA Returns",
+    description: "Makes the CSG and PRGF return files for the MRA from saved payroll runs.",
+    url: `${HOSTING.apps}/mra_returns/`,
+    icon: FileSpreadsheet,
+    accentColor: "var(--sky)",
+    status: "active",
+    // Only what it needs: saved runs of its user's admin companies, never anything it sends.
+    accepts: [MRA_BATCH],
+    produces: [],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,
   },

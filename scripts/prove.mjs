@@ -1459,6 +1459,63 @@ const BREAKS = [
     test: "src/features/workspace/payrollImport.db.test.ts",
     mustFail: "never replaces a month whose run is approved",
   },
+  // ---------- MRA return files (mra-batch) ----------
+  {
+    what: "MRA returns: the app is allowed more than mra-batch",
+    file: "src/config/apps.config.ts",
+    find: "    accepts: [MRA_BATCH],",
+    replace: "    accepts: [PAYROLL_RESULT, MRA_BATCH],",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "may ask for mra-batch only, and send nothing",
+  },
+  {
+    what: "MRA returns: a company the user only views can be asked for",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: "      if (chosen.some((one) => one === null)) {",
+    replace: "      if (false) {",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "refuses at once, without asking, a company where the user is only a member",
+  },
+  {
+    what: "MRA returns: the question says 'and N more' instead of naming every company",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: "        of: listNames(names),",
+    replace: "        of: listNames(names, 1),",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "asks once, naming every company",
+  },
+  {
+    what: "MRA returns: a load is answered without being allowed",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: "      return NOT_ALLOWED;\n    }\n    if (!isUnlocked()) return READ_LOCKED;",
+    replace: "    }\n    if (!isUnlocked()) return READ_LOCKED;",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "is refused when nothing was allowed",
+  },
+  {
+    what: "MRA returns: a load is answered with the gate locked",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: "registerLockCleanup(forgetMraBatchAllowed);\n",
+    replace: "",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "locking forgets what was allowed",
+  },
+  {
+    what: "MRA returns: a load for a former admin is answered",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: "    if (!target) {\n      return refuse(\"forbidden\", \"Only an admin of that company can make its MRA returns.\");",
+    replace: "    if (false) {\n      return refuse(\"forbidden\", \"Only an admin of that company can make its MRA returns.\");",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "is refused when the user is no longer an admin of that company",
+  },
+  {
+    what: "MRA returns: another month's run is sent",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: "    (found) => found.period === `${period}-01`,",
+    replace: "    () => true,",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "says when the month was never sent to the dashboard",
+  },
 ];
 
 const gitStatus = () =>

@@ -1,6 +1,6 @@
 # Connecting an app to Payroll Hub
 
-This is for whoever adds the bridge to an app (`payroll_sys`, `pdf-form-filler`, the payslip app), including Claude Code working in that app's repository. It explains what to copy, what to wire up, and how to check it works.
+This is for whoever adds the bridge to an app (`payroll_sys`, `pdf-form-filler`, the payslip app, MRA Returns), including Claude Code working in that app's repository. It explains what to copy, what to wire up, and how to check it works.
 
 ## The idea in one minute
 
@@ -554,6 +554,29 @@ Payslips for several companies at once, download only: nothing is ever saved thr
   - `issued`: the payslips already issued for that month, the latest revision of each, as `payslip-issue` `load` gives them (`issued_by_you`, never a user id). The app downloads one that is issued and unchanged exactly as it was stored.
 - Every request is a row in the Transfer log (a `load` counts one row: the company), never with a value.
 
+## MRA Returns (app id: `mra-returns`)
+
+The fifth app (`https://noor1290.github.io/mra_returns/`, repo `mra_returns`). It makes the MRA return files (the CSG file, MRA "PACO", and the PRGF file) from saved runs: the rows "Get from dashboard" gives, as Payroll System sent them. It only asks; it never sends data, and the files it makes are never stored. It is registered for one data type:
+
+| Data type   | The app may ask for it | The app may save it | Asked of the dashboard's user |
+| ----------- | ---------------------- | ------------------- | ----------------------------- |
+| `mra-batch` | yes, admins only       | no                  | the list of companies: nothing; a month of one or several companies: ONE prompt, and the password gate open |
+
+### `mra-batch`
+
+Added 27 Oct 2026 (branch `mra-returns`, Stage 0). No migration: it reads the saved runs (`payroll_runs`, `payroll_entries`) that `payroll-result` reads. It works as `payroll-batch` does (the same code, `src/features/workspace/batchAccess.ts`): each company is one the user is an ADMIN of, read from the database at each request; `brn` must be the selected company's (`wrong-company` otherwise) and is required on `ask` and `load`. One company is asked for the same way as several.
+
+| `params`                                           | Asked of the user | Answer rows |
+| -------------------------------------------------- | ----------------- | ----------- |
+| `{ action: "companies", brn? }`                    | nothing           | One per company the user is an admin of and that has a BRN, the selected company first, then by name: `{ brn, name, selected }`. Names only. When the user is not an admin of the selected company, it is not in the list (no row has `selected: true`). |
+| `{ action: "ask", brn, period, companies: [brn, ...] }` | ONE prompt, in the same dialog as a saved run, with the password gate open | The companies allowed: `{ brn, name }`. `meta.period` is the month. |
+| `{ action: "load", brn, period, company_brn }`     | nothing more      | ONE row for that company (below). |
+
+- **`ask`** names 1 to 200 companies, always by BRN (there is no `all`): the prompt names the month and EVERY company ("It wants the August 2026 payroll of 2 companies: ABC Co Ltd and DEF Ltd."). A company the user is not an admin of is refused at once as `forbidden` ("Only companies where you are an admin can be chosen."), without asking. `denied`, `timeout` and `locked` as for `payroll-result`.
+- **Agreeing allows `load`** for those companies and that month only, for this app, this user and the company selected now, for 15 minutes, in the dashboard's memory only; forgotten when the gate locks, on sign-out, or when the app asks again. It is separate from what `payslip-batch` and `payroll-batch` allowed. A `load` outside it is refused as `denied` ("That company and month were not allowed in the dashboard for this app. Ask again."), with nothing read.
+- **`load`** needs the gate open (`locked` otherwise, nothing read) and the user to be an admin of that company still (`forbidden`, "Only an admin of that company can make its MRA returns."). Its one row: `{ brn, name, address, period, run, employees }`: `run` says whether the company has a saved run for that month (`false` when that month was never sent to the dashboard, with no employees); `employees` are its rows exactly as `payroll-result` gives them.
+- Every request is a row in the Transfer log (a `load` counts one row: the company), never with a value.
+
 ## How to check it works
 
 The bridge only trusts the **deployed** dashboard at `https://noor1290.github.io`. It will not connect to a dashboard running on `localhost`; there the app shows as "Not connected (local run)". So:
@@ -605,6 +628,7 @@ Limits per data type, checked by the dashboard before anything else:
 | `payslip-batch`    | none: request only                  | none                            | 0 to 5,000        |
 | `payroll-batch`    | none: request only                  | none                            | 0 to 500          |
 | `payroll-import`   | exactly 1                           | 25 MB (24 months of 1 MB)       | 0 to 200          |
+| `mra-batch`        | none: request only                  | none                            | 0 to 500          |
 | `pdf-template`     | exactly 1                           | 270 KB (the body itself: 250 KB) | 0 to 200         |
 | `pdf-file`         | exactly 1, holding one file         | 7.1 MB (a 5 MB file as base64)  | exactly 1         |
 

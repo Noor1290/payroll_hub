@@ -110,6 +110,21 @@
       <pre id="excelAnswer">No answer yet.</pre>
     </div>
 
+    <div class="card" id="mra" hidden>
+      <strong>MRA return files (mra-batch)</strong>
+      <p>
+        Lists the admin companies, asks ONE question for the month and all of them, then loads each
+        company's saved run, as the real MRA Returns app would.
+      </p>
+      <div class="row">
+        <label>Month <input type="text" id="mraMonth" value="2026-08" /></label>
+        <button id="mraCompanies" type="button">List my admin companies</button>
+        <button id="mraAsk" type="button">Ask for all of them</button>
+        <button id="mraLoad" type="button">Load each</button>
+      </div>
+      <pre id="mraAnswer">No answer yet.</pre>
+    </div>
+
     <div class="card" id="consumer" hidden>
       <strong>Receives payroll results</strong>
       <p id="received">Nothing received yet.</p>
@@ -198,6 +213,7 @@
           payroll: "Payroll System",
           "pdf-editor": "PDF Form Filler",
           payslip: "Payslip Automation",
+          "mra-returns": "MRA Returns",
         };
         var $ = function (id) {
           return document.getElementById(id);
@@ -575,6 +591,73 @@
               to: $("excelTo").value,
               company_brn: listed.length ? listed[0].brn : "",
             });
+          };
+        } else if (appId === "mra-returns") {
+          // mra-batch: the companies, ONE question for all of them, then one company per load.
+          $("mra").hidden = false;
+          var mraListed = [];
+          var askMra = async function (what, params) {
+            log(what);
+            var reply = await Bridge.sendToDashboard("request-data", {
+              dataType: "mra-batch",
+              params: params,
+            });
+            log(
+              reply.ok
+                ? what + ": " + reply.rows.length + " rows"
+                : "Dashboard said: " + reply.error,
+            );
+            return reply;
+          };
+          var mraShow = function (reply) {
+            $("mraAnswer").textContent = JSON.stringify(reply, null, 2).slice(0, 4000);
+          };
+          var mraSelected = function () {
+            var one = mraListed.find(function (row) {
+              return row.selected;
+            });
+            return one ? one.brn : "";
+          };
+          $("mraCompanies").onclick = async function () {
+            var reply = await askMra("List my admin companies", { action: "companies" });
+            mraShow(reply);
+            if (reply.ok) mraListed = reply.rows;
+          };
+          $("mraAsk").onclick = async function () {
+            mraShow(
+              await askMra("Ask for all of them", {
+                action: "ask",
+                brn: mraSelected(),
+                period: $("mraMonth").value,
+                companies: mraListed.map(function (row) {
+                  return row.brn;
+                }),
+              }),
+            );
+          };
+          $("mraLoad").onclick = async function () {
+            // One line per company: whether its month was sent to the dashboard, and how many
+            // employees. Never a figure.
+            var lines = [];
+            for (var i = 0; i < mraListed.length; i++) {
+              var reply = await askMra("Load " + mraListed[i].name, {
+                action: "load",
+                brn: mraSelected(),
+                period: $("mraMonth").value,
+                company_brn: mraListed[i].brn,
+              });
+              var row = reply.ok ? reply.rows[0] : null;
+              lines.push(
+                mraListed[i].name +
+                  ": " +
+                  (!row
+                    ? reply.error
+                    : row.run
+                      ? row.employees.length + " employees in the saved run"
+                      : "no saved run for that month"),
+              );
+            }
+            $("mraAnswer").textContent = lines.join("\n") || "List the companies first.";
           };
         } else {
           if (appId === "payslip") payslipCard();

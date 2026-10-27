@@ -94,6 +94,9 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // most, MONTH_BYTES) and its column setup; or the summary at the end. An answer is one row per
   // company of the file (200 at most).
   "payroll-import": { sendRows: 1, sendBytes: 25_000_000, answerRows: [0, 200] },
+  // Read only: nothing is ever sent. An answer lists the user's companies, the companies allowed,
+  // or one company (its run's rows are inside that one row).
+  "mra-batch": { sendRows: 0, sendBytes: 0, answerRows: [0, 500] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 

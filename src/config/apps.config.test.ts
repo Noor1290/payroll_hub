@@ -11,6 +11,7 @@ describe("app registry", () => {
     expect(getApp("payroll")?.url).toBe("https://noor1290.github.io/payroll_sys/");
     expect(getApp("pdf-editor")?.url).toBe("https://noor1290.github.io/pdf-form-filler/");
     expect(getApp("payslip")?.url).toBe("https://noor1290.github.io/payslip/");
+    expect(getApp("mra-returns")?.url).toBe("https://noor1290.github.io/mra_returns/");
     for (const app of APPS) expect(app.url.endsWith("/")).toBe(true);
   });
 
@@ -22,7 +23,7 @@ describe("app registry", () => {
 
   it("has unique ids, and every app is active", () => {
     expect(new Set(APPS.map((app) => app.id)).size).toBe(APPS.length);
-    expect(APPS.map((app) => app.status)).toEqual(["active", "active", "active"]);
+    expect(APPS.map((app) => app.status)).toEqual(["active", "active", "active", "active"]);
   });
 
   it("registers what the payslip app may receive and send, issued payslips included", () => {

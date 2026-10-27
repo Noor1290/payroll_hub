@@ -37,6 +37,7 @@ import "./payrollSetupData";
 import "./payrollMonthData";
 import "./payslipBatchData";
 import "./payrollBatchData";
+import "./mraBatchData";
 import "./payrollImportData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";

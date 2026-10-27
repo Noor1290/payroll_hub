@@ -174,9 +174,11 @@ describe("Settings", () => {
       "Payroll Systempayroll",
       "PDF Form Fillerpdf-editor",
       "Payslip Automationpayslip",
+      "MRA Returnsmra-returns",
     ]);
     expect(within(table).getByText("https://noor1290.github.io/payroll_sys/")).toBeTruthy();
     expect(within(table).getByText("https://noor1290.github.io/payslip/")).toBeTruthy();
+    expect(within(table).getByText("https://noor1290.github.io/mra_returns/")).toBeTruthy();
     expect(within(table).queryByText("Coming soon")).toBeNull();
     expect(within(table).queryByRole("button")).toBeNull();
     expect(within(table).queryByRole("textbox")).toBeNull();

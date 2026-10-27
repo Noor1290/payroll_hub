@@ -172,7 +172,7 @@ describe("the app frames follow the company", () => {
     const attach = vi.spyOn(bridge, "attachFrame");
     const view = render(host(null));
     const mounted = attach.mock.calls.length;
-    expect(mounted).toBe(3);
+    expect(mounted).toBe(4);
 
     act(() => view.rerender(host(A))); // the first company of the session
     act(() => view.rerender(host(A)));
@@ -184,6 +184,6 @@ describe("the app frames follow the company", () => {
         .slice(mounted)
         .map(([id]) => id)
         .sort(),
-    ).toEqual(["payroll", "payslip", "pdf-editor"]);
+    ).toEqual(["mra-returns", "payroll", "payslip", "pdf-editor"]);
   });
 });
