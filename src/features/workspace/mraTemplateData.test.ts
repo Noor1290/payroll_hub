@@ -321,6 +321,18 @@ describe("mra-template: refusals", () => {
       ok: false,
       code: "not-found",
     });
+    // A template that exists, but only for another company this user is an admin of.
+    signIn(NEW);
+    expect(
+      await create({ brn: "C0000001", template_id: T2, name: "Other", body: OTHER }),
+    ).toMatchObject({ ok: true });
+    signIn(ABC);
+    for (const action of ["load", "history", "companies"]) {
+      expect(await request({ action, template_id: T2 })).toMatchObject({
+        ok: false,
+        code: "not-found",
+      });
+    }
     expect(await request({ action: "list", extra: 1 })).toMatchObject({
       ok: false,
       code: "invalid",

@@ -194,7 +194,7 @@ const BREAKS = [
     // Rehearsal fix F6, and migration 0017: a sent date replaces a stored one only from the same or a newer month, and never one changed between the read and the save.
     what: "A saved file overwrites a date of employment that was set meanwhile",
     file: "src/lib/supabase/payroll.ts",
-    find: "? update.is(\"date_of_employment\", null)",
+    find: '? update.is("date_of_employment", null)',
     replace: "? update",
     test: "src/lib/supabase/employeeDate.test.ts",
     mustFail: "fills an empty date; replaces one from an older month",
@@ -202,7 +202,7 @@ const BREAKS = [
   {
     what: "A date changed meanwhile is replaced unseen",
     file: "src/lib/supabase/payroll.ts",
-    find: ": update.eq(\"date_of_employment\", employee.date_of_employment)",
+    find: ': update.eq("date_of_employment", employee.date_of_employment)',
     replace: ": update",
     test: "src/lib/supabase/employeeDate.test.ts",
     mustFail: "fills an empty date; replaces one from an older month",
@@ -210,7 +210,7 @@ const BREAKS = [
   {
     what: "Where a date came from is not checked before it is replaced",
     file: "src/lib/supabase/payroll.ts",
-    find: ": update.eq(\"date_of_employment_month\", month);",
+    find: ': update.eq("date_of_employment_month", month);',
     replace: ": update;",
     test: "src/lib/supabase/employeeDate.test.ts",
     mustFail: "fills an empty date; replaces one from an older month",
@@ -218,16 +218,16 @@ const BREAKS = [
   {
     what: "Re-sending an older month overwrites a newer month's date of employment",
     file: "src/features/import/employmentDateRule.ts",
-    find: "return newer || sentMonth === stored.month ? \"replace\" : \"keep-newer\";",
-    replace: "return \"replace\";",
+    find: 'return newer || sentMonth === stored.month ? "replace" : "keep-newer";',
+    replace: 'return "replace";',
     test: "src/features/import/employmentDateRule.test.ts",
     mustFail: "is NOT replaced by an older month sent again",
   },
   {
     what: "The same month sent again, corrected, no longer replaces its date",
     file: "src/features/import/employmentDateRule.ts",
-    find: "return newer || sentMonth === stored.month ? \"replace\" : \"keep-newer\";",
-    replace: "return newer ? \"replace\" : \"keep-newer\";",
+    find: 'return newer || sentMonth === stored.month ? "replace" : "keep-newer";',
+    replace: 'return newer ? "replace" : "keep-newer";',
     test: "src/features/import/employmentDateRule.test.ts",
     mustFail: "is replaced by a different date sent for the same month",
   },
@@ -258,8 +258,8 @@ const BREAKS = [
   {
     what: "The demo store does not follow the rule",
     file: "src/lib/demo/demoData.ts",
-    find: "if (decision === \"keep-newer\") counts.keptNewer++;",
-    replace: "if (decision === \"keep-newer\") counts.changed++;",
+    find: 'if (decision === "keep-newer") counts.keptNewer++;',
+    replace: 'if (decision === "keep-newer") counts.changed++;',
     test: "src/lib/supabase/employeeDate.test.ts",
     mustFail: "in demo mode: a newer month overwrites",
   },
@@ -740,8 +740,8 @@ const BREAKS = [
   },
   {
     what: "delete_company forgets the issued payslips",
-    // The newest definition is the one that counts (0018 since multi-company publishing).
-    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    // The newest definition is the one that counts (0020 since MRA Returns).
+    file: "supabase/migrations/0020_mra_returns.sql",
     find: "  delete from public.issued_payslips p where p.company_id = p_company_id;\n",
     replace: "",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -760,10 +760,10 @@ const BREAKS = [
   {
     what: "The dashboard names an old migration when delete_company is missing",
     file: "src/features/company/deleteCompany.ts",
-    find: 'const MIGRATION = "0018_payslip_template_in_use.sql";',
+    find: 'const MIGRATION = "0020_mra_returns.sql";',
     replace: 'const MIGRATION = "0014_payroll_months.sql";',
     test: "src/features/company/deleteCompanyMigration.test.ts",
-    mustFail: "is defined last in 0018, the file the dashboard names",
+    mustFail: "is defined last in 0020, the file the dashboard names",
   },
   {
     what: "The delete dialog hides the issued payslips that will go",
@@ -1006,8 +1006,8 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the company's payroll setup behind",
-    // The newest definition is the one that counts (0018 since multi-company publishing).
-    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    // The newest definition is the one that counts (0020 since MRA Returns).
+    file: "supabase/migrations/0020_mra_returns.sql",
     find: "  delete from public.payroll_company_setups cs where cs.company_id = p_company_id;\n  get diagnostics v_setups = row_count;\n",
     replace: "  v_setups := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1075,8 +1075,8 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the company's months behind",
-    // The newest definition is the one that counts (0018 since multi-company publishing).
-    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    // The newest definition is the one that counts (0020 since MRA Returns).
+    file: "supabase/migrations/0020_mra_returns.sql",
     find: "  delete from public.payroll_months pm where pm.company_id = p_company_id;\n  get diagnostics v_months = row_count;\n",
     replace: "  v_months := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1268,13 +1268,14 @@ const BREAKS = [
     what: "Publishing to a company does not make it the one used for its payslips",
     file: "supabase/migrations/0018_payslip_template_in_use.sql",
     find: "  values (p_company_id, v_version.template_id, v_version.version, v_user, now())",
-    replace: "  select p_company_id, v_version.template_id, v_version.version, v_user, now() where false",
+    replace:
+      "  select p_company_id, v_version.template_id, v_version.version, v_user, now() where false",
     test: "src/features/workspace/templateInUse.db.test.ts",
     mustFail: "makes a new template at version 1 in a company that has none with that name",
   },
   {
     what: "delete_company leaves the template used for the payslips behind",
-    file: "supabase/migrations/0018_payslip_template_in_use.sql",
+    file: "supabase/migrations/0020_mra_returns.sql",
     find: "  delete from public.payslip_template_in_use u where u.company_id = p_company_id;\n  get diagnostics v_in_use = row_count;\n",
     replace: "  v_in_use := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1398,7 +1399,8 @@ const BREAKS = [
     what: "Excel of several companies: a load for a former admin is answered",
     file: "src/features/workspace/payrollBatchData.ts",
     find: '    if (!target) {\n      return refuse(\n        "forbidden",\n        "Only an admin of that company can export',
-    replace: '    if (false) {\n      return refuse(\n        "forbidden",\n        "Only an admin of that company can export',
+    replace:
+      '    if (false) {\n      return refuse(\n        "forbidden",\n        "Only an admin of that company can export',
     test: "src/features/workspace/payrollBatch.test.tsx",
     mustFail: "is refused when the user is no longer an admin of that company",
   },
@@ -1461,12 +1463,12 @@ const BREAKS = [
   },
   // ---------- MRA return files (mra-batch) ----------
   {
-    what: "MRA returns: the app is allowed more than mra-batch",
+    what: "MRA returns: the app is allowed more than mra-batch and mra-template",
     file: "src/config/apps.config.ts",
-    find: "    accepts: [MRA_BATCH],",
-    replace: "    accepts: [PAYROLL_RESULT, MRA_BATCH],",
+    find: "    accepts: [MRA_BATCH, MRA_TEMPLATE],",
+    replace: "    accepts: [PAYROLL_RESULT, MRA_BATCH, MRA_TEMPLATE],",
     test: "src/features/workspace/mraBatch.test.tsx",
-    mustFail: "may ask for mra-batch only, and send nothing",
+    mustFail: "may ask for mra-batch and its templates, and send only templates",
   },
   {
     what: "MRA returns: a company the user only views can be asked for",
@@ -1503,8 +1505,9 @@ const BREAKS = [
   {
     what: "MRA returns: a load for a former admin is answered",
     file: "src/features/workspace/mraBatchData.ts",
-    find: "    if (!target) {\n      return refuse(\"forbidden\", \"Only an admin of that company can make its MRA returns.\");",
-    replace: "    if (false) {\n      return refuse(\"forbidden\", \"Only an admin of that company can make its MRA returns.\");",
+    find: '    if (!target) {\n      return refuse("forbidden", "Only an admin of that company can make its MRA returns.");',
+    replace:
+      '    if (false) {\n      return refuse("forbidden", "Only an admin of that company can make its MRA returns.");',
     test: "src/features/workspace/mraBatch.test.tsx",
     mustFail: "is refused when the user is no longer an admin of that company",
   },
@@ -1519,7 +1522,7 @@ const BREAKS = [
   {
     what: "MRA templates: a member reads and saves them",
     file: "src/features/workspace/mraTemplateData.ts",
-    find: "  if (membership.role !== \"admin\") return MEMBER;\n  // Not anyone's user id",
+    find: '  if (membership.role !== "admin") return MEMBER;\n  // Not anyone\'s user id',
     replace: "  // Not anyone's user id",
     test: "src/features/workspace/mraTemplateData.test.ts",
     mustFail: "refuses a member at once, to read and to save",
@@ -1551,7 +1554,7 @@ const BREAKS = [
   {
     what: "MRA returns: the ERN loses its leading zeros",
     file: "src/features/workspace/mraBatchData.ts",
-    find: "      ern: details?.ern ?? \"\",",
+    find: '      ern: details?.ern ?? "",',
     replace: "      ern: Number(details?.ern ?? 0),",
     test: "src/features/workspace/mraBatch.test.tsx",
     mustFail: "adds the company's MRA details",
@@ -1559,8 +1562,8 @@ const BREAKS = [
   {
     what: "MRA returns: the user's email is not sent",
     file: "src/features/workspace/mraBatchData.ts",
-    find: "    email: settings?.email ?? \"\",",
-    replace: "    email: \"\",",
+    find: '    email: settings?.email ?? "",',
+    replace: '    email: "",',
     test: "src/features/workspace/mraBatch.test.tsx",
     mustFail: "adds the company's MRA details",
   },
@@ -1615,8 +1618,9 @@ const BREAKS = [
   {
     what: "0020: a member reads the company's MRA details",
     file: "supabase/migrations/0020_mra_returns.sql",
-    find: "create policy \"mra_company_details_select\" on public.mra_company_details\n  for select to authenticated\n  using (public.is_company_admin(company_id));",
-    replace: "create policy \"mra_company_details_select\" on public.mra_company_details\n  for select to authenticated\n  using (public.is_company_member(company_id));",
+    find: 'create policy "mra_company_details_select" on public.mra_company_details\n  for select to authenticated\n  using (public.is_company_admin(company_id));',
+    replace:
+      'create policy "mra_company_details_select" on public.mra_company_details\n  for select to authenticated\n  using (public.is_company_member(company_id));',
     test: "src/features/workspace/mraReturns.db.test.ts",
     mustFail: "stores the ERN as text, leading zeros kept, for an admin only",
   },
