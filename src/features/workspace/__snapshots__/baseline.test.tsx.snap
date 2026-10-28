@@ -878,6 +878,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
   {
     "accepts": [
       "mra-batch",
+      "mra-template",
     ],
     "expectedFields": [
       "ID | string | required | sensitive",
@@ -913,7 +914,9 @@ exports[`baseline: the app registry > lists these apps, with these data types an
     ],
     "id": "mra-returns",
     "name": "MRA Returns",
-    "produces": [],
+    "produces": [
+      "mra-template",
+    ],
     "protocolVersion": 1,
     "status": "active",
     "url": "https://noor1290.github.io/mra_returns/",

@@ -55,6 +55,7 @@ import { isUnlocked, registerLockCleanup, unlockState } from "@/lib/unlock";
 import { cn } from "@/lib/utils";
 import { CoreDialog } from "./CoreDialog";
 import { DetailDialog } from "./DetailDialog";
+import { MraCard } from "./MraCard";
 import { detailHref } from "./profileModel";
 
 const MASK = "••••••";
@@ -571,7 +572,10 @@ export function ProfilePage() {
               key={current.company.id}
               className="grid items-start gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]"
             >
-              <CoreCard current={current} />
+              <div className="flex flex-col gap-6">
+                <CoreCard current={current} />
+                <MraCard current={current} />
+              </div>
               <Details current={current} />
             </div>
           )}

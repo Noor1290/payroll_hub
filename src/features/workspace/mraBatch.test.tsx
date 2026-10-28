@@ -121,6 +121,10 @@ function database(more: (calls: Call[]) => Answer | undefined = () => undefined)
           : { data: [] };
       case "payroll_entries":
         return eqValue(calls, "run_id") === RUN ? { data: [ENTRY] } : { data: [] };
+      // Nothing saved yet for the MRA (migration 0020): one row at most, so null.
+      case "mra_company_details":
+      case "mra_settings":
+        return { data: null };
       default:
         return { data: [] };
     }
@@ -160,13 +164,13 @@ afterEach(() => {
 });
 
 describe("the MRA Returns app in the registry", () => {
-  it("may ask for mra-batch only, and send nothing", () => {
+  it("may ask for mra-batch and its templates, and send only templates", () => {
     expect(getApp("mra-returns")).toMatchObject({
       name: "MRA Returns",
       url: "https://noor1290.github.io/mra_returns/",
       status: "active",
-      accepts: ["mra-batch"],
-      produces: [],
+      accepts: ["mra-batch", "mra-template"],
+      produces: ["mra-template"],
     });
     expect(DATA_RULES["mra-batch"]).toMatchObject({ sendRows: 0, sendBytes: 0 });
   });
@@ -326,6 +330,79 @@ describe("load: one company's saved run, only as allowed", () => {
       }),
     ]);
     expect(JSON.stringify(row)).not.toContain(ME);
+  });
+
+  it("adds the company's MRA details, the user's email and its own template values (0020)", async () => {
+    const TEMPLATE = "60000000-0000-4000-8000-000000000001";
+    database((calls) => {
+      if (table(calls) === "mra_company_details" && eqValue(calls, "company_id") === ABC) {
+        return {
+          data: {
+            company_id: ABC,
+            ern: "001234",
+            telephone: "",
+            mobile: "5000 0000",
+            declarant: "A. SAMPLE",
+            revision: 2,
+            updated_at: "t",
+          },
+        };
+      }
+      if (table(calls) === "mra_settings" && eqValue(calls, "user_id") === ME) {
+        return { data: { email: "returns@example.org", revision: 1, updated_at: "t" } };
+      }
+      if (table(calls) === "mra_template_companies") {
+        return {
+          data: [
+            {
+              template_id: TEMPLATE,
+              company_id: ABC,
+              own_values: { values: { c7: "abc@example.org" } },
+              revision: 3,
+              updated_by: null,
+              updated_at: "t",
+            },
+          ],
+        };
+      }
+      return undefined;
+    });
+    await askAndAllow(["C1234567"]);
+    const answer = await request(LOAD);
+    const [row] = (answer as { rows: Record<string, unknown>[] }).rows;
+    expect(row).toMatchObject({
+      // Text, so the leading zeros stay.
+      mra: { ern: "001234", telephone: "", mobile: "5000 0000", declarant: "A. SAMPLE" },
+      email: "returns@example.org",
+      templates: [
+        { template_id: TEMPLATE, own_values: { values: { c7: "abc@example.org" } }, values_revision: 3 },
+      ],
+    });
+    expect(JSON.stringify(row)).not.toContain(ME);
+  });
+
+  it("gives empty MRA details and email until they are saved", async () => {
+    await askAndAllow(["C1234567"]);
+    const [row] = ((await request(LOAD)) as { rows: Record<string, unknown>[] }).rows;
+    expect(row).toMatchObject({
+      mra: { ern: "", telephone: "", mobile: "", declarant: "" },
+      email: "",
+      templates: [],
+    });
+  });
+
+  it("names migration 0020 when its tables are not there yet", async () => {
+    database((calls) =>
+      table(calls) === "mra_company_details"
+        ? { data: null, error: { code: "PGRST205", message: "Could not find the table" } }
+        : undefined,
+    );
+    await askAndAllow(["C1234567"]);
+    expect(await request(LOAD)).toMatchObject({
+      ok: false,
+      code: "unavailable",
+      error: expect.stringContaining("0020_mra_returns.sql"),
+    });
   });
 
   it("says when the month was never sent to the dashboard", async () => {

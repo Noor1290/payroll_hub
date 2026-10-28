@@ -23,6 +23,12 @@ vi.mock("@/lib/supabase/companyData", async (original) => ({
   updateCompanyCore: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }));
+// The MRA card (MraCard.test.tsx) is on this page too: here it has nothing saved yet.
+vi.mock("@/lib/supabase/mraReturns", async (original) => ({
+  ...(await original<typeof import("@/lib/supabase/mraReturns")>()),
+  fetchMraCompanyDetails: vi.fn(async () => null),
+  fetchMraSettings: vi.fn(async () => null),
+}));
 const verify = vi.hoisted(() => vi.fn());
 vi.mock("@/features/unlock/verifyPassword", () => ({ verifyPassword: verify }));
 

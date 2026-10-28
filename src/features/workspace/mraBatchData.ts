@@ -5,6 +5,12 @@ import { handleDataRequest, registerDataType } from "@/lib/bridge/bridge";
 import type { RequestDataPayload, ResponseDataPayload } from "@/lib/bridge/protocol";
 import { formatPeriod } from "@/lib/format";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
+import {
+  fetchMraCompanyDetails,
+  fetchMraSettings,
+  fetchMraTemplateLinks,
+  MRA_MIGRATION,
+} from "@/lib/supabase/mraReturns";
 import { fetchRunEntries, fetchRuns } from "@/lib/supabase/payroll";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
@@ -38,8 +44,9 @@ import { answerRequest } from "./deliver";
  *    `load` for those companies and that month only, for 15 minutes, in memory only; it goes
  *    when the gate locks or on sign-out.
  *  - `load` answers ONE company: its saved run of the month, the rows exactly as "Get from
- *    dashboard" gives them, or `run: false` when that month was never sent to the dashboard.
- *    Refused at once when it was not allowed, when the gate is locked, or when the user is no
+ *    dashboard" gives them, or `run: false` when that month was never sent to the dashboard;
+ *    with its MRA details (ERN, telephone, mobile, declarant: migration 0020), the user's email
+ *    for the returns, and its own values for the MRA templates it uses. Refused at once when it was not allowed, when the gate is locked, or when the user is no
  *    longer its admin.
  *
  * `companies` (names and BRNs of the user's admin companies) needs no dialog: nothing in it is
@@ -90,16 +97,23 @@ const NOT_ALLOWED = refuse(
   "That company and month were not allowed in the dashboard for this app. Ask again.",
 );
 
-/** One company: its saved run of the month, if that month was sent to the dashboard. */
+/**
+ * One company: its saved run of the month, if that month was sent to the dashboard, with what
+ * the return files need besides: its MRA details, the user's email, its own template values.
+ */
 async function loadCompany(
   viewer: Viewer,
   target: Membership,
   period: string,
 ): Promise<Record<string, unknown>> {
   const { company } = target;
-  const run = (await fetchRuns(viewer, company.id)).find(
-    (found) => found.period === `${period}-01`,
-  );
+  const [runs, details, settings, links] = await Promise.all([
+    fetchRuns(viewer, company.id),
+    fetchMraCompanyDetails(viewer, company.id),
+    fetchMraSettings(viewer),
+    fetchMraTemplateLinks(viewer, [company.id]),
+  ]);
+  const run = runs.find((found) => found.period === `${period}-01`);
   const entries = run ? await fetchRunEntries(viewer, run.id) : [];
   return {
     brn: company.brn,
@@ -108,6 +122,19 @@ async function loadCompany(
     period,
     run: run !== undefined,
     employees: entries.map((row) => toExportRow(row, company)),
+    // Empty texts until an admin fills them in on the Company profile.
+    mra: {
+      ern: details?.ern ?? "",
+      telephone: details?.telephone ?? "",
+      mobile: details?.mobile ?? "",
+      declarant: details?.declarant ?? "",
+    },
+    email: settings?.email ?? "",
+    templates: links.map((link) => ({
+      template_id: link.template_id,
+      own_values: link.own_values,
+      values_revision: link.revision,
+    })),
   };
 }
 
@@ -209,7 +236,8 @@ export async function answerMraBatchRequest(
     return { ok: true, dataType: MRA_BATCH, rows: [row], meta: meta(period) };
   } catch (error) {
     if (params.data.action === "load" && !isUnlocked()) return READ_LOCKED;
-    return refusalFor(error, RUNS_MIGRATION);
+    // The saved runs are in the first migration: a missing table in a load is one of 0020's.
+    return refusalFor(error, params.data.action === "load" ? MRA_MIGRATION : RUNS_MIGRATION);
   }
 }
 

@@ -59,6 +59,13 @@ export interface DeletePreview {
    */
   payrollMonths: number;
   payrollMonthRevisions: number;
+  /**
+   * The MRA return templates the company uses, and 0 or 1 for its MRA details (migration 0020).
+   * A template no other company uses is deleted with its history; one that others use stays for
+   * them. Zero if those tables don't exist yet.
+   */
+  mraTemplates: number;
+  mraDetails: number;
   /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
   approvedRuns: number;
 }
@@ -125,6 +132,8 @@ export async function fetchDeletePreview(
     payrollSetupRevisions,
     payrollMonths,
     payrollMonthRevisions,
+    mraTemplates,
+    mraDetails,
   ] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
@@ -147,11 +156,13 @@ export async function fetchDeletePreview(
     db.from("payroll_company_setup_history").select("revision", head).eq("company_id", companyId),
     db.from("payroll_months").select("period", head).eq("company_id", companyId),
     db.from("payroll_month_history").select("revision", head).eq("company_id", companyId),
+    db.from("mra_template_companies").select("template_id", head).eq("company_id", companyId),
+    db.from("mra_company_details").select("company_id", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
-  // These tables come from later migrations (0005, 0006, 0009 to 0014, 0018). Until they are run
+  // These tables come from later migrations (0005, 0006, 0009 to 0014, 0018, 0020). Until they are run
   // there is nothing in them to delete, and deleting a company must keep working.
   const optional = (result: { error: unknown; count: number | null }) => {
     if (result.error) {
@@ -179,6 +190,8 @@ export async function fetchDeletePreview(
     payrollSetupRevisions: optional(payrollSetupRevisions),
     payrollMonths: optional(payrollMonths),
     payrollMonthRevisions: optional(payrollMonthRevisions),
+    mraTemplates: optional(mraTemplates),
+    mraDetails: optional(mraDetails),
     approvedRuns: count.parse(approved.count),
   };
 }
@@ -239,7 +252,7 @@ export interface DeleteCompanyFailure extends DataFailure {
  * to a company replaces the function, so an older file must never be named here: run after
  * the newer ones, it would put back a function that does not know their tables.
  */
-const MIGRATION = "0018_payslip_template_in_use.sql";
+const MIGRATION = "0020_mra_returns.sql";
 const RUN_MIGRATIONS = `The owner needs to run the files in supabase/migrations that the database has not had yet, in order, up to ${MIGRATION}, in the Supabase SQL editor.`;
 
 const failure = (

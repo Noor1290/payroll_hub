@@ -173,6 +173,34 @@ export const TABLES: Record<string, TableSpec> = {
     rlsWrites: false,
     insert: (company) => ({ company_id: company, period: "2000-01-01", revision: 0 }),
   },
+  // 0020: MRA Returns.
+  mra_templates: {
+    companyColumn: null,
+    rlsWrites: false,
+    insert: () => ({ id: ZERO_ID, name: MARKER, body: {}, revision: 0 }),
+  },
+  mra_template_history: {
+    companyColumn: null,
+    rlsWrites: false,
+    insert: () => ({ template_id: ZERO_ID, revision: 0, name: MARKER, body: {} }),
+  },
+  mra_template_companies: {
+    companyColumn: "company_id",
+    rlsWrites: false,
+    insert: (company) => ({ template_id: ZERO_ID, company_id: company, own_values: {}, revision: 0 }),
+  },
+  mra_company_details: {
+    companyColumn: "company_id",
+    rlsWrites: false,
+    // An ERN with a space, refused by its check even without the grant.
+    insert: (company) => ({ company_id: company, ern: MARKER, revision: 0 }),
+  },
+  mra_settings: {
+    companyColumn: null,
+    rlsWrites: false,
+    // Not an email address, refused by its check even without the grant.
+    insert: (_company, self) => ({ user_id: self ?? ZERO_ID, email: MARKER, revision: 0 }),
+  },
 };
 
 /** For a table with no company column: a filter that names one row that does not exist. */
@@ -180,12 +208,17 @@ const NO_COMPANY_FILTER: Record<string, Filter> = {
   payroll_entries: { column: "run_id", op: "eq", value: ZERO_ID },
   payroll_shared_setups: { column: "id", op: "eq", value: ZERO_ID },
   payroll_shared_setup_history: { column: "shared_setup_id", op: "eq", value: ZERO_ID },
+  mra_templates: { column: "id", op: "eq", value: ZERO_ID },
+  mra_template_history: { column: "template_id", op: "eq", value: ZERO_ID },
+  mra_settings: { column: "user_id", op: "eq", value: ZERO_ID },
 };
 
 /** Why some table checks prove less than the others. */
 export const LIMITS: Record<string, string> = {
   payroll_entries:
     "rows have no company column and a non-member cannot find a TEST run id, so update and delete are aimed at a run that does not exist (0 rows either way)",
+  mra_settings:
+    "rows belong to a user, not to a company, so update and delete are aimed at a user id that does not exist (0 rows either way)",
 };
 
 type Refusal =
@@ -262,6 +295,23 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
   payroll_run_columns: {
     args: (t) => ({ p_company_id: t.a }),
     expect: { kind: "read", ok: () => false, expected: "refused" },
+  },
+  // 0020: who may read or change an MRA template. Asked about a template that does not exist.
+  can_read_mra_template: {
+    args: () => ({ p_template_id: ZERO_ID }),
+    expect: { kind: "read", ok: isFalse, expected: "false or refused" },
+  },
+  can_change_mra_template: {
+    args: () => ({ p_template_id: ZERO_ID }),
+    expect: { kind: "read", ok: isFalse, expected: "false or refused" },
+  },
+  mra_template_access: {
+    args: () => ({ p_template_id: ZERO_ID }),
+    expect: {
+      kind: "read",
+      ok: (data) => sameJson(data, { can_change: false, companies: 0, admin_of: 0 }),
+      expected: "no access, 0 companies, or refused",
+    },
   },
   payroll_month_employee_count: {
     args: () => ({ p_employees: [] }),
@@ -384,6 +434,35 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     }),
     expect: NOT_ADMIN,
   },
+  // ---------- 0020: MRA Returns ----------
+  // Guard: no template id and no name.
+  save_mra_template: {
+    args: (t) => ({ p_template_id: null, p_company_id: t.a, p_name: "", p_body: {}, p_expected_revision: 0 }),
+    expect: NOT_ADMIN,
+  },
+  // Guard: no template.
+  attach_mra_template: { args: (t) => ({ p_template_id: null, p_company_id: t.a, p_own_values: {} }), expect: NOT_ADMIN },
+  // Guard: the values are a list, not an object.
+  save_mra_template_values: {
+    args: (t) => ({ p_template_id: ZERO_ID, p_company_id: t.a, p_own_values: [], p_expected_revision: 1 }),
+    expect: NOT_ADMIN,
+  },
+  // Guard: no revision.
+  detach_mra_template: { args: (t) => ({ p_template_id: ZERO_ID, p_company_id: t.a, p_expected_revision: null }), expect: NOT_ADMIN },
+  // Guard: an ERN with spaces.
+  save_mra_company_details: {
+    args: (t) => ({
+      p_company_id: t.a,
+      p_ern: MARKER,
+      p_telephone: "",
+      p_mobile: "",
+      p_declarant: MARKER,
+      p_expected_revision: 0,
+    }),
+    expect: NOT_ADMIN,
+  },
+  // Guard: not an email address. (It is the caller's own row, so it names no company.)
+  save_mra_settings: { args: () => ({ p_email: MARKER, p_expected_revision: 0 }), expect: NOT_ADMIN },
 };
 
 /** Further calls of a function already in FUNCTIONS, for a second rule it must keep. */

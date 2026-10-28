@@ -97,6 +97,10 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // Read only: nothing is ever sent. An answer lists the user's companies, the companies allowed,
   // or one company (its run's rows are inside that one row).
   "mra-batch": { sendRows: 0, sendBytes: 0, answerRows: [0, 500] },
+  // One command per message: a template (250 KB at most, MRA_TEMPLATE_BODY_BYTES) or a
+  // company's own values (64 KB, MRA_VALUES_BYTES). An answer lists a company's templates (20 at
+  // most), a template's kept revisions (200 at most) or the user's admin companies.
+  "mra-template": { sendRows: 1, sendBytes: 270_000, answerRows: [0, 5_000] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 
@@ -104,6 +108,10 @@ export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ??
 export const TEMPLATE_BODY_BYTES = 150_000;
 /** The largest PDF template body the hub accepts, as JSON. The database's own limit is 256 KB. */
 export const PDF_TEMPLATE_BODY_BYTES = 250_000;
+/** The largest MRA template body the hub accepts, as JSON. The database's own limit is 256 KB. */
+export const MRA_TEMPLATE_BODY_BYTES = 250_000;
+/** The largest set of a company's own values for an MRA template, as JSON. The database: 64 KiB. */
+export const MRA_VALUES_BYTES = 64_000;
 /** The largest payroll setup body the hub accepts, as JSON. The database's own limit is 256 KB. */
 export const SETUP_BODY_BYTES = 250_000;
 /** The largest payroll month the hub accepts, as JSON. The database's own limit is 1 MiB. */

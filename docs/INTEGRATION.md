@@ -556,11 +556,12 @@ Payslips for several companies at once, download only: nothing is ever saved thr
 
 ## MRA Returns (app id: `mra-returns`)
 
-The fifth app (`https://noor1290.github.io/mra_returns/`, repo `mra_returns`). It makes the MRA return files (the CSG file, MRA "PACO", and the PRGF file) from saved runs: the rows "Get from dashboard" gives, as Payroll System sent them. It only asks; it never sends data, and the files it makes are never stored. It is registered for one data type:
+The fifth app (`https://noor1290.github.io/mra_returns/`, repo `mra_returns`). It makes the MRA return files (the CSG file, MRA "PACO", and the PRGF file) from saved runs: the rows "Get from dashboard" gives, as Payroll System sent them. It never sends payroll data, and the files it makes are never stored; the only thing it saves is its own templates. It is registered for two data types:
 
 | Data type   | The app may ask for it | The app may save it | Asked of the dashboard's user |
 | ----------- | ---------------------- | ------------------- | ----------------------------- |
 | `mra-batch` | yes, admins only       | no                  | the list of companies: nothing; a month of one or several companies: ONE prompt, and the password gate open |
+| `mra-template` | yes, admins only    | yes, admins only    | nothing (no prompt, no gate: a template holds no employee) |
 
 ### `mra-batch`
 
@@ -574,8 +575,33 @@ Added 27 Oct 2026 (branch `mra-returns`, Stage 0). No migration: it reads the sa
 
 - **`ask`** names 1 to 200 companies, always by BRN (there is no `all`): the prompt names the month and EVERY company ("It wants the August 2026 payroll of 2 companies: ABC Co Ltd and DEF Ltd."). A company the user is not an admin of is refused at once as `forbidden` ("Only companies where you are an admin can be chosen."), without asking. `denied`, `timeout` and `locked` as for `payroll-result`.
 - **Agreeing allows `load`** for those companies and that month only, for this app, this user and the company selected now, for 15 minutes, in the dashboard's memory only; forgotten when the gate locks, on sign-out, or when the app asks again. It is separate from what `payslip-batch` and `payroll-batch` allowed. A `load` outside it is refused as `denied` ("That company and month were not allowed in the dashboard for this app. Ask again."), with nothing read.
-- **`load`** needs the gate open (`locked` otherwise, nothing read) and the user to be an admin of that company still (`forbidden`, "Only an admin of that company can make its MRA returns."). Its one row: `{ brn, name, address, period, run, employees }`: `run` says whether the company has a saved run for that month (`false` when that month was never sent to the dashboard, with no employees); `employees` are its rows exactly as `payroll-result` gives them.
+- **`load`** needs the gate open (`locked` otherwise, nothing read) and the user to be an admin of that company still (`forbidden`, "Only an admin of that company can make its MRA returns."). Its one row: `{ brn, name, address, period, run, employees, mra, email, templates }`: `run` says whether the company has a saved run for that month (`false` when that month was never sent to the dashboard, with no employees); `employees` are its rows exactly as `payroll-result` gives them. Since migration 0020 (Stage 1, 28 Oct 2026): `mra` is `{ ern, telephone, mobile, declarant }`, the company's MRA details from its Company profile, each `""` when not set (the ERN is text: leading zeros stay); `email` is the signed-in user's own email for the returns, the same for every company, or `""`; `templates` lists the MRA templates the company uses, `{ template_id, own_values, values_revision }`, with its own values for each (no body). Until 0020 is run, a `load` is refused as `unavailable`, naming that file.
 - Every request is a row in the Transfer log (a `load` counts one row: the company), never with a value.
+
+### `mra-template`
+
+Added with migration `supabase/migrations/0020_mra_returns.sql` (Stage 1, 28 Oct 2026). A template is the layout of ONE return file: the grid of cells, which rows are copied exactly (titles and headings), the employer row, the employee row, what goes in each cell, the formats and the file settings. `body` is a JSON object the app defines (the dashboard stores and returns it exactly and never looks inside), 250 KB at most. It never holds an employee or a figure: the app keeps the text of the copied rows only, never the employee rows of an uploaded file. So: **admins only** (a member is refused at once as `forbidden`, "Only an admin of this company can see or change its MRA templates."), and **no prompt and no password gate**; every exchange is a row in the Transfer log (never the name or the body) and every save shows a toast.
+
+A template is shared the way the payroll app's Global columns are: it is used by one or more companies; an ADMIN of any of them reads it; only an admin of EVERY one of them may change it (`can_change`, with the counts `companies` and `admin_of`). Each company has its **own values** for it (`own_values`, a JSON object of 64 KB at most, for the fixed values "for this company only"), changed by that company's admins, with their own revision (`values_revision`). Everything is about the company selected in the dashboard (`brn`, `wrong-company` otherwise); a template it does not use is `not-found`.
+
+| Kind | What the app sends | What comes back |
+| --- | --- | --- |
+| request | `params: { action: "list", brn? }` | a row per template the company uses, by name, no bodies: `{ template_id, name, revision, updated_at, updated_by_you, can_change, companies, admin_of, values_revision }`. May be none |
+| request | `params: { action: "load", brn?, template_id }` | one row: the same, plus `body` and `own_values` |
+| request | `params: { action: "history", brn?, template_id }` | a row per kept revision, newest first (200 at most): `{ revision, name, saved_at, saved_by_you }` |
+| request | `params: { action: "revision", brn?, template_id, revision }` | one kept revision as it was saved: `{ template_id, revision, name, body, saved_at, saved_by_you }`, or `not-found`. Reading it changes nothing |
+| request | `params: { action: "companies", brn?, template_id }` | the user's ADMIN companies with a BRN, the selected one first: `{ brn, name, selected, uses }` |
+| save | `{ action: "save", brn, template_id, name, body, expected_revision }` | `result: { action, template_id, name, revision, updated_at }` |
+| save | `{ action: "values", brn, template_id, own_values, expected_revision }` | `result: { action, template_id, name, company, values_revision, updated_at }` |
+| save | `{ action: "attach", brn, template_id, company_brn, own_values? }` | `result: { action, template_id, name, brn, company, values_revision }` |
+| save | `{ action: "detach", brn, template_id, expected_revision }` | `result: { action, template_id, name, company, deleted }` |
+
+- **The app chooses a template's id** (a UUID) and makes it with `expected_revision: 0`: it is made for the selected company. A save sent twice is refused as `stale`.
+- **`expected_revision`** is the revision the app last saw (`values_revision` for `values`). If someone saved since: `stale`, and nothing is overwritten. After `unavailable` or no answer: `load` and compare before saving again.
+- **History and Restore**: every revision is kept. Restoring one is a `save` of that revision's body (a NEW revision; nothing earlier is rewritten).
+- **`attach`** uses the template in another company the user is an admin of (`company_brn`; `forbidden` otherwise), only for someone who may change it; once per company (`stale`, "That company already uses this MRA template.").
+- **`detach`** takes it out of the selected company; `expected_revision` is the TEMPLATE's revision. From the last company using it, the template and its whole history are **deleted for good** (`deleted: true`): the app asks first and says so.
+- Limits: a name is 1 to 80 characters, unique in each company using it whatever the capitals (`invalid`); a company uses at most 20 templates (`too-large`).
 
 ## How to check it works
 
@@ -629,6 +655,7 @@ Limits per data type, checked by the dashboard before anything else:
 | `payroll-batch`    | none: request only                  | none                            | 0 to 500          |
 | `payroll-import`   | exactly 1                           | 25 MB (24 months of 1 MB)       | 0 to 200          |
 | `mra-batch`        | none: request only                  | none                            | 0 to 500          |
+| `mra-template`     | exactly 1                           | 270 KB (the body itself: 250 KB; own values: 64 KB) | 0 to 5,000 |
 | `pdf-template`     | exactly 1                           | 270 KB (the body itself: 250 KB) | 0 to 200         |
 | `pdf-file`         | exactly 1, holding one file         | 7.1 MB (a 5 MB file as base64)  | exactly 1         |
 

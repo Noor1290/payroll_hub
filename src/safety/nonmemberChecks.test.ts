@@ -95,7 +95,7 @@ function fakeApi(override: Partial<Record<keyof Api, (...args: never[]) => ApiRe
           ? { data: A }
           : name === "keep_awake"
             ? { data: true }
-          : name === "payroll_shared_setup_access"
+          : name === "payroll_shared_setup_access" || name === "mra_template_access"
             ? { data: { can_change: false, companies: 0, admin_of: 0 } }
             : name === "issued_payslips_for_month"
               ? { data: [] }

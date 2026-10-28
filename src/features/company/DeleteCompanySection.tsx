@@ -69,6 +69,13 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
           {plural(preview.payrollMonthRevisions, "recorded save")})
         </li>
       )}
+      {preview.mraTemplates > 0 && (
+        <li>
+          {plural(preview.mraTemplates, "MRA return template")} (one that another company uses too
+          stays for that company)
+        </li>
+      )}
+      {preview.mraDetails > 0 && <li>its MRA details (ERN, phone numbers, declarant)</li>}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"

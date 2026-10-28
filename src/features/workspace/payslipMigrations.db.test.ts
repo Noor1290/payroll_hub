@@ -1006,6 +1006,11 @@ describe("delete_company after 0011", () => {
       template_versions: 1,
       // Migration 0018: nothing was chosen for the payslips here.
       template_in_use: 0,
+      // Migration 0020: no MRA template or details here.
+      mra_template_companies: 0,
+      mra_templates: 0,
+      mra_template_history: 0,
+      mra_company_details: 0,
       members: 2,
     });
 

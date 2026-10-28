@@ -1,3 +1,4 @@
+import { demoForgetMraCompany, demoMraCounts } from "./demoMraReturns";
 import { NUMERIC_COLUMNS, type NumericColumn, type PayrollRow } from "@/config/payrollFields";
 import { decideEmploymentDate } from "@/features/import/employmentDateRule";
 import type { ExistingEmployee, ExistingRun } from "@/features/import/importPlan";
@@ -528,6 +529,7 @@ export async function demoFetchDeletePreview(companyId: string) {
     ...demoPdfTemplateCounts(companyId),
     ...demoPayrollSetupCounts(companyId),
     ...demoPayrollMonthCounts(companyId),
+    ...demoMraCounts(companyId),
     approvedRuns: companyRuns.filter((run) => run.status === "approved").length,
   };
 }
@@ -566,6 +568,7 @@ export async function demoDeleteCompany(companyId: string, confirmName: string) 
   demoForgetPdfTemplates(companyId);
   demoForgetPayrollMonths(companyId);
   demoForgetPayrollSetups(companyId);
+  demoForgetMraCompany(companyId);
   return result;
 }
 

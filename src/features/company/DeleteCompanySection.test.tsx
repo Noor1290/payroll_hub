@@ -49,6 +49,8 @@ const CLEAR: DeletePreview = {
   payrollSetupRevisions: 0,
   payrollMonths: 0,
   payrollMonthRevisions: 0,
+  mraTemplates: 0,
+  mraDetails: 0,
   approvedRuns: 0,
 };
 /** Two of its runs are approved; one of those is soft-deleted (the count includes it). */
@@ -459,7 +461,7 @@ describe("confirming", () => {
 
     const alert = await within(dialog()).findByRole("alert");
     expect(alert.textContent).toContain("The database needs an update");
-    expect(alert.textContent).toContain("up to 0018_payslip_template_in_use.sql");
+    expect(alert.textContent).toContain("up to 0020_mra_returns.sql");
     expect(alert.textContent).not.toContain("0007");
     expect(select).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();

@@ -79,6 +79,11 @@ export const PAYROLL_IMPORT = "payroll-import";
  * companies, then, once allowed in the dialog, one company's saved run of a month. Read only.
  */
 export const MRA_BATCH = "mra-batch";
+/**
+ * The MRA Returns app's templates of a return file, shared by the companies using them, and
+ * each company's own values for them (migration 0020). Admins only; no prompt and no gate.
+ */
+export const MRA_TEMPLATE = "mra-template";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -153,9 +158,9 @@ export const APPS: readonly AppConfig[] = [
     icon: FileSpreadsheet,
     accentColor: "var(--sky)",
     status: "active",
-    // Only what it needs: saved runs of its user's admin companies, never anything it sends.
-    accepts: [MRA_BATCH],
-    produces: [],
+    // Only what it needs: saved runs of its user's admin companies, and its own templates.
+    accepts: [MRA_BATCH, MRA_TEMPLATE],
+    produces: [MRA_TEMPLATE],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,
   },
