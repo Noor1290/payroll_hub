@@ -15,6 +15,7 @@ import { BridgeDialogs } from "./BridgeDialogs";
 import { BATCH_ALLOWED_MS } from "./batchAccess";
 import { answerRequest } from "./deliver";
 import { answerMraBatchRequest, forgetMraBatchAllowed } from "./mraBatchData";
+import { setProfileOpener } from "./openProfile";
 
 /**
  * The MRA return files (mra-batch): only the user's admin companies, one question in the
@@ -375,7 +376,11 @@ describe("load: one company's saved run, only as allowed", () => {
       mra: { ern: "001234", telephone: "", mobile: "5000 0000", declarant: "A. SAMPLE" },
       email: "returns@example.org",
       templates: [
-        { template_id: TEMPLATE, own_values: { values: { c7: "abc@example.org" } }, values_revision: 3 },
+        {
+          template_id: TEMPLATE,
+          own_values: { values: { c7: "abc@example.org" } },
+          values_revision: 3,
+        },
       ],
     });
     expect(JSON.stringify(row)).not.toContain(ME);
@@ -544,5 +549,81 @@ describe("the question in the dashboard", () => {
     expect(log).toContain("mra-batch");
     expect(log).not.toContain("X0000000000001");
     expect(log).not.toContain("18750");
+  });
+});
+
+describe("open-profile: the Company profile of a company whose MRA details are missing (Stage 2)", () => {
+  const OPEN = { action: "open-profile", brn: "C1234567" };
+  let opened: string[];
+  let removeOpener: () => void;
+  beforeEach(() => {
+    opened = [];
+    removeOpener = setProfileOpener((companyId) => opened.push(companyId));
+  });
+  afterEach(() => removeOpener());
+
+  /** The dashboard moves only after the answer has left. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+  it("shows the selected company's profile, asks nothing, needs no gate and sends nothing", async () => {
+    lock();
+    const answer = await request({ ...OPEN, company_brn: "C1234567" });
+    expect(answer).toEqual({
+      ok: true,
+      dataType: "mra-batch",
+      rows: [],
+      meta: expect.objectContaining({ brn: "C1234567" }),
+    });
+    expect(dataRequests.get()).toHaveLength(0);
+    expect(opened).toEqual([]);
+    await settle();
+    expect(opened).toEqual([ABC]);
+  });
+
+  it("shows another company's profile when the user is its admin", async () => {
+    expect(await request({ ...OPEN, company_brn: " c3333333 " })).toMatchObject({ ok: true });
+    await settle();
+    expect(opened).toEqual([DEF]);
+  });
+
+  it("refuses a company where the user is only a member, or not a member, even when the app is bypassed", async () => {
+    for (const brn of ["C2222222", "C9999999"]) {
+      expect(await request({ ...OPEN, company_brn: brn })).toEqual({
+        ok: false,
+        code: "forbidden",
+        error: "Only an admin of that company can open its MRA details.",
+      });
+    }
+    await settle();
+    expect(opened).toEqual([]);
+  });
+
+  it("refuses another company's BRN as the selected one, and a request with no company", async () => {
+    expect(await request({ ...OPEN, brn: "C3333333", company_brn: "C3333333" })).toMatchObject({
+      ok: false,
+      code: "wrong-company",
+    });
+    expect(await request({ action: "open-profile", brn: "C1234567" })).toMatchObject({
+      ok: false,
+      code: "invalid",
+    });
+    await settle();
+    expect(opened).toEqual([]);
+  });
+
+  it("says when the dashboard cannot show the profile", async () => {
+    removeOpener();
+    expect(await request({ ...OPEN, company_brn: "C1234567" })).toEqual({
+      ok: false,
+      code: "unavailable",
+      error: "The dashboard cannot show the Company profile right now.",
+    });
+  });
+
+  it("writes a row in the Transfer log", async () => {
+    await answerRequest("mra-returns", "mra-batch", () =>
+      request({ ...OPEN, company_brn: "C1234567" }),
+    );
+    expect(JSON.stringify(transferLog.get())).toContain("mra-batch");
   });
 });

@@ -5,6 +5,7 @@ import { AuroraBackground } from "@/components/brand";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AddCompanyDialog } from "@/features/company/AddCompanyDialog";
 import { BridgeDialogs } from "@/features/workspace/BridgeDialogs";
+import { ProfileOpener } from "@/features/workspace/ProfileOpener";
 import { WorkspaceHost } from "@/features/workspace/WorkspaceHost";
 import { preferenceStorage } from "@/lib/storage";
 import { CommandPalette } from "./CommandPalette";
@@ -96,6 +97,7 @@ export function AppShell() {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <BridgeDialogs />
+      <ProfileOpener />
       <AddCompanyDialog />
     </div>
   );

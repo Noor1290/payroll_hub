@@ -134,6 +134,39 @@ describe("switching company", () => {
     expect(shown()).toBe("TEST Co B");
   });
 
+  it("runs 'afterwards' only once the company is switched, never on Stay (MRA open-profile)", async () => {
+    vi.spyOn(bridge, "unsavedApps").mockReturnValue(["payroll"]);
+    const afterwards = vi.fn();
+    function Select() {
+      const { select } = useCompany();
+      return (
+        <button type="button" onClick={() => select(B.company.id, { afterwards })}>
+          Open B
+        </button>
+      );
+    }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={auth}>
+          <CompanyProvider>
+            <Select />
+            <Shown />
+          </CompanyProvider>
+        </AuthContext.Provider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(shown()).toBe("TEST Co A"));
+    fireEvent.click(screen.getByRole("button", { name: "Open B" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stay on TEST Co A" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(afterwards).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open B" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch anyway" }));
+    expect(shown()).toBe("TEST Co B");
+    expect(afterwards).toHaveBeenCalledTimes(1);
+  });
+
   it("asks before Add company opens, because the new company is selected once added", async () => {
     vi.spyOn(bridge, "unsavedApps").mockReturnValue(["pdf-editor"]);
     renderProvider();

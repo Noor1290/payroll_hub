@@ -20,9 +20,9 @@ export interface CompanyContextValue {
   /**
    * Shows another company. The app frames then reload, so first the user is asked if an app
    * holds unsaved changes (leaveGuard.ts). `force` skips that question, for a company that was
-   * just added or deleted.
+   * just added or deleted. `afterwards` runs once the company is shown (not when the user stays).
    */
-  select: (companyId: string, options?: { force?: boolean }) => void;
+  select: (companyId: string, options?: { force?: boolean; afterwards?: () => void }) => void;
 }
 
 export const COMPANY_STORAGE_KEY = "company";

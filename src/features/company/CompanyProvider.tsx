@@ -38,10 +38,11 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const currentName = current?.company.name ?? null;
 
   const select = useCallback(
-    (companyId: string, options: { force?: boolean } = {}) => {
+    (companyId: string, options: { force?: boolean; afterwards?: () => void } = {}) => {
       const go = () => {
         setPreferredId(companyId);
         preferenceStorage.setItem(COMPANY_STORAGE_KEY, companyId);
+        options.afterwards?.();
       };
       // The same company changes nothing and reloads nothing.
       if (options.force || companyId === currentId) go();

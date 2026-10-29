@@ -1568,6 +1568,31 @@ const BREAKS = [
     mustFail: "adds the company's MRA details",
   },
   {
+    what: "MRA returns: open-profile opens a company the user is not an admin of",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: '      if (!target) {\n        return refuse("forbidden", "Only an admin of that company can open its MRA details.");',
+    replace:
+      '      if (false) {\n        return refuse("forbidden", "Only an admin of that company can open its MRA details.");',
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "refuses a company where the user is only a member, or not a member",
+  },
+  {
+    what: "Company switch: 'afterwards' is never run",
+    file: "src/features/company/CompanyProvider.tsx",
+    find: "        options.afterwards?.();\n",
+    replace: "",
+    test: "src/features/company/leaveGuard.test.tsx",
+    mustFail: "runs 'afterwards' only once the company is switched",
+  },
+  {
+    what: "MRA returns: another company's profile opens without selecting it",
+    file: "src/features/workspace/ProfileOpener.tsx",
+    find: '        if (companyId === currentId) navigate("/profile");',
+    replace: '        if (true) navigate("/profile");',
+    test: "src/features/workspace/ProfileOpener.test.tsx",
+    mustFail: "selects another company first",
+  },
+  {
     what: "Company profile: a member sees the MRA card",
     file: "src/features/profile/MraCard.tsx",
     find: "  if (!admin) return null;\n",

@@ -32,6 +32,7 @@ import {
   listNames,
 } from "./batchAccess";
 import { answerRequest } from "./deliver";
+import { openCompanyProfile, profileOpenerReady } from "./openProfile";
 
 /**
  * The MRA return files of one or several companies (docs/INTEGRATION.md, "mra-batch"). Read
@@ -50,7 +51,9 @@ import { answerRequest } from "./deliver";
  *    longer its admin.
  *
  * `companies` (names and BRNs of the user's admin companies) needs no dialog: nothing in it is
- * per employee.
+ * per employee. Nor does `open-profile` (Stage 2): it sends nothing; the dashboard shows that
+ * company's Company profile, where its MRA details are filled in, selecting it first when it is
+ * not the selected one (the apps then reload). Admins of that company only.
  */
 
 const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -76,6 +79,7 @@ const paramsSchema = z.discriminatedUnion("action", [
     period: monthSchema,
     company_brn: brnSchema,
   }),
+  z.strictObject({ action: z.literal("open-profile"), brn: brnSchema, company_brn: brnSchema }),
 ]);
 
 /** What the user allowed in the dialog. One at a time; a new ask replaces it. */
@@ -163,6 +167,23 @@ export async function answerMraBatchRequest(
         })),
         meta: meta(),
       };
+    }
+
+    if (params.data.action === "open-profile") {
+      const wanted = normaliseBrn(params.data.company_brn);
+      const target = (await adminCompanies(viewer, membership.company.id)).find(
+        (one) => normaliseBrn(one.company.brn!) === wanted,
+      );
+      if (!target) {
+        return refuse("forbidden", "Only an admin of that company can open its MRA details.");
+      }
+      if (!profileOpenerReady()) {
+        return refuse("unavailable", "The dashboard cannot show the Company profile right now.");
+      }
+      const companyId = target.company.id;
+      // After the answer has left: selecting another company reloads the app's frame.
+      setTimeout(() => openCompanyProfile(companyId), 0);
+      return { ok: true, dataType: MRA_BATCH, rows: [], meta: meta() };
     }
 
     if (params.data.action === "ask") {
