@@ -121,6 +121,7 @@
         <button id="mraCompanies" type="button">List my admin companies</button>
         <button id="mraAsk" type="button">Ask for all of them</button>
         <button id="mraLoad" type="button">Load each</button>
+        <button id="mraProfile" type="button">Open the last company's profile</button>
       </div>
       <pre id="mraAnswer">No answer yet.</pre>
     </div>
@@ -632,6 +633,18 @@
                 companies: mraListed.map(function (row) {
                   return row.brn;
                 }),
+              }),
+            );
+          };
+          $("mraProfile").onclick = async function () {
+            // Stage 2: the dashboard shows that company's Company profile (its MRA details).
+            var last = mraListed[mraListed.length - 1];
+            if (!last) return ($("mraAnswer").textContent = "List the companies first.");
+            mraShow(
+              await askMra("Open the profile of " + last.name, {
+                action: "open-profile",
+                brn: mraSelected(),
+                company_brn: last.brn,
               }),
             );
           };
