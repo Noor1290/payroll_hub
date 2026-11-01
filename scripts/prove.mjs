@@ -1479,6 +1479,14 @@ const BREAKS = [
     mustFail: "gives the company's saved run of the month",
   },
   {
+    what: "P3: a company the user only views can be copied",
+    file: "src/features/workspace/payrollSetupData.ts",
+    find: 'if (source?.role !== "admin") {',
+    replace: "if (!source) {",
+    test: "src/features/workspace/payrollSetupData.test.ts",
+    mustFail: "refuses a company the user only views or does not belong to",
+  },
+  {
     what: "P5: a run keeps no order",
     file: "src/features/import/importPlan.ts",
     find: "extra: { ...row.extra, [ROW_POSITION_KEY]: index + 1 },",

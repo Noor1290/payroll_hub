@@ -82,6 +82,12 @@ const paramsSchema = z.discriminatedUnion("action", [
   }),
   /** The companies the user is an admin of, and whether each has a setup: for the import. */
   z.strictObject({ action: z.literal("companies"), brn: brnSchema.optional() }),
+  /** Another company's setup, to start a separate one as a copy. Nothing is stored by this. */
+  z.strictObject({
+    action: z.literal("copy-source"),
+    brn: brnSchema.optional(),
+    company_brn: brnSchema,
+  }),
 ]);
 
 const saveSchema = z.discriminatedUnion("action", [
@@ -240,6 +246,16 @@ export async function answerPayrollSetupRequest(
         if (!kept) return refuse("not-found", "This setup has no such revision.");
         const { saved_by, ...revision } = kept;
         return answer([{ ...revision, saved_by_you: you(saved_by) }]);
+      }
+      case "copy-source": {
+        const source = membershipFor(await fetchMemberships(viewer), params.data.company_brn);
+        if (source?.role !== "admin") {
+          return refuse("forbidden", "Only an admin of that company can copy its columns.");
+        }
+        const own = await fetchCompanySetup(viewer, source.company.id);
+        const setup = own && (await fetchSharedSetup(viewer, own.shared_setup_id));
+        if (!own || !setup) return NO_SETUP;
+        return answer([{ shared_body: setup.body, company_body: own.body }]);
       }
       case "companies": {
         const admin = (await fetchMemberships(viewer)).filter(

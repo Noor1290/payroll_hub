@@ -564,6 +564,8 @@ The fifth app (`https://noor1290.github.io/mra_returns/`, repo `mra_returns`). I
 | `mra-batch` | yes, admins only       | no                  | the list of companies: nothing; a month of one or several companies: ONE prompt, and the password gate open |
 | `mra-template` | yes, admins only    | yes, admins only    | nothing (no prompt, no gate: a template holds no employee) |
 
+**`payroll-setup` `copy-source`** (`params: { action: "copy-source", brn?, company_brn }`, November 2026, no migration): one row, `{ shared_body, company_body }`, the setup of `company_brn`, for "Start a separate column setup" as a copy. Admins of that company only (`forbidden`), `not-found` when it has none. Column setups hold no employee and no pay, so there is no prompt and no gate, as for `load`. Nothing is stored: the app then saves a new shared setup and attaches the company as usual.
+
 ### `mra-batch`
 
 Added 27 Oct 2026 (branch `mra-returns`, Stage 0). No migration: it reads the saved runs (`payroll_runs`, `payroll_entries`) that `payroll-result` reads. It works as `payroll-batch` does (the same code, `src/features/workspace/batchAccess.ts`): each company is one the user is an ADMIN of, read from the database at each request; `brn` must be the selected company's (`wrong-company` otherwise) and is required on `ask` and `load`. One company is asked for the same way as several.

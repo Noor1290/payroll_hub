@@ -421,6 +421,42 @@ describe("payroll-setup: history, one revision, and the companies to link to", (
   });
 });
 
+describe("payroll-setup: copying another company's columns", () => {
+  const copy = (company_brn: string) =>
+    request({ action: "copy-source", brn: "C0000001", company_brn });
+
+  beforeEach(async () => {
+    await createShared();
+    await attach();
+    signIn(NEW);
+  });
+
+  it("gives an admin of that company its two bodies, exactly as stored", async () => {
+    expect(await copy("C1234567")).toMatchObject({
+      ok: true,
+      rows: [{ shared_body: SHARED, company_body: OWN }],
+    });
+  });
+
+  it("refuses a company the user only views or does not belong to", async () => {
+    expect(await copy("C7654321")).toMatchObject({ ok: false, code: "forbidden" });
+    expect(await copy("C9999999")).toMatchObject({ ok: false, code: "forbidden" });
+  });
+
+  it("says so when that company has no setup", async () => {
+    signIn(ABC);
+    expect(await request({ action: "copy-source", company_brn: "C0000001" })).toMatchObject({
+      ok: false,
+      code: "not-found",
+    });
+  });
+
+  it("stores nothing", async () => {
+    await copy("C1234567");
+    expect(await request({ action: "load", brn: "C0000001" })).toMatchObject({ ok: true, rows: [] });
+  });
+});
+
 describe("what the user is told", () => {
   it("names the company and the revision in the toast, and nothing from the columns", () => {
     expect(describePayrollSetupSave({ action: "save-shared", revision: 3, companies: [] })).toBe(
