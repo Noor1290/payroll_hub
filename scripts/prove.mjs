@@ -763,7 +763,7 @@ const BREAKS = [
     find: 'const MIGRATION = "0021_company_members.sql";',
     replace: 'const MIGRATION = "0014_payroll_months.sql";',
     test: "src/features/company/deleteCompanyMigration.test.ts",
-    mustFail: "is defined last in 0020, the file the dashboard names",
+    mustFail: "is defined last in 0021, the file the dashboard names",
   },
   {
     what: "The delete dialog hides the issued payslips that will go",
