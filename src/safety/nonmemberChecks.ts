@@ -86,6 +86,17 @@ export const TABLES: Record<string, TableSpec> = {
     // The attack that matters most: making oneself an admin.
     insert: (company, self) => ({ company_id: company, user_id: self ?? ZERO_ID, role: "admin" }),
   },
+  // 0021: the record of changes to members. Written only by the functions below.
+  company_member_history: {
+    companyColumn: "company_id",
+    rlsWrites: false,
+    insert: (company) => ({
+      company_id: company,
+      action: "added",
+      member_email: MARKER,
+      changed_by_email: MARKER,
+    }),
+  },
   employees: { companyColumn: "company_id", rlsWrites: true, insert: fakePerson },
   payroll_runs: {
     companyColumn: "company_id",
@@ -296,6 +307,11 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     args: (t) => ({ p_company_id: t.a }),
     expect: { kind: "read", ok: () => false, expected: "refused" },
   },
+  // 0021: the members of a company, with their emails. Refused before anything is read.
+  list_company_members: {
+    args: (t) => ({ p_company_id: t.a }),
+    expect: { kind: "read", ok: () => false, expected: "refused" },
+  },
   // 0020: who may read or change an MRA template. Asked about a template that does not exist.
   can_read_mra_template: {
     args: () => ({ p_template_id: ZERO_ID }),
@@ -337,6 +353,20 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     expect: NOT_ADMIN,
   },
   // Guard: the typed name is not the company's.
+  // 0021: making oneself a member is the attack that matters most. All three are refused first
+  // by "admin of this company"; the second guard is a role that does not exist.
+  add_company_member: {
+    args: (t) => ({ p_company_id: t.a, p_email: "safety-check@example.invalid", p_role: "none" }),
+    expect: NOT_ADMIN,
+  },
+  set_company_member_role: {
+    args: (t) => ({ p_company_id: t.a, p_user_id: ZERO_ID, p_role: "none" }),
+    expect: NOT_ADMIN,
+  },
+  remove_company_member: {
+    args: (t) => ({ p_company_id: t.a, p_user_id: ZERO_ID }),
+    expect: NOT_ADMIN,
+  },
   delete_company: { args: (t) => ({ p_company_id: t.a, p_confirm_name: `${MARKER}: not the company name` }), expect: NOT_ADMIN },
   // Guard: the 15th is not the first day of a month.
   save_statutory_rates: {

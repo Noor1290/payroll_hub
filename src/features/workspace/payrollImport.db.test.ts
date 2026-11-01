@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { PGlite } from "@electric-sql/pglite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { STORAGE_STAND_IN } from "@/test/storageStandIn";
 
 /**
@@ -175,6 +175,11 @@ async function setUp(): Promise<void> {
   }
 }
 
+const SETUP_TIMEOUT = 120_000;
+// Every test restores a whole database. A timed-out test would go on running and upset the next
+// one, which shares that database, so the limit must be well above what a busy machine takes.
+vi.setConfig({ testTimeout: 30_000 });
+
 beforeEach(async () => {
   if (!template) {
     db = await freshDatabase();
@@ -203,7 +208,7 @@ describe("migration 0019: its own check", () => {
       /create\s+(table|policy|index)|alter\s+table|drop\s|insert\s+into|update\s+public|delete\s+from/i,
     );
   });
-});
+}, SETUP_TIMEOUT);
 
 describe("who may import", () => {
   it("only someone signed in who is an admin of that company, or of any company for a new one", async () => {

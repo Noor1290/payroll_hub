@@ -77,6 +77,10 @@ Screens and actions that expose saved per-employee data sit behind `<PasswordGat
 
 `/profile` (src/features/profile) and `/links` (src/features/links); reads and writes in src/lib/supabase/companyData.ts. Members read, admins write; RLS enforces both. Sensitive details: RLS hides those rows from viewers entirely (no placeholders in the UI either); for admins the value is fetched only with the gate open (`company-details-sensitive` is in `GATED_QUERY_KEYS`). Link URLs go through `normaliseUrl` (http/https only) before saving and `safeHref` before rendering; icons and colours are keys into fixed lists, never CSS or markup. No external requests for cards. Never add columns from the app: a new detail is a row.
 
+## Members
+
+The Members card on the Company profile (src/features/profile/MembersCard.tsx, reads and writes in src/lib/supabase/members.ts, migration 0021): admins of the selected company only, checked in the database. `company_members` has no write grant; every change goes through a function and is recorded in `company_member_history`. Changes need the password gate open. The owner runs 0021 before the card is used; until then it says so.
+
 ## Database page
 
 `/database` (src/features/database, reads in src/lib/supabase/database.ts): admin-only, read-only raw table viewer behind the password gate. Reads only, one page at a time, scoped to the selected company, validated with Zod. Never add a write, a SQL box, Realtime, or a read of auth.users to it. A new table is one entry in `DB_TABLES`: mask per-employee amounts and app-written JSON (`sensitive`; company-wide statutory figures are not masked), use kind `actor` for who did it ("You" / "Another admin", never a user id), and `adminOnly` where RLS lets only admins read (`issued_payslips`).

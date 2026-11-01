@@ -1,0 +1,31 @@
+-- =====================================================================
+-- UNDO of migration 0021_company_members.sql. NOT a migration: kept outside supabase/migrations
+-- on purpose, and every line is commented out, so running this file as it is does nothing.
+--
+-- What it would do: drop the four functions 0021 added and its table,
+-- public.company_member_history. THE RECORD OF CHANGES TO MEMBERS IS LOST FOR GOOD. The members
+-- themselves stay exactly as they are: public.company_members is not touched. The Members card
+-- then says the database is not set up for it, and members are changed in the SQL editor again.
+-- public.delete_company stays as 0021 left it, so run the delete_company block of
+-- supabase/migrations/0020_mra_returns.sql FIRST: without the new table, the version in 0021
+-- would fail. No other function, table, policy or grant is touched.
+--
+-- To use it, only when the owner decides: remove the "-- " at the start of every line below
+-- this header, then run it in Supabase dashboard -> SQL Editor.
+-- =====================================================================
+
+-- drop function if exists public.list_company_members(uuid);
+-- drop function if exists public.add_company_member(uuid, text, text);
+-- drop function if exists public.set_company_member_role(uuid, uuid, text);
+-- drop function if exists public.remove_company_member(uuid, uuid);
+-- drop table if exists public.company_member_history;
+--
+-- notify pgrst, 'reload schema';
+--
+-- -- The result is the one row below. Every column should be true.
+-- select
+--   to_regclass('public.company_member_history') is null as history_gone,
+--   (select count(*) = 0 from pg_proc
+--    where proname in ('list_company_members', 'add_company_member',
+--                      'set_company_member_role', 'remove_company_member')) as functions_gone,
+--   to_regclass('public.company_members') is not null as members_kept;

@@ -74,6 +74,7 @@ describe("demoDeleteCompany", () => {
       payrollMonthRevisions: 0,
       mraTemplates: 0,
       mraDetails: 0,
+      memberChanges: 0,
       approvedRuns: 0,
     });
     expect(demoMemberships.some((m) => m.company.id === ABC)).toBe(false);

@@ -66,6 +66,8 @@ export interface DeletePreview {
    */
   mraTemplates: number;
   mraDetails: number;
+  /** The record of changes to its members (migration 0021). Zero if that table doesn't exist yet. */
+  memberChanges: number;
   /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
   approvedRuns: number;
 }
@@ -134,6 +136,7 @@ export async function fetchDeletePreview(
     payrollMonthRevisions,
     mraTemplates,
     mraDetails,
+    memberChanges,
   ] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
@@ -158,6 +161,7 @@ export async function fetchDeletePreview(
     db.from("payroll_month_history").select("revision", head).eq("company_id", companyId),
     db.from("mra_template_companies").select("template_id", head).eq("company_id", companyId),
     db.from("mra_company_details").select("company_id", head).eq("company_id", companyId),
+    db.from("company_member_history").select("id", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
@@ -192,6 +196,7 @@ export async function fetchDeletePreview(
     payrollMonthRevisions: optional(payrollMonthRevisions),
     mraTemplates: optional(mraTemplates),
     mraDetails: optional(mraDetails),
+    memberChanges: optional(memberChanges),
     approvedRuns: count.parse(approved.count),
   };
 }
@@ -252,7 +257,7 @@ export interface DeleteCompanyFailure extends DataFailure {
  * to a company replaces the function, so an older file must never be named here: run after
  * the newer ones, it would put back a function that does not know their tables.
  */
-const MIGRATION = "0020_mra_returns.sql";
+const MIGRATION = "0021_company_members.sql";
 const RUN_MIGRATIONS = `The owner needs to run the files in supabase/migrations that the database has not had yet, in order, up to ${MIGRATION}, in the Supabase SQL editor.`;
 
 const failure = (

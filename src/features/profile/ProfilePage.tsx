@@ -55,6 +55,7 @@ import { isUnlocked, registerLockCleanup, unlockState } from "@/lib/unlock";
 import { cn } from "@/lib/utils";
 import { CoreDialog } from "./CoreDialog";
 import { DetailDialog } from "./DetailDialog";
+import { MembersCard } from "./MembersCard";
 import { MraCard } from "./MraCard";
 import { detailHref } from "./profileModel";
 
@@ -575,6 +576,7 @@ export function ProfilePage() {
               <div className="flex flex-col gap-6">
                 <CoreCard current={current} />
                 <MraCard current={current} />
+                <MembersCard current={current} />
               </div>
               <Details current={current} />
             </div>

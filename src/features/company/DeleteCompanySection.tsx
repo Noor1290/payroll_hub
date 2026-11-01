@@ -75,6 +75,7 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
           stays for that company)
         </li>
       )}
+      {preview.memberChanges > 0 && <li>the record of changes to its members</li>}
       {preview.mraDetails > 0 && <li>its MRA details (ERN, phone numbers, declarant)</li>}
       <li>
         {preview.otherMembers === 0

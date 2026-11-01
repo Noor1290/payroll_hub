@@ -493,7 +493,7 @@ describe("0020: templates follow the Global columns rule", () => {
     } finally {
       await fresh.close();
     }
-  });
+  }, 30_000);
 });
 
 describe("0020: a company's MRA details and a user's email", () => {

@@ -39,7 +39,7 @@ logged-in user (role `authenticated`). Never use or mention a service-role key a
 Tables:
 
 - `companies(id uuid, name, address, brn unique, vat text, created_at)`
-- `company_members(company_id, user_id, role 'admin'|'viewer')`: read-only from the app; managed in the SQL editor
+- `company_members(company_id, user_id, role 'admin'|'viewer')`: read-only from the app; since migration 0021 changed through database functions from the Members card, by admins of that company
 - `employees(id uuid, company_id, national_id, surname, other_names, employment_type, deleted_at, created_at)`, unique(company_id, national_id)
 - `payroll_runs(id uuid, company_id, period date (always first of month), status 'draft'|'approved', created_by, created_at, deleted_at)`, unique(company_id, period)
 - `payroll_entries(id uuid, run_id, employee_id, basic_salary, govt_increment, new_basic_salary, allowances, emoluments, travelling, gross_pay, age_60_plus bool, csg, nsf, paye, total_deductions, net_pay, levy, prgf, total_mra_contributions, edf, edf_monthly, total, extra jsonb, created_at)`, unique(run_id, employee_id)

@@ -741,7 +741,7 @@ const BREAKS = [
   {
     what: "delete_company forgets the issued payslips",
     // The newest definition is the one that counts (0020 since MRA Returns).
-    file: "supabase/migrations/0020_mra_returns.sql",
+    file: "supabase/migrations/0021_company_members.sql",
     find: "  delete from public.issued_payslips p where p.company_id = p_company_id;\n",
     replace: "",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -760,7 +760,7 @@ const BREAKS = [
   {
     what: "The dashboard names an old migration when delete_company is missing",
     file: "src/features/company/deleteCompany.ts",
-    find: 'const MIGRATION = "0020_mra_returns.sql";',
+    find: 'const MIGRATION = "0021_company_members.sql";',
     replace: 'const MIGRATION = "0014_payroll_months.sql";',
     test: "src/features/company/deleteCompanyMigration.test.ts",
     mustFail: "is defined last in 0020, the file the dashboard names",
@@ -1007,7 +1007,7 @@ const BREAKS = [
   {
     what: "delete_company leaves the company's payroll setup behind",
     // The newest definition is the one that counts (0020 since MRA Returns).
-    file: "supabase/migrations/0020_mra_returns.sql",
+    file: "supabase/migrations/0021_company_members.sql",
     find: "  delete from public.payroll_company_setups cs where cs.company_id = p_company_id;\n  get diagnostics v_setups = row_count;\n",
     replace: "  v_setups := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1076,7 +1076,7 @@ const BREAKS = [
   {
     what: "delete_company leaves the company's months behind",
     // The newest definition is the one that counts (0020 since MRA Returns).
-    file: "supabase/migrations/0020_mra_returns.sql",
+    file: "supabase/migrations/0021_company_members.sql",
     find: "  delete from public.payroll_months pm where pm.company_id = p_company_id;\n  get diagnostics v_months = row_count;\n",
     replace: "  v_months := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1275,7 +1275,7 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the template used for the payslips behind",
-    file: "supabase/migrations/0020_mra_returns.sql",
+    file: "supabase/migrations/0021_company_members.sql",
     find: "  delete from public.payslip_template_in_use u where u.company_id = p_company_id;\n  get diagnostics v_in_use = row_count;\n",
     replace: "  v_in_use := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1485,6 +1485,46 @@ const BREAKS = [
     replace: "if (!source) {",
     test: "src/features/workspace/payrollSetupData.test.ts",
     mustFail: "refuses a company the user only views or does not belong to",
+  },
+  {
+    what: "0021: the last admin can be removed",
+    file: "supabase/migrations/0021_company_members.sql",
+    find: "  if v_old = 'admin' and (select count(*) from public.company_members m\n                          where m.company_id = p_company_id and m.role = 'admin') = 1 then\n    raise exception 'PH_LAST_ADMIN' using errcode = 'P0001';\n  end if;\n  if p_user_id = v_user then\n    raise exception 'PH_NOT_YOURSELF' using errcode = 'P0001';\n  end if;\n",
+    replace: "",
+    test: "src/features/profile/members.db.test.ts",
+    mustFail: "the last admin can never be removed",
+  },
+  {
+    what: "0021: a viewer can add a member",
+    file: "supabase/migrations/0021_company_members.sql",
+    find: "    where m.company_id = p_company_id and m.user_id = v_user and m.role = 'admin'\n  ) then\n    raise exception 'PH_NOT_ADMIN' using errcode = '42501';\n  end if;\n\n  if p_role is null or p_role not in ('admin', 'viewer') then\n    raise exception 'PH_INVALID_INPUT: the role must be admin or viewer' using errcode = '22023';\n  end if;\n  if length(v_email)",
+    replace: "    where m.company_id = p_company_id and m.user_id = v_user\n  ) then\n    raise exception 'PH_NOT_ADMIN' using errcode = '42501';\n  end if;\n\n  if p_role is null or p_role not in ('admin', 'viewer') then\n    raise exception 'PH_INVALID_INPUT: the role must be admin or viewer' using errcode = '22023';\n  end if;\n  if length(v_email)",
+    test: "src/features/profile/members.db.test.ts",
+    mustFail: "for all four, and changes nothing",
+  },
+  {
+    what: "0021: a change is not recorded",
+    file: "supabase/migrations/0021_company_members.sql",
+    find: "  values (p_company_id, 'added', v_member, v_email, p_role, v_user, coalesce(v_by_email, ''));",
+    replace: "  select p_company_id, 'added', v_member, v_email, p_role, v_user, '' where false;",
+    test: "src/features/profile/members.db.test.ts",
+    mustFail: "and records it",
+  },
+  {
+    what: "Members: a viewer's screen reads the members",
+    file: "src/features/profile/MembersCard.tsx",
+    find: "    queryFn: () => fetchMembers(viewer!, company.id),\n    enabled: admin && viewer !== null,",
+    replace: "    queryFn: () => fetchMembers(viewer!, company.id),\n    enabled: viewer !== null,",
+    test: "src/features/profile/MembersCard.test.tsx",
+    mustFail: "is not shown to a viewer",
+  },
+  {
+    what: "Members: changes are open with the gate locked",
+    file: "src/features/profile/MembersCard.tsx",
+    find: "disabled={busy || !unlocked || you}",
+    replace: "disabled={busy || you}",
+    test: "src/features/profile/MembersCard.test.tsx",
+    mustFail: "with the gate locked",
   },
   {
     what: "P5: a run keeps no order",
@@ -1715,7 +1755,7 @@ const BREAKS = [
   },
   {
     what: "0020: delete_company leaves templates nobody uses behind",
-    file: "supabase/migrations/0020_mra_returns.sql",
+    file: "supabase/migrations/0021_company_members.sql",
     find: "  delete from public.mra_templates t\n  where t.id = any(v_mra_ids)",
     replace: "  delete from public.mra_templates t\n  where false and t.id = any(v_mra_ids)",
     test: "src/features/workspace/mraReturns.db.test.ts",

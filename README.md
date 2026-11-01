@@ -73,7 +73,7 @@ Then:
 
 1. In Supabase, under **Authentication**, switch off sign-ups and create your user (tick "Auto Confirm User"). The dashboard has no sign-up screen.
 2. Create your first company and make yourself its admin: un-comment the "FIRST-TIME SETUP" block at the end of `0001_initial_schema.sql`, change the email, and run it.
-3. Add other people the same way, as `admin` or `viewer`, in `company_members`.
+3. After that, an admin adds other people on the Company profile, under **Members**: existing accounts only, by email, as admin or viewer (migration `0021`). Every change is recorded there. The last admin of a company can't be removed or made a viewer, and an admin can't remove themselves. Create the account in Supabase first: nobody is invited by email.
 4. Further companies can be added from the dashboard; see [Who can add a company](#who-can-add-a-company).
 
 Supabase pauses free projects after a period of inactivity. The dashboard then says it can't reach the database; resume the project from the Supabase dashboard.
