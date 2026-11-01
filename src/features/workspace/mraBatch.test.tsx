@@ -312,6 +312,7 @@ describe("load: one company's saved run, only as allowed", () => {
           address: "1 Fake Street, Port Louis",
           period: "2026-08",
           run: true,
+          status: "draft",
         },
       ],
     });
@@ -414,7 +415,16 @@ describe("load: one company's saved run, only as allowed", () => {
     await askAndAllow(["C3333333"]);
     expect(await request({ ...LOAD, company_brn: "C3333333" })).toMatchObject({
       ok: true,
-      rows: [{ brn: "C3333333", name: "DEF Ltd", period: "2026-08", run: false, employees: [] }],
+      rows: [
+        {
+          brn: "C3333333",
+          name: "DEF Ltd",
+          period: "2026-08",
+          run: false,
+          status: null,
+          employees: [],
+        },
+      ],
     });
     // ABC has a run, but of August only: July was never sent.
     const pending = request({

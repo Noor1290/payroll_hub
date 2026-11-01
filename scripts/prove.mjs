@@ -1471,6 +1471,14 @@ const BREAKS = [
     mustFail: "may ask for mra-batch and its templates, and send only templates",
   },
   {
+    what: "MRA returns: the app is not told whether the month is approved",
+    file: "src/features/workspace/mraBatchData.ts",
+    find: "status: run?.status ?? null,",
+    replace: "status: null,",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "gives the company's saved run of the month",
+  },
+  {
     what: "MRA returns: a company the user only views can be asked for",
     file: "src/features/workspace/mraBatchData.ts",
     find: "      if (chosen.some((one) => one === null)) {",

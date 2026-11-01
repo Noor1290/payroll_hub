@@ -45,7 +45,8 @@ import { openCompanyProfile, profileOpenerReady } from "./openProfile";
  *    `load` for those companies and that month only, for 15 minutes, in memory only; it goes
  *    when the gate locks or on sign-out.
  *  - `load` answers ONE company: its saved run of the month, the rows exactly as "Get from
- *    dashboard" gives them, or `run: false` when that month was never sent to the dashboard;
+ *    dashboard" gives them, with its status (draft or approved), or `run: false` when that month
+ *    was never sent to the dashboard;
  *    with its MRA details (ERN, telephone, mobile, declarant: migration 0020), the user's email
  *    for the returns, and its own values for the MRA templates it uses. Refused at once when it was not allowed, when the gate is locked, or when the user is no
  *    longer its admin.
@@ -125,6 +126,8 @@ async function loadCompany(
     address: company.address,
     period,
     run: run !== undefined,
+    // Told, never used to refuse: a month not approved can still be filed (the app says so).
+    status: run?.status ?? null,
     employees: entries.map((row) => toExportRow(row, company)),
     // Empty texts until an admin fills them in on the Company profile.
     mra: {
