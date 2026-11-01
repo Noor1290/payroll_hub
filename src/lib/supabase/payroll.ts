@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   isEmploymentDate,
   NUMERIC_COLUMNS,
+  splitRowPosition,
   type NumericColumn,
   type PayrollRow,
 } from "@/config/payrollFields";
@@ -128,11 +129,14 @@ export async function fetchRunEntries(viewer: Viewer, runId: string): Promise<Pa
       rows = await read(false);
     }
   }
-  return rows.map(({ employees, ...entry }) => {
+  return rows.map(({ employees, extra: stored, ...entry }) => {
     const { id: employee_id, date_of_employment, ...employee } = employees;
+    const { extra, position } = splitRowPosition(stored);
     return {
       ...entry,
       ...employee,
+      extra,
+      ...(position === undefined ? {} : { position }),
       employee_id,
       ...(date_of_employment === undefined ? {} : { date_of_employment }),
     };

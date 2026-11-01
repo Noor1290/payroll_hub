@@ -146,6 +146,7 @@ const REFUSALS: Record<RefusalCode | "none", string> = {
   denied: "declined in the dashboard",
   timeout: "nobody answered in time",
   unavailable: "not available",
+  "no-company": "account has no company",
   stale: "someone else saved first",
   "no-change": "nothing had changed",
   forbidden: "not allowed (admins only)",

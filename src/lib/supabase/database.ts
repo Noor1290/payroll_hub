@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NUMERIC_COLUMNS } from "@/config/payrollFields";
+import { NUMERIC_COLUMNS, splitRowPosition } from "@/config/payrollFields";
 import { demoFetchTableCounts, demoFetchTablePage } from "@/lib/demo/demoData";
 import { supabase } from "./client";
 import { isMissingTable, NotConfiguredError } from "./errors";
@@ -588,6 +588,10 @@ const entryJoinSchema = z.object({
  */
 export function parseRow(table: DbTable, raw: unknown, viewerId?: string): DbRow {
   const values = ROW_SCHEMAS[table.name].parse(raw) as Record<string, unknown>;
+  // The row's place in the Employee Table is the dashboard's own, not one of the company's columns.
+  if (table.name === "payroll_entries") {
+    values.extra = splitRowPosition(values.extra as Record<string, unknown>).extra;
+  }
   for (const column of table.columns) {
     if (column.kind !== "actor" || values[column.key] === null) continue;
     values[column.key] = values[column.key] === viewerId ? ACTOR_YOU : ACTOR_OTHER;

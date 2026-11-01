@@ -1,4 +1,4 @@
-import { NUMERIC_COLUMNS, type PayrollRow } from "@/config/payrollFields";
+import { NUMERIC_COLUMNS, ROW_POSITION_KEY, type PayrollRow } from "@/config/payrollFields";
 import type { Membership, RunStatus } from "@/lib/supabase/schemas";
 import type { FileCompany } from "./parsePayroll";
 
@@ -102,15 +102,18 @@ export function runConflict(existing: ExistingRun | null): RunConflict {
   return existing.status === "approved" ? { kind: "blocked-approved" } : { kind: "replace-draft" };
 }
 
-/** A row as the import function expects it: snake_case columns, exactly the file's values. */
-export function toRpcRow(row: PayrollRow): Record<string, unknown> {
+/**
+ * A row as the import function expects it: snake_case columns, exactly the file's values. `index`
+ * is its place in what was sent (Array.map gives it), kept with it so the order can be read back.
+ */
+export function toRpcRow(row: PayrollRow, index: number): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     national_id: row.national_id,
     surname: row.surname,
     other_names: row.other_names,
     employment_type: row.employment_type,
     age_60_plus: row.age_60_plus,
-    extra: row.extra,
+    extra: { ...row.extra, [ROW_POSITION_KEY]: index + 1 },
   };
   for (const column of NUMERIC_COLUMNS) payload[column] = row[column];
   return payload;

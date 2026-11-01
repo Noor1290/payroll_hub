@@ -32,6 +32,7 @@ export const REFUSAL_CODES = [
   "denied",
   "timeout",
   "unavailable",
+  "no-company",
   "stale",
   "no-change",
   "forbidden",

@@ -313,6 +313,7 @@ describe("the payload schemas", () => {
         "stale",
         "timeout",
         "too-large",
+        "no-company",
         "unavailable",
         "wrong-company",
       ].sort(),

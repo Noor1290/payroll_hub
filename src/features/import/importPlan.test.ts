@@ -9,6 +9,7 @@ import {
   toRpcRow,
   type ExistingEmployee,
 } from "./importPlan";
+import { ROW_POSITION_KEY } from "@/config/payrollFields";
 
 const membership = (name: string, brn: string | null, role: Membership["role"]): Membership => ({
   role,
@@ -164,8 +165,16 @@ describe("runConflict", () => {
 });
 
 describe("toRpcRow", () => {
+  it("keeps each row's place in what was sent, from 1, beside the company's own columns", () => {
+    const rows = [row("B", "ROE", { extra: { Bonus: 1 } }), row("A", "DOE")];
+    expect(rows.map(toRpcRow).map((one) => one.extra)).toEqual([
+      { Bonus: 1, [ROW_POSITION_KEY]: 1 },
+      { [ROW_POSITION_KEY]: 2 },
+    ]);
+  });
+
   it("sends every column the import function reads, and nothing display-only", () => {
-    const payload = toRpcRow(row("A", "DOE", { net_pay: 18169.12, extra: { Bonus: 1 } }));
+    const payload = toRpcRow(row("A", "DOE", { net_pay: 18169.12, extra: { Bonus: 1 } }), 0);
     expect(Object.keys(payload).sort()).toEqual(
       [
         "national_id",
@@ -178,6 +187,6 @@ describe("toRpcRow", () => {
       ].sort(),
     );
     expect(payload.net_pay).toBe(18169.12);
-    expect(payload.extra).toEqual({ Bonus: 1 });
+    expect(payload.extra).toEqual({ Bonus: 1, [ROW_POSITION_KEY]: 1 });
   });
 });

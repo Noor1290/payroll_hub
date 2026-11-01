@@ -18,9 +18,16 @@ export const exchangeContext = createStore<ExchangeContext | null>(null);
  */
 export const exchangeContextLoading = createStore(false);
 
+/**
+ * True when someone is signed in, their companies have loaded, and there are none: they belong to
+ * no company. Set by BridgeDialogs. False while loading, and when the loading failed.
+ */
+export const exchangeHasNoCompany = createStore(false);
+
 registerSessionCleanup(() => {
   exchangeContext.set(null);
   exchangeContextLoading.set(false);
+  exchangeHasNoCompany.set(false);
 });
 
 /**

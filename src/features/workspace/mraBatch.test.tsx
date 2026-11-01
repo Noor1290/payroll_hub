@@ -1,3 +1,4 @@
+import { ROW_POSITION_KEY } from "@/config/payrollFields";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getApp } from "@/config/apps.config";
@@ -409,6 +410,35 @@ describe("load: one company's saved run, only as allowed", () => {
       code: "unavailable",
       error: expect.stringContaining("0020_mra_returns.sql"),
     });
+  });
+
+  it("gives the employees in the order of the Employee Table, and by ID in an older run", async () => {
+    const entry = (id: string, national_id: string, position?: number) => ({
+      ...ENTRY,
+      id,
+      extra: position === undefined ? {} : { [ROW_POSITION_KEY]: position },
+      employees: { ...ENTRY.employees, id, national_id },
+    });
+    const listed = async (entries: unknown[]) => {
+      database((calls) => (table(calls) === "payroll_entries" ? { data: entries } : undefined));
+      await askAndAllow(["C1234567"]);
+      const answer = (await request(LOAD)) as unknown as {
+        rows: { employees: Record<string, unknown>[] }[];
+      };
+      return answer.rows[0]!.employees;
+    };
+    const fresh = await listed([
+      entry("50000000-0000-4000-8000-000000000001", "X1", 3),
+      entry("50000000-0000-4000-8000-000000000002", "X3", 1),
+      entry("50000000-0000-4000-8000-000000000003", "X2", 2),
+    ]);
+    expect(fresh.map((row) => row.ID)).toEqual(["X3", "X2", "X1"]);
+    expect(Object.keys(fresh[0]!)).not.toContain(ROW_POSITION_KEY);
+    const older = await listed([
+      entry("50000000-0000-4000-8000-000000000001", "X10"),
+      entry("50000000-0000-4000-8000-000000000002", "X2"),
+    ]);
+    expect(older.map((row) => row.ID)).toEqual(["X2", "X10"]);
   });
 
   it("says when the month was never sent to the dashboard", async () => {

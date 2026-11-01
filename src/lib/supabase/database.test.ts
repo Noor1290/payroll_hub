@@ -1,3 +1,4 @@
+import { ROW_POSITION_KEY } from "@/config/payrollFields";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import { NUMERIC_COLUMNS } from "@/config/payrollFields";
@@ -407,6 +408,25 @@ describe("the table list", () => {
     ).toMatchObject({
       nullable: true,
     });
+  });
+
+  it("does not show a row's position in the Employee Table", () => {
+    const blank = (kind: string) =>
+      ({ money: 0, boolean: false, timestamp: NOW, json: {}, id: COMPANY })[kind] ?? "";
+    const raw = Object.fromEntries(
+      DB_TABLES.payroll_entries.columns.map((column) => [column.key, blank(column.kind)]),
+    );
+    const entry = parseRow(
+      DB_TABLES.payroll_entries,
+      {
+        ...raw,
+        extra: { Bonus: 5, [ROW_POSITION_KEY]: 3 },
+        payroll_runs: { company_id: COMPANY, deleted_at: null },
+      },
+      VIEWER.id,
+    );
+    expect(entry).toMatchObject({ extra: { Bonus: 5 } });
+    expect(JSON.stringify(entry)).not.toContain(ROW_POSITION_KEY);
   });
 
   it("reads a payroll month row as stored, and a history record without its content", () => {

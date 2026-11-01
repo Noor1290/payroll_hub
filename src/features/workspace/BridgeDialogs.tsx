@@ -30,7 +30,7 @@ import { isUnlocked } from "@/lib/unlock";
 import { UnlockForm } from "@/features/unlock/PasswordGate";
 import { useUnlock } from "@/features/unlock/useUnlock";
 import { exchangeContext } from "./appData";
-import { exchangeContextLoading } from "./exchangeContext";
+import { exchangeContextLoading, exchangeHasNoCompany } from "./exchangeContext";
 // Registers the PDF form filler's data types with the bridge.
 import "./pdfData";
 import "./payrollSetupData";
@@ -369,7 +369,7 @@ function RequestDialog({ request }: { request: DataRequest }) {
 /** One dialog at a time: requests first (an app is waiting on them), then received data. */
 export function BridgeDialogs() {
   const { user } = useAuth();
-  const { current, status: companyStatus } = useCompany();
+  const { current, memberships, status: companyStatus } = useCompany();
   const userId = user?.id;
   const isDemo = user?.isDemo ?? false;
 
@@ -381,11 +381,15 @@ export function BridgeDialogs() {
       userId && current ? { viewer: { id: userId, isDemo }, membership: current } : null,
     );
     exchangeContextLoading.set(Boolean(userId) && !current && companyStatus === "loading");
+    exchangeHasNoCompany.set(
+      Boolean(userId) && companyStatus === "ready" && memberships.length === 0,
+    );
     return () => {
       exchangeContext.set(null);
       exchangeContextLoading.set(false);
+      exchangeHasNoCompany.set(false);
     };
-  }, [userId, isDemo, current, companyStatus]);
+  }, [userId, isDemo, current, memberships, companyStatus]);
 
   const requests = useStore(dataRequests);
   const batches = useStore(incomingBatches);

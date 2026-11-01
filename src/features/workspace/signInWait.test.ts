@@ -6,7 +6,7 @@ import { demoMemberships } from "@/lib/demo/demoData";
 import { demoForgetPayrollSetups } from "@/lib/demo/demoPayrollSetups";
 import { runSessionCleanup } from "@/lib/sessionCleanup";
 import { exchangeContext } from "./appData";
-import { exchangeContextLoading, SIGN_IN_WAIT_MS } from "./exchangeContext";
+import { exchangeContextLoading, exchangeHasNoCompany, SIGN_IN_WAIT_MS } from "./exchangeContext";
 // The handlers register themselves with the bridge when imported, as BridgeDialogs does.
 import "./appData";
 import "./payrollSetupData";
@@ -125,6 +125,24 @@ describe("an app that asks before the dashboard knows who is signed in", () => {
       code: "unavailable",
       error: "Nobody is signed in to the dashboard, or no company is selected.",
     });
+  });
+
+  it("signed in with no company: says so, in the one sentence every app shows", async () => {
+    exchangeContextLoading.set(false);
+    exchangeHasNoCompany.set(true);
+    const fromApp = connect("payroll");
+    fromApp("request-data", "early-000009", {
+      dataType: "payroll-setup",
+      params: { action: "load" },
+    });
+    await vi.waitFor(() => expect(reply("early-000009")).toBeTruthy());
+    expect(reply("early-000009")!.payload).toMatchObject({
+      ok: false,
+      code: "no-company",
+      error:
+        "Your account isn't a member of any company in the dashboard yet. Ask an admin to add you.",
+    });
+    exchangeHasNoCompany.set(false);
   });
 
   it("signed out (nothing loading): refused at once, as before", async () => {

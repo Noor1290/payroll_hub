@@ -243,6 +243,7 @@ exports[`baseline: the 2026-09 sample > is stored like this by an import 1`] = `
     "emoluments": 18635,
     "employment_type": "Full Time",
     "extra": {
+      "__row_position": 1,
       "employee_csg": 279.53,
       "employee_nsf": 186.35,
     },
@@ -272,6 +273,7 @@ exports[`baseline: the 2026-09 sample > is stored like this by an import 1`] = `
     "emoluments": 25135,
     "employment_type": "Full Time",
     "extra": {
+      "__row_position": 2,
       "employee_csg": 377.03,
       "employee_nsf": 186.35,
     },
@@ -301,6 +303,7 @@ exports[`baseline: the 2026-09 sample > is stored like this by an import 1`] = `
     "emoluments": 31635,
     "employment_type": "Full Time",
     "extra": {
+      "__row_position": 3,
       "employee_csg": 474.53,
       "employee_nsf": 186.35,
     },
@@ -330,6 +333,7 @@ exports[`baseline: the 2026-09 sample > is stored like this by an import 1`] = `
     "emoluments": 12635,
     "employment_type": "Part Time",
     "extra": {
+      "__row_position": 4,
       "employee_csg": 189.53,
       "employee_nsf": 186.35,
     },
@@ -359,6 +363,7 @@ exports[`baseline: the 2026-09 sample > is stored like this by an import 1`] = `
     "emoluments": 45000,
     "employment_type": "Full Time",
     "extra": {
+      "__row_position": 5,
       "employee_csg": 675,
       "employee_nsf": 186.36,
     },
@@ -389,6 +394,7 @@ exports[`baseline: the 2026-09 sample > is stored like this by an import 1`] = `
     "employment_type": "Full Time",
     "extra": {
       "Bonus": 1500,
+      "__row_position": 6,
       "employee_csg": 317.03,
       "employee_nsf": 186.35,
     },
@@ -602,7 +608,9 @@ exports[`baseline: the 2026-10 sample > is stored like this by an import 1`] = `
     "edf_monthly": 30000,
     "emoluments": 18635,
     "employment_type": "Full Time",
-    "extra": {},
+    "extra": {
+      "__row_position": 1,
+    },
     "govt_increment": 635,
     "gross_pay": 18635,
     "levy": 270,
@@ -628,7 +636,9 @@ exports[`baseline: the 2026-10 sample > is stored like this by an import 1`] = `
     "edf_monthly": 30000,
     "emoluments": 25135,
     "employment_type": "Full Time",
-    "extra": {},
+    "extra": {
+      "__row_position": 2,
+    },
     "govt_increment": 635,
     "gross_pay": 25135,
     "levy": 270,
@@ -654,7 +664,9 @@ exports[`baseline: the 2026-10 sample > is stored like this by an import 1`] = `
     "edf_monthly": 30000,
     "emoluments": 31635,
     "employment_type": "Full Time",
-    "extra": {},
+    "extra": {
+      "__row_position": 3,
+    },
     "govt_increment": 635,
     "gross_pay": 31635,
     "levy": 270,
@@ -680,7 +692,9 @@ exports[`baseline: the 2026-10 sample > is stored like this by an import 1`] = `
     "edf_monthly": 30000,
     "emoluments": 45000,
     "employment_type": "Full Time",
-    "extra": {},
+    "extra": {
+      "__row_position": 4,
+    },
     "govt_increment": 0,
     "gross_pay": 45000,
     "levy": 270,
@@ -708,6 +722,7 @@ exports[`baseline: the 2026-10 sample > is stored like this by an import 1`] = `
     "employment_type": "Full Time",
     "extra": {
       "Bonus": 1500,
+      "__row_position": 5,
     },
     "govt_increment": 635,
     "gross_pay": 21135,
@@ -734,7 +749,9 @@ exports[`baseline: the 2026-10 sample > is stored like this by an import 1`] = `
     "edf_monthly": 30000,
     "emoluments": 19635,
     "employment_type": "Full Time",
-    "extra": {},
+    "extra": {
+      "__row_position": 6,
+    },
     "govt_increment": 635,
     "gross_pay": 19635,
     "levy": 270,

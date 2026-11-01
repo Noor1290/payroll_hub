@@ -232,10 +232,27 @@ export function fieldForColumn(column: string): PayrollField | undefined {
   return FIELD_BY_COLUMN.get(column);
 }
 
+/**
+ * Inside `extra`: a run's row number in the file or send it came from, from 1, which is the order
+ * of the Employee Table. payroll_entries keeps no order of its own. The dashboard writes it and
+ * reads it back; no screen, export or app ever sees it as a column. Older runs do not have it.
+ */
+export const ROW_POSITION_KEY = "__row_position";
+
 /** Keys inside `extra` that belong to a known field, so no unknown field may use them. */
-export const RESERVED_EXTRA_KEYS: ReadonlySet<string> = new Set(
-  PAYROLL_FIELDS.filter((field) => field.inExtra).map((field) => field.column),
-);
+export const RESERVED_EXTRA_KEYS: ReadonlySet<string> = new Set([
+  ...PAYROLL_FIELDS.filter((field) => field.inExtra).map((field) => field.column),
+  ROW_POSITION_KEY,
+]);
+
+/** `extra` without the row position, and that position when it is a real one. */
+export function splitRowPosition(extra: Record<string, unknown>): {
+  extra: Record<string, unknown>;
+  position: number | undefined;
+} {
+  const { [ROW_POSITION_KEY]: position, ...rest } = extra;
+  return { extra: rest, position: typeof position === "number" ? position : undefined };
+}
 
 /**
  * The value of an `inExtra` field, or undefined when the row has none. Anything that is not a
@@ -247,6 +264,18 @@ export function extraNumber(
 ): number | undefined {
   const value = row.extra[field.column];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** A run's rows in the order of the Employee Table, and by ID for rows that do not know it. */
+export function inTableOrder<Row extends Pick<PayrollRow, "position" | "national_id">>(
+  rows: readonly Row[],
+): Row[] {
+  const last = Number.POSITIVE_INFINITY;
+  return [...rows].sort(
+    (a, b) =>
+      (a.position ?? last) - (b.position ?? last) ||
+      a.national_id.localeCompare(b.national_id, undefined, { numeric: true }),
+  );
 }
 
 /** The per-employee fields, in export order: what a grid row shows. */
@@ -270,6 +299,8 @@ export type PayrollRow = {
    * still being imported, or a database that has not had migration 0008.
    */
   date_of_employment?: string | null;
+  /** Saved rows only: the row's place in the Employee Table, from 1. Older runs do not have it. */
+  position?: number;
   /**
    * Fields this version of the dashboard does not know about, kept verbatim, plus the known
    * `inExtra` fields under their column names (see RESERVED_EXTRA_KEYS).

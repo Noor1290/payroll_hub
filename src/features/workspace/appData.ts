@@ -80,7 +80,7 @@ import { answerRequest, recordSave } from "./deliver";
 
 // Who is signed in and which company is selected: kept in its own file so deliver.ts can wait
 // for it (known issue 4). Re-exported here, where the handlers and their tests have always found it.
-import { exchangeContext, type ExchangeContext } from "./exchangeContext";
+import { exchangeContext, exchangeHasNoCompany, type ExchangeContext } from "./exchangeContext";
 export { exchangeContext, type ExchangeContext };
 
 // ---------- shared pieces ----------
@@ -93,6 +93,10 @@ export const normaliseBrn = (brn: string) => brn.trim().toUpperCase();
 const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 export const brnSchema = z.string().trim().min(1).max(50);
 
+/** Every app shows this same sentence for an account that belongs to no company. */
+const NO_COMPANY =
+  "Your account isn't a member of any company in the dashboard yet. Ask an admin to add you.";
+
 /**
  * The signed-in user and the selected company, or why there is nothing to work with.
  * When the app names a BRN it must be the selected company's: an app that still shows another
@@ -101,6 +105,7 @@ export const brnSchema = z.string().trim().min(1).max(50);
 function context(brn: string | undefined): ExchangeContext | Refusal {
   const current = exchangeContext.get();
   if (!current) {
+    if (exchangeHasNoCompany.get()) return refuse("no-company", NO_COMPANY);
     return refuse(
       "unavailable",
       "Nobody is signed in to the dashboard, or no company is selected.",
