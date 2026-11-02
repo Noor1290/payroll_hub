@@ -1243,17 +1243,8 @@ const BREAKS = [
   {
     what: "0022: anyone signed in can change a company's own values",
     file: "supabase/migrations/0022_payslip_template_own_values.sql",
-    find: "    where m.company_id = p_company_id and m.user_id = v_user and m.role = 'admin'
-  ) then
-    raise exception 'PH_NOT_ADMIN' using errcode = '42501';
-  end if;
-
-  -- ---------- input checks",
-    replace: "  ) or true then
-    null;
-  end if;
-
-  -- ---------- input checks",
+    find: "    where m.company_id = p_company_id and m.user_id = v_user and m.role = 'admin'\n  ) then\n    raise exception 'PH_NOT_ADMIN' using errcode = '42501';\n  end if;\n\n  -- ---------- input checks",
+    replace: "  ) or true then\n    null;\n  end if;\n\n  -- ---------- input checks",
     test: "src/features/workspace/templateOwnValues.db.test.ts",
     mustFail: "is for admins of that company only, checked in the database",
   },
@@ -1268,13 +1259,12 @@ const BREAKS = [
   {
     what: "0022: an admin reaches another company's template",
     file: "supabase/migrations/0022_payslip_template_own_values.sql",
-    find: "  where t.id = p_template_id and t.company_id = p_company_id
-  for update;",
-    replace: "  where t.id = p_template_id
-  for update;",
+    find: "  where t.id = p_template_id and t.company_id = p_company_id\n  for update;",
+    replace: "  where t.id = p_template_id\n  for update;",
     test: "src/features/workspace/templateOwnValues.db.test.ts",
     mustFail: "cannot reach a template of another company",
   },
+
   // ---------- Publishing a template to several companies (migration 0018) ----------
   {
     what: "Anyone signed in can see a company's newest run columns",
