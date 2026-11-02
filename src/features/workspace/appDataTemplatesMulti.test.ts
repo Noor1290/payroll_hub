@@ -594,6 +594,80 @@ describe("payslip-template: use", () => {
   });
 });
 
+describe("payslip-template: a company's own values (migration 0022)", () => {
+  const VALUES = { c1: "Port Louis branch" };
+  const withValues = () =>
+    database((calls) =>
+      table(calls) === "payslip_templates" && calls.some(([, name]) => name === "own_values, values_revision")
+        ? { data: { own_values: VALUES, values_revision: 3 } }
+        : rpcName(calls) === "save_payslip_template_values"
+          ? { data: { template_id: T1, values_revision: 4 } }
+          : undefined,
+    );
+
+  it("reads them for the selected company", async () => {
+    withValues();
+    expect(await request({ action: "values", template_id: T1 })).toMatchObject({
+      ok: true,
+      rows: [{ template_id: T1, own_values: VALUES, values_revision: 3 }],
+    });
+  });
+
+  it("reads none on a database without 0022: the app keeps working", async () => {
+    database((calls) =>
+      table(calls) === "payslip_templates" && calls.some(([, name]) => name === "own_values, values_revision")
+        ? { error: { code: "42703", message: "column does not exist" } }
+        : undefined,
+    );
+    expect(await request({ action: "values", template_id: T1 })).toMatchObject({
+      ok: true,
+      rows: [{ template_id: T1, own_values: {}, values_revision: 1 }],
+    });
+  });
+
+  it("saves them through the database function, for the selected company", async () => {
+    withValues();
+    expect(
+      await save({
+        action: "values",
+        brn: "C1234567",
+        template_id: T1,
+        own_values: VALUES,
+        expected_revision: 3,
+      }),
+    ).toEqual({ ok: true, result: { action: "values", template_id: T1, values_revision: 4 } });
+    expect(rpcArgs(rpcs()[0]!)).toEqual({
+      p_company_id: ABC,
+      p_template_id: T1,
+      p_own_values: VALUES,
+      p_expected_revision: 3,
+    });
+  });
+
+  it("refuses a member, another company, an image and too much text", async () => {
+    withValues();
+    const row = { action: "values", brn: "C1234567", template_id: T1, expected_revision: 3 };
+    expect(await save({ ...row, brn: "C3333333", own_values: {} })).toMatchObject({
+      code: "wrong-company",
+    });
+    expect(await save({ ...row, own_values: { c1: "data:image/png;base64,AAAA" } })).toMatchObject({
+      code: "invalid",
+    });
+    expect(await save({ ...row, own_values: { c1: "x".repeat(70_000) } })).toMatchObject({
+      code: "too-large",
+    });
+    signIn("viewer");
+    expect(await save({ ...row, own_values: {} })).toMatchObject({ code: "forbidden" });
+    expect(rpcs()).toHaveLength(0);
+  });
+
+  it("says so in the Transfer log's toast, without a value", () => {
+    expect(describeTemplateSave({ action: "values", template_id: T1, values_revision: 4 })).toBe(
+      "This company's own values for the payslip template saved",
+    );
+  });
+});
+
 describe("the toasts", () => {
   it("say what was published where, and which version is used now", () => {
     expect(

@@ -5,10 +5,12 @@ import type {
   PublishedTemplate,
   RunColumns,
   SavedDraft,
+  SavedTemplateValues,
   SetInUse,
   TemplateDraft,
   TemplateInUse,
   TemplateSummary,
+  TemplateValues,
   TemplateVersion,
 } from "@/lib/supabase/payslipTemplates";
 import type { IssuedMonth, IssuedPayslip, PayslipInput } from "@/lib/supabase/issuedPayslips";
@@ -316,6 +318,36 @@ export async function demoSetTemplateInUse(
   if (!exists) throw fail("PH_NOT_FOUND", "P0002");
   storeInUse(companyId, templateId, version);
   return { template_id: templateId, version };
+}
+
+/** A company's own values per template: not part of a body, so publishing never touches them. */
+const ownValues = new Map<string, TemplateValues>();
+
+export async function demoFetchTemplateValues(
+  companyId: string,
+  templateId: string,
+): Promise<TemplateValues | null> {
+  await pause(150);
+  if (!templates.some((row) => row.company_id === companyId && row.id === templateId)) return null;
+  return ownValues.get(templateId) ?? { own_values: {}, values_revision: 1 };
+}
+
+/** Mirrors save_payslip_template_values: admin only, the revision last seen must still be current. */
+export async function demoSaveTemplateValues(
+  companyId: string,
+  templateId: string,
+  values: Record<string, unknown>,
+  expectedRevision: number,
+): Promise<SavedTemplateValues> {
+  await pause(250);
+  requireAdmin(companyId);
+  if (!templates.some((row) => row.company_id === companyId && row.id === templateId)) {
+    throw fail("PH_NOT_FOUND", "P0002");
+  }
+  const current = ownValues.get(templateId)?.values_revision ?? 1;
+  if (current !== expectedRevision) throw fail("PH_STALE", "40001");
+  ownValues.set(templateId, { own_values: values, values_revision: current + 1 });
+  return { template_id: templateId, values_revision: current + 1 };
 }
 
 /** Mirrors publish_payslip_template_copy: one company, all or nothing, then used for its payslips. */

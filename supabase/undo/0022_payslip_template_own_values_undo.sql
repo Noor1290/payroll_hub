@@ -1,0 +1,19 @@
+-- =====================================================================
+-- UNDO of migration 0022_payslip_template_own_values.sql. NOT a migration: kept outside
+-- supabase/migrations on purpose, and every line is commented out, so running this file as it
+-- is does nothing.
+--
+-- What it would do, in this order:
+--   1. Drop the function 0022 added.
+--   2. Drop the two columns. Only the "this company only" values are lost: those cells then
+--      print the value for all companies. Every template, published version and issued payslip
+--      stays as it is.
+-- No other function, table, policy or grant is touched.
+--
+-- To use it, only when the owner decides: remove the "-- " at the start of every line below
+-- this header, then run it in Supabase dashboard -> SQL Editor.
+-- =====================================================================
+
+-- drop function if exists public.save_payslip_template_values(uuid, uuid, jsonb, integer);
+-- alter table public.payslip_templates drop column if exists own_values;
+-- alter table public.payslip_templates drop column if exists values_revision;

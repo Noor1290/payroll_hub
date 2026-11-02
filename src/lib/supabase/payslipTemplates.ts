@@ -3,15 +3,17 @@ import {
   demoFetchRunColumns,
   demoFetchTemplateDraft,
   demoFetchTemplateInUse,
+  demoFetchTemplateValues,
   demoFetchTemplates,
   demoFetchTemplateVersion,
   demoPublishTemplate,
   demoPublishTemplateCopy,
   demoSaveTemplateDraft,
+  demoSaveTemplateValues,
   demoSetTemplateInUse,
 } from "@/lib/demo/demoAppData";
 import { supabase } from "./client";
-import { isMissingTable, NotConfiguredError } from "./errors";
+import { isMissingColumn, isMissingTable, NotConfiguredError } from "./errors";
 import type { Viewer } from "./queries";
 
 /**
@@ -27,6 +29,8 @@ export const TEMPLATES_MIGRATION = "0010_payslip_templates.sql";
  * company's newest run (0018_payslip_template_in_use.sql).
  */
 export const IN_USE_MIGRATION = "0018_payslip_template_in_use.sql";
+/** A company's own values for a template: "this company only" (0022). */
+export const OWN_VALUES_MIGRATION = "0022_payslip_template_own_values.sql";
 
 /** A company never has more than this (the function refuses the next one). */
 const MAX_TEMPLATES = 50;
@@ -260,6 +264,66 @@ export async function setTemplateInUse(
   });
   if (error) throw error;
   return setInUseSchema.parse(data);
+}
+
+const valuesSchema = z.object({
+  own_values: bodySchema,
+  values_revision: z.number().int().min(1),
+});
+export type TemplateValues = z.infer<typeof valuesSchema>;
+
+/**
+ * A template's own values for its company (migration 0022). Null when this company has no such
+ * template. Against a database without 0022 there are none: nothing can have been saved there.
+ */
+export async function fetchTemplateValues(
+  viewer: Viewer,
+  companyId: string,
+  templateId: string,
+): Promise<TemplateValues | null> {
+  if (import.meta.env.DEV && viewer.isDemo) return demoFetchTemplateValues(companyId, templateId);
+  if (!supabase) throw new NotConfiguredError();
+
+  const { data, error } = await supabase
+    .from("payslip_templates")
+    .select("own_values, values_revision")
+    .eq("company_id", companyId)
+    .eq("id", templateId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error)) return { own_values: {}, values_revision: 1 };
+    throw error;
+  }
+  return valuesSchema.nullable().parse(data);
+}
+
+const savedValuesSchema = z.object({
+  template_id: z.uuid(),
+  values_revision: z.number().int().min(1),
+});
+export type SavedTemplateValues = z.infer<typeof savedValuesSchema>;
+
+/** Replaces a template's own values through `save_payslip_template_values`; PH_STALE, never an overwrite. */
+export async function saveTemplateValues(
+  viewer: Viewer,
+  companyId: string,
+  templateId: string,
+  ownValues: Record<string, unknown>,
+  expectedRevision: number,
+): Promise<SavedTemplateValues> {
+  if (import.meta.env.DEV && viewer.isDemo) {
+    return demoSaveTemplateValues(companyId, templateId, ownValues, expectedRevision);
+  }
+  if (!supabase) throw new NotConfiguredError();
+
+  const { data, error } = await supabase.rpc("save_payslip_template_values", {
+    p_company_id: companyId,
+    p_template_id: templateId,
+    p_own_values: ownValues,
+    p_expected_revision: expectedRevision,
+  });
+  if (error) throw error;
+  return savedValuesSchema.parse(data);
 }
 
 const copySchema = z.object({

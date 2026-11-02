@@ -39,11 +39,14 @@ import {
   fetchTemplateDraft,
   fetchTemplateInUse,
   fetchTemplates,
+  fetchTemplateValues,
   fetchTemplateVersion,
   IN_USE_MIGRATION,
+  OWN_VALUES_MIGRATION,
   publishTemplate,
   publishTemplateCopy,
   saveTemplateDraft,
+  saveTemplateValues,
   setTemplateInUse,
   TEMPLATES_MIGRATION,
 } from "@/lib/supabase/payslipTemplates";
@@ -342,6 +345,12 @@ const templateParamsSchema = z.discriminatedUnion("action", [
     /** The companies come CHECK_PAGE at a time, page 0 first; a short page is the last. */
     page: z.number().int().min(0).max(999).optional(),
   }),
+  /** The template's own values for this company: "this company only" (migration 0022). */
+  z.strictObject({
+    action: z.literal("values"),
+    brn: brnSchema.optional(),
+    template_id: templateIdSchema,
+  }),
 ]);
 
 /** What a save may ask for: one command per row. */
@@ -372,6 +381,14 @@ const templateSaveSchema = z.discriminatedUnion("action", [
     /** That company's draft revision of the template with this name when it was checked; 0 for none. */
     expected_revision: z.number().int().min(0),
   }),
+  /** Replaces the template's own values for the selected company; no new version. */
+  z.strictObject({
+    action: z.literal("values"),
+    brn: brnSchema,
+    template_id: templateIdSchema,
+    own_values: z.record(z.string(), z.unknown()),
+    expected_revision: z.number().int().min(1),
+  }),
   /** The version used for the selected company's payslips; both null to clear the choice. */
   z.strictObject({
     action: z.literal("use"),
@@ -380,6 +397,9 @@ const templateSaveSchema = z.discriminatedUnion("action", [
     version: z.number().int().min(1).nullable(),
   }),
 ]);
+
+/** The database's limit on a template's own values (migration 0022). */
+const TEMPLATE_VALUES_BYTES = 65_536;
 
 /** How many companies one page of a check covers: an answer about templates has at most 50 rows. */
 export const CHECK_PAGE = 50;
@@ -608,6 +628,12 @@ export async function answerTemplateRequest(
       );
     }
 
+    if (params.data.action === "values") {
+      const found = await fetchTemplateValues(viewer, company.id, params.data.template_id);
+      if (!found) return refuse("not-found", "This company has no such payslip template.");
+      return answer([{ template_id: params.data.template_id, ...found }]);
+    }
+
     const { template_id: templateId, version } = params.data;
     if (version === undefined) {
       const draft = await fetchTemplateDraft(viewer, company.id, templateId);
@@ -671,6 +697,31 @@ export async function saveTemplate(payload: SendDataPayload): Promise<ReceivedPa
       return { ok: true, result: { action: "use", ...set } };
     } catch (error) {
       return refusalFor(error, IN_USE_MIGRATION);
+    }
+  }
+
+  if (row.data.action === "values") {
+    const command = row.data;
+    if (jsonBytes(command.own_values) > TEMPLATE_VALUES_BYTES) {
+      return refuse(
+        "too-large",
+        "A template's own values are larger than the dashboard accepts (64 KB).",
+      );
+    }
+    if (hasEmbeddedFile(command.own_values)) {
+      return refuse("invalid", "A template cannot contain images or other embedded files.");
+    }
+    try {
+      const saved = await saveTemplateValues(
+        current.viewer,
+        companyId,
+        command.template_id,
+        command.own_values,
+        command.expected_revision,
+      );
+      return { ok: true, result: { action: "values", ...saved } };
+    } catch (error) {
+      return refusalFor(error, OWN_VALUES_MIGRATION);
     }
   }
 
@@ -793,6 +844,9 @@ export function describeTemplateSave(result: Record<string, unknown>): string {
     return result.published
       ? `Payslip template "${String(result.name)}" published to ${String(result.company)} (version ${String(result.version)})`
       : `Payslip template "${String(result.name)}" (version ${String(result.version)}) is now used for the payslips of ${String(result.company)}`;
+  }
+  if (result.action === "values") {
+    return "This company's own values for the payslip template saved";
   }
   if (result.action === "use") {
     return result.version === null

@@ -1239,6 +1239,42 @@ const BREAKS = [
     mustFail: "asks for a new shared setup only with an empty name",
   },
 
+  // ---------- A company's own values for a template (migration 0022) ----------
+  {
+    what: "0022: anyone signed in can change a company's own values",
+    file: "supabase/migrations/0022_payslip_template_own_values.sql",
+    find: "    where m.company_id = p_company_id and m.user_id = v_user and m.role = 'admin'
+  ) then
+    raise exception 'PH_NOT_ADMIN' using errcode = '42501';
+  end if;
+
+  -- ---------- input checks",
+    replace: "  ) or true then
+    null;
+  end if;
+
+  -- ---------- input checks",
+    test: "src/features/workspace/templateOwnValues.db.test.ts",
+    mustFail: "is for admins of that company only, checked in the database",
+  },
+  {
+    what: "0022: an old revision overwrites newer own values",
+    file: "supabase/migrations/0022_payslip_template_own_values.sql",
+    find: "  if v_template.values_revision <> p_expected_revision then",
+    replace: "  if false then",
+    test: "src/features/workspace/templateOwnValues.db.test.ts",
+    mustFail: "refuses an old revision and stores nothing",
+  },
+  {
+    what: "0022: an admin reaches another company's template",
+    file: "supabase/migrations/0022_payslip_template_own_values.sql",
+    find: "  where t.id = p_template_id and t.company_id = p_company_id
+  for update;",
+    replace: "  where t.id = p_template_id
+  for update;",
+    test: "src/features/workspace/templateOwnValues.db.test.ts",
+    mustFail: "cannot reach a template of another company",
+  },
   // ---------- Publishing a template to several companies (migration 0018) ----------
   {
     what: "Anyone signed in can see a company's newest run columns",

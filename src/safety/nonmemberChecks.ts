@@ -419,6 +419,16 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     args: (t) => ({ p_company_id: t.a, p_name: "", p_body: {}, p_expected_revision: 0 }),
     expect: NOT_ADMIN,
   },
+  // 0022: a company's own values. Refused before anything is changed.
+  save_payslip_template_values: {
+    args: (t) => ({
+      p_company_id: t.a,
+      p_template_id: ZERO_ID,
+      p_own_values: {},
+      p_expected_revision: 1,
+    }),
+    expect: NOT_ADMIN,
+  },
   // Guard: the 15th is not the first day of a month.
   issue_payslips: { args: (t) => ({ p_company_id: t.a, p_period: "2026-09-15", p_payslips: [] }), expect: NOT_ADMIN },
   // Guard: no template id.

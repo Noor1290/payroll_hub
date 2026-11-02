@@ -358,6 +358,7 @@ Requests, by `params.action`:
 | `{ action: "list", brn? }`                       | One per template, by name, without bodies: `template_id`, `name`, `draft_revision`, `updated_at`, `updated_by_you`, `published_version` and `published_at` (both `null` when never published), and `in_use_version`: the version of this template used for the company's payslips, or `null` (see "The template used for the payslips" below). |
 | `{ action: "load", template_id, brn? }`          | One row, the draft: `template_id`, `name`, `draft_revision`, `body`, `updated_at`, `updated_by_you`.                            |
 | `{ action: "load", template_id, version, brn? }` | One row, that published version: `template_id`, `name` (as it was when published), `version`, `body`, `published_at`, `published_by_you`. |
+| `{ action: "values", template_id, brn? }`        | One row, the company's own values for that template: `template_id`, `own_values`, `values_revision`. See "A company's own values" below. |
 
 Saves, by the row's `action`:
 
@@ -369,6 +370,7 @@ Saves, by the row's `action`:
 | `{ action: "use", brn, template_id, version }` (both `null` to clear the choice)      | `{ action: "use", template_id, version }`                   |
 | `{ action: "publish-copy", brn, company_brn, name, body, expected_revision }`         | `{ action: "publish-copy", brn, company, template_id, name, version, draft_revision, created, published, published_at }` |
 | `{ action: "publish-summary", brn, name, published, skipped, failed, unconfirmed }`  | `{ action: "publish-summary" }`                              |
+| `{ action: "values", brn, template_id, own_values, expected_revision }`              | `{ action: "values", template_id, values_revision }`         |
 
 `expected_revision` is the `draft_revision` the app last saw. A save-draft always sends the whole draft (name and body); renaming is a save-draft with the new name. Publishing publishes exactly the draft revision named, or is refused as `stale`.
 
@@ -379,6 +381,10 @@ Limits:
 - A name is 1 to 80 characters after trimming, and unique in its company whatever the capitals (`invalid`).
 - No images or other embedded files: a body in which any text or key contains a `data:` URI is refused (`invalid`). A logo is not part of a template in this stage.
 - There is no action to delete or archive a template, and a published version can never be removed. Anything other than the actions above is `invalid`. (Follow-up: docs/FUTURE_WORK.md, section 9c.)
+
+#### A company's own values
+
+Added with migration `supabase/migrations/0022_payslip_template_own_values.sql`. A layout from a file can have a fixed value for all companies (in the body) and a value for this company only (here, by cell id, an object of at most 64 KB). They are not part of the body and not versioned: publishing, to this company or from another, never touches them, and changing one adds no version. Anyone may read them; an admin replaces them all at once with `values`, naming the `values_revision` last seen (`stale` otherwise, nothing stored; it starts at 1). No images, as for a body. Until 0022 is run, the request answers no values at revision 1 and the save is refused as `unavailable`, naming that file.
 
 #### The template used for the payslips, and publishing to several companies
 
