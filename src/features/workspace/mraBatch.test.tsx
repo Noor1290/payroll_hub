@@ -921,7 +921,7 @@ describe("load: the date of employment, from the employees table, in any run (mr
       grantUnlock(10);
       asked.respond(await asked.question!.answer());
       await pending;
-      const answer = (await request({ ...LOAD, period })) as {
+      const answer = (await request({ ...LOAD, period })) as unknown as {
         rows: { employees: Record<string, unknown>[] }[];
       };
       expect(answer.rows[0]!.employees[0]).toMatchObject({ "Date of Employment": "2020-02-01" });
