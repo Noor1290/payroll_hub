@@ -1608,6 +1608,14 @@ const BREAKS = [
     mustFail: "is refused to a member who is not an admin",
   },
   {
+    what: "MRA overview: the date of employment is listed under the setup's spelling, not the rows'",
+    file: "src/features/workspace/mraFields.ts",
+    find: "const name = isHubOwnedKey(wanted) ? DATE_OF_EMPLOYMENT : wanted;",
+    replace: "const name = wanted;",
+    test: "src/features/workspace/mraBatch.test.tsx",
+    mustFail: "lists the date of employment as the rows name it",
+  },
+  {
     what: "MRA returns: a company the user only views can be asked for",
     file: "src/features/workspace/mraBatchData.ts",
     find: "      if (chosen.some((one) => one === null)) {",

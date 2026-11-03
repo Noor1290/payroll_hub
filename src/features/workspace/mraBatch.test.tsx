@@ -851,4 +851,83 @@ describe("overview: the names of the company's fields, before any month is asked
     await answerRequest("mra-returns", "mra-batch", () => request(OVERVIEW));
     expect(JSON.stringify(transferLog.get())).toContain("mra-batch");
   });
+
+  // mra-date-fix: the date of employment is always sent as "Date of Employment" (the dashboard
+  // keeps it per employee, whatever the payroll app called it), so the list names it that way.
+  it("lists the date of employment as the rows name it, from an identity field 'Date of employment' (a Date)", async () => {
+    shared = {
+      ...shared,
+      identityFields: [...IDENTITY.slice(0, 3), "Date of employment"].map(field),
+    };
+    const row = await overview();
+    expect(row.identity).toEqual(IDENTITY);
+    expect(row.columns).not.toContain("Date of employment");
+  });
+
+  it("lists it so from an older Global text column 'Date of employment', never as a column", async () => {
+    shared = {
+      ...shared,
+      identityFields: IDENTITY.slice(0, 3).map(field),
+      globalColumns: [
+        ...GLOBAL.map((name) => ({ ...field(name), type: "input", valueType: "number" })),
+        { ...field("Date of employment"), type: "input", valueType: "text" },
+      ],
+    };
+    const row = await overview();
+    expect(row.identity).toEqual(IDENTITY);
+    expect((row.columns as string[]).some((name) => /date of employment/i.test(name))).toBe(false);
+  });
+});
+
+describe("load: the date of employment, from the employees table, in any run (mra-date-fix)", () => {
+  const OLD_RUN = "40000000-0000-4000-8000-000000000002";
+  beforeEach(() => {
+    database((calls) => {
+      if (table(calls) === "payroll_runs" && eqValue(calls, "company_id") === ABC) {
+        return {
+          data: [
+            {
+              id: RUN,
+              period: "2026-08-01",
+              status: "approved",
+              created_by: null,
+              created_at: "t",
+              payroll_entries: [{ count: 1 }],
+            },
+            // Sent before the date-column deploy: its rows never held a date.
+            {
+              id: OLD_RUN,
+              period: "2026-07-01",
+              status: "approved",
+              created_by: null,
+              created_at: "t",
+              payroll_entries: [{ count: 1 }],
+            },
+          ],
+        };
+      }
+      if (table(calls) === "payroll_entries" && eqValue(calls, "run_id") === OLD_RUN) {
+        return { data: [{ ...ENTRY, id: "50000000-0000-4000-8000-000000000002", extra: {} }] };
+      }
+      return undefined;
+    });
+  });
+
+  it("sends the date kept for the employee (Data explorer or a send), as 'Date of Employment', in a run sent before and after the date column", async () => {
+    for (const period of ["2026-07", "2026-08"]) {
+      const pending = request({ action: "ask", brn: "C1234567", period, companies: ["C1234567"] });
+      await vi.waitFor(() => expect(dataRequests.get().length).toBeGreaterThan(0));
+      const asked = dataRequests.get().at(-1)!;
+      grantUnlock(10);
+      asked.respond(await asked.question!.answer());
+      await pending;
+      const answer = (await request({ ...LOAD, period })) as {
+        rows: { employees: Record<string, unknown>[] }[];
+      };
+      expect(answer.rows[0]!.employees[0]).toMatchObject({ "Date of Employment": "2020-02-01" });
+      expect(
+        Object.keys(answer.rows[0]!.employees[0]!).filter((key) => /date of employment/i.test(key)),
+      ).toEqual(["Date of Employment"]);
+    }
+  });
 });

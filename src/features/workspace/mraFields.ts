@@ -20,8 +20,10 @@ import type { RunColumns } from "@/lib/supabase/payslipTemplates";
  *    shared by two fields is sent with its category ("CSG (Employer Contribution)"), so it is
  *    taken from the run as it was sent.
  *  - With no setup, the newest run's columns are the list, as "Get from dashboard" gives them.
- *  - "Date of Employment" is always an identity field: the dashboard adds it to the rows of a
- *    run for every employee who has one.
+ *  - "Date of Employment" is always an identity field, under that name: the dashboard keeps the
+ *    date per employee whatever the payroll app called it ("Date of employment", an identity
+ *    field or an older text column) and adds it to the rows of a run under that name only. A
+ *    setup name that is the same whatever the capitals is listed as the rows name it.
  */
 
 export interface SetupBodies {
@@ -64,7 +66,9 @@ export function mraFields(setup: SetupBodies | null, run: RunColumns): MraFields
   const identity: string[] = [];
   const columns: string[] = [];
   const listed = new Set<string>();
-  const add = (list: string[], name: string) => {
+  const add = (list: string[], wanted: string) => {
+    const name = isHubOwnedKey(wanted) ? DATE_OF_EMPLOYMENT : wanted;
+    if (list === columns && name === DATE_OF_EMPLOYMENT) return add(identity, name);
     const key = normaliseKey(name);
     if (listed.has(key)) return;
     listed.add(key);
