@@ -12,6 +12,8 @@ import {
   MRA_MIGRATION,
 } from "@/lib/supabase/mraReturns";
 import { fetchRunEntries, fetchRuns } from "@/lib/supabase/payroll";
+import { fetchCompanySetup, fetchSharedSetup } from "@/lib/supabase/payrollSetups";
+import { fetchRunColumns } from "@/lib/supabase/payslipTemplates";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import { isUnlocked, registerLockCleanup } from "@/lib/unlock";
@@ -32,6 +34,7 @@ import {
   listNames,
 } from "./batchAccess";
 import { answerRequest } from "./deliver";
+import { mraFields, type SetupBodies } from "./mraFields";
 import { openCompanyProfile, profileOpenerReady } from "./openProfile";
 
 /**
@@ -54,7 +57,10 @@ import { openCompanyProfile, profileOpenerReady } from "./openProfile";
  * `companies` (names and BRNs of the user's admin companies) needs no dialog: nothing in it is
  * per employee. Nor does `open-profile` (Stage 2): it sends nothing; the dashboard shows that
  * company's Company profile, where its MRA details are filled in, selecting it first when it is
- * not the selected one (the apps then reload). Admins of that company only.
+ * not the selected one (the apps then reload). Admins of that company only. Nor does `overview`
+ * (November 2026): for the selected company, the NAMES of its identity fields and payroll
+ * columns (mraFields.ts), which of its MRA details are filled in (yes or no, never the detail)
+ * and the months it has a saved run of. Admins only.
  */
 
 const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -81,6 +87,7 @@ const paramsSchema = z.discriminatedUnion("action", [
     company_brn: brnSchema,
   }),
   z.strictObject({ action: z.literal("open-profile"), brn: brnSchema, company_brn: brnSchema }),
+  z.strictObject({ action: z.literal("overview"), brn: brnSchema }),
 ]);
 
 /** What the user allowed in the dialog. One at a time; a new ask replaces it. */
@@ -146,6 +153,48 @@ async function loadCompany(
   };
 }
 
+/** The company's column setup, the shared one and its own, or null when it has none. */
+async function setupOf(viewer: Viewer, companyId: string): Promise<SetupBodies | null> {
+  const own = await fetchCompanySetup(viewer, companyId);
+  if (!own) return null;
+  const shared = await fetchSharedSetup(viewer, own.shared_setup_id);
+  return shared ? { shared: shared.body, company: own.body } : null;
+}
+
+/**
+ * What the app needs before a month is asked for: the names of the selected company's fields,
+ * whether each MRA detail is filled in, and the months it has a saved run of. No employee, no
+ * figure and no detail itself: so no question and no gate.
+ */
+async function overviewOf(viewer: Viewer, target: Membership): Promise<Record<string, unknown>> {
+  const { company } = target;
+  const [setup, columns, runs, details, settings] = await Promise.all([
+    setupOf(viewer, company.id),
+    fetchRunColumns(viewer, company.id),
+    fetchRuns(viewer, company.id),
+    fetchMraCompanyDetails(viewer, company.id),
+    fetchMraSettings(viewer),
+  ]);
+  const fields = mraFields(setup, columns);
+  const filled = (value: string | null | undefined) => (value ?? "").trim() !== "";
+  return {
+    brn: company.brn,
+    name: company.name.slice(0, 120),
+    identity: fields.identity,
+    columns: fields.columns,
+    setup: fields.setup,
+    run_period: fields.runPeriod,
+    filled: {
+      ern: filled(details?.ern),
+      telephone: filled(details?.telephone),
+      mobile: filled(details?.mobile),
+      declarant: filled(details?.declarant),
+      email: filled(settings?.email),
+    },
+    months: runs.map((run) => ({ period: run.period.slice(0, 7), status: run.status })),
+  };
+}
+
 /** Answers the MRA Returns app's requests. */
 export async function answerMraBatchRequest(
   appId: string,
@@ -188,6 +237,21 @@ export async function answerMraBatchRequest(
       // After the answer has left: selecting another company reloads the app's frame.
       setTimeout(() => openCompanyProfile(companyId), 0);
       return { ok: true, dataType: MRA_BATCH, rows: [], meta: meta() };
+    }
+
+    if (params.data.action === "overview") {
+      const target = (await adminCompanies(viewer, membership.company.id)).find(
+        (one) => one.company.id === membership.company.id,
+      );
+      if (!target) {
+        return refuse("forbidden", "Only an admin of this company can make its MRA returns.");
+      }
+      return {
+        ok: true,
+        dataType: MRA_BATCH,
+        rows: [await overviewOf(viewer, target)],
+        meta: meta(),
+      };
     }
 
     if (params.data.action === "ask") {
@@ -261,8 +325,13 @@ export async function answerMraBatchRequest(
     return { ok: true, dataType: MRA_BATCH, rows: [row], meta: meta(period) };
   } catch (error) {
     if (params.data.action === "load" && !isUnlocked()) return READ_LOCKED;
-    // The saved runs are in the first migration: a missing table in a load is one of 0020's.
-    return refusalFor(error, params.data.action === "load" ? MRA_MIGRATION : RUNS_MIGRATION);
+    // The saved runs are in the first migration: a missing table in a load or an overview is one of 0020's.
+    return refusalFor(
+      error,
+      params.data.action === "load" || params.data.action === "overview"
+        ? MRA_MIGRATION
+        : RUNS_MIGRATION,
+    );
   }
 }
 

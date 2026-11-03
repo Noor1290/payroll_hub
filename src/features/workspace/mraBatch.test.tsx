@@ -667,3 +667,188 @@ describe("open-profile: the Company profile of a company whose MRA details are m
     expect(JSON.stringify(transferLog.get())).toContain("mra-batch");
   });
 });
+
+describe("overview: the names of the company's fields, before any month is asked for", () => {
+  const OVERVIEW = { action: "overview", brn: "C1234567" };
+  const SHARED = "70000000-0000-4000-8000-000000000001";
+  const field = (name: string) => ({ key: name.toLowerCase().replace(/\W+/g, ""), name });
+  /** A setup like the owner's: four identity fields and about twenty columns (FAKE names). */
+  const IDENTITY = ["ID", "Surname", "Other names", "Date of Employment"];
+  const GLOBAL = [
+    "Basic Salary",
+    "Govt Increment",
+    "New Basic Salary",
+    "Full time / Part time",
+    "Allowances",
+    "Emoluments",
+    "Travelling",
+    "Gross Pay",
+    "Age 60+",
+    "Employee CSG",
+    "Employee NSF",
+    "PAYE",
+    "Total deductions",
+    "Net Pay",
+    "CSG",
+    "NSF",
+    "Levy",
+    "PRGF",
+    "Total MRA contributions",
+    "EDF",
+  ];
+  let shared: Record<string, unknown> | null;
+  let own: Record<string, unknown>;
+  let runKeys: { period: string | null; employees: number; keys: string[] };
+  /** The one row of the answer. */
+  const overview = async () => {
+    const answer = await request(OVERVIEW);
+    expect(answer).toMatchObject({ ok: true });
+    return (answer as { rows: Record<string, unknown>[] }).rows[0]!;
+  };
+
+  beforeEach(() => {
+    shared = {
+      identityFields: IDENTITY.map(field),
+      idFieldKey: "id",
+      globalColumns: GLOBAL.map((name) => ({ ...field(name), type: "input", valueType: "number" })),
+    };
+    own = { columns: [field("Bonus")], customFields: [{ id: "c1", label: "ERN", value: "x" }] };
+    runKeys = {
+      period: "2026-08-01",
+      employees: 1,
+      keys: ["employee_csg", "employee_nsf", "Bonus", "ERN", "__row_position"],
+    };
+    database((calls) => {
+      if (fake.arg(calls, "rpc") === "payroll_run_columns") return { data: runKeys };
+      if (table(calls) === "payroll_company_setups") {
+        return {
+          data: shared
+            ? {
+                company_id: ABC,
+                shared_setup_id: SHARED,
+                body: own,
+                revision: 1,
+                updated_by: null,
+                updated_at: "t",
+              }
+            : null,
+        };
+      }
+      if (table(calls) === "payroll_shared_setups") {
+        return {
+          data: {
+            id: SHARED,
+            name: "Setup",
+            body: shared,
+            revision: 1,
+            updated_by: null,
+            updated_at: "t",
+          },
+        };
+      }
+      if (table(calls) === "mra_company_details") {
+        return {
+          data: {
+            company_id: ABC,
+            ern: "00012345",
+            telephone: "",
+            mobile: " ",
+            declarant: "J. SAMPLE",
+            revision: 1,
+            updated_by: null,
+            updated_at: "t",
+          },
+        };
+      }
+      return undefined;
+    });
+  });
+
+  it("lists every identity field and every column of the setup, asking nothing, with the gate locked", async () => {
+    lock();
+    const answer = await request(OVERVIEW);
+    expect(dataRequests.get()).toHaveLength(0);
+    expect(answer).toMatchObject({ ok: true, dataType: "mra-batch", meta: { brn: "C1234567" } });
+    const row = (answer as { rows: Record<string, unknown>[] }).rows[0]!;
+    expect(row.identity).toEqual(IDENTITY);
+    expect(row.columns).toEqual([...GLOBAL, "Bonus"]);
+    expect(row).toMatchObject({
+      brn: "C1234567",
+      name: "ABC Co Ltd",
+      setup: true,
+      run_period: "2026-08",
+    });
+    // A company detail sent on every row is not a payroll column.
+    expect(row.columns).not.toContain("ERN");
+  });
+
+  it("lists a column added to the setup since the last month was sent", async () => {
+    own = { ...own, columns: [field("Bonus"), field("Overtime")] };
+    expect((await overview()).columns).toEqual([...GLOBAL, "Bonus", "Overtime"]);
+  });
+
+  it("takes from the run a column sent under another name, and with no setup lists the run's columns", async () => {
+    runKeys = { ...runKeys, keys: [...runKeys.keys, "CSG (Employer Contribution)"] };
+    expect(((await overview()).columns as string[]).at(-1)).toBe("CSG (Employer Contribution)");
+
+    shared = null;
+    const row = await overview();
+    expect(row.identity).toEqual(["ID", "Surname", "Other names", "Date of Employment"]);
+    expect(row.setup).toBe(false);
+    for (const name of [
+      "Full time / Part time",
+      "Age 60+",
+      "Employee CSG",
+      "Employee NSF",
+      "PAYE",
+      "Bonus",
+    ]) {
+      expect(row.columns).toContain(name);
+    }
+    for (const name of ["Company Name", "BRN", "__row_position", "employee_csg"]) {
+      expect(row.columns).not.toContain(name);
+    }
+  });
+
+  it("gives no column when there is neither a setup nor a saved run", async () => {
+    shared = null;
+    runKeys = { period: null, employees: 0, keys: [] };
+    expect(await overview()).toMatchObject({ columns: [], run_period: null, setup: false });
+  });
+
+  it("says which MRA details are filled in, never the details, and the months saved", async () => {
+    const row = await overview();
+    expect(row.filled).toEqual({
+      ern: true,
+      telephone: false,
+      mobile: false,
+      declarant: true,
+      email: false,
+    });
+    expect(row.months).toEqual([{ period: "2026-08", status: "draft" }]);
+    expect(JSON.stringify(row)).not.toMatch(/00012345|SAMPLE|X0000000000001|18750/);
+  });
+
+  it("is refused to a member who is not an admin, and for another company", async () => {
+    members = [
+      { role: "viewer", companies: abc },
+      { role: "admin", companies: def },
+    ];
+    signIn("viewer");
+    expect(await request(OVERVIEW)).toEqual({
+      ok: false,
+      code: "forbidden",
+      error: "Only an admin of this company can make its MRA returns.",
+    });
+    signIn();
+    expect(await request({ ...OVERVIEW, brn: "C3333333" })).toMatchObject({
+      ok: false,
+      code: "wrong-company",
+    });
+  });
+
+  it("writes a row in the Transfer log", async () => {
+    await answerRequest("mra-returns", "mra-batch", () => request(OVERVIEW));
+    expect(JSON.stringify(transferLog.get())).toContain("mra-batch");
+  });
+});

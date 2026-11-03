@@ -122,6 +122,7 @@
         <button id="mraAsk" type="button">Ask for all of them</button>
         <button id="mraLoad" type="button">Load each</button>
         <button id="mraProfile" type="button">Open the last company's profile</button>
+        <button id="mraOverview" type="button">Overview of the selected company</button>
       </div>
       <pre id="mraAnswer">No answer yet.</pre>
     </div>
@@ -647,6 +648,10 @@
                 company_brn: last.brn,
               }),
             );
+          };
+          $("mraOverview").onclick = async function () {
+            // The names of its fields, which MRA details are filled in, the months saved.
+            mraShow(await askMra("Overview", { action: "overview", brn: mraSelected() }));
           };
           $("mraLoad").onclick = async function () {
             // One line per company: whether its month was sent to the dashboard, and how many
