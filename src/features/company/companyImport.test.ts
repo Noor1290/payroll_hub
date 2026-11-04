@@ -379,6 +379,25 @@ describe("the rows of the file", () => {
     ]);
   });
 
+  it("only notes a TAN or VAT typed as a number: the row stays ticked; an ERN stays a Problem", () => {
+    const number = (value: string): XlsxCell => ({ text: value, kind: "number" });
+    const rows = read([
+      ["A Ltd", "C1234567", "", number("20123456"), number("123456")],
+      ["B Ltd", "C2345678", "", "VAT20123456", "00123456", number("13341")],
+    ]);
+    expect(rows[0]!.problems).toEqual([]);
+    expect(rows[0]!.notices).toEqual([
+      "VAT was typed as a number, so leading zeros may be lost; check it.",
+      "TAN was typed as a number, so leading zeros may be lost; check it.",
+    ]);
+    expect(rows[1]!.notices).toEqual([]);
+    expect(rows[1]!.problems[0]).toMatch(/^The ERN is stored as a number/);
+    expect(previewRows(rows, []).map((p) => [p.status, p.ticked])).toEqual([
+      ["new", true],
+      ["problem", false],
+    ]);
+  });
+
   it("makes every other heading a detail with that label, empty cells leaving it out", () => {
     const [first, second] = read(
       [

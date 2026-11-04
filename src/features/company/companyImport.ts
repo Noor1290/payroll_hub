@@ -235,6 +235,8 @@ export interface FileRow {
   problems: string[];
   /** Created only when ticked by hand. */
   warning: string | null;
+  /** To check; the row stays ticked. */
+  notices: string[];
 }
 
 export type ReadResult = { ok: true; rows: FileRow[] } | { ok: false; why: string };
@@ -387,6 +389,8 @@ function readRow(
   if (address.length > 500) problems.push("The address is longer than 500 characters.");
   const vat = text("vat");
   if (vat.length > 50) problems.push("The VAT is longer than 50 characters.");
+  const notices: string[] = [];
+  if (cellOf("vat")?.kind === "number") notices.push(typedAsNumber("VAT"));
 
   const mra: MraFields = {
     ern: text("ern"),
@@ -414,6 +418,9 @@ function readRow(
     const value = cellText(cells[column]);
     if (value === "") continue;
     if (value.length > 2000) problems.push(`"${label}" is longer than 2000 characters.`);
+    if (label.toLowerCase() === "tan" && cells[column]?.kind === "number") {
+      notices.push(typedAsNumber(label));
+    }
     rowDetails.push({ label, value });
   }
 
@@ -428,8 +435,13 @@ function readRow(
     mra,
     problems: [...new Set(problems)],
     warning,
+    notices,
   };
 }
+
+/** A TAN or VAT stored as a number: kept, but its leading zeros may be gone already. */
+const typedAsNumber = (column: string) =>
+  `${column} was typed as a number, so leading zeros may be lost; check it.`;
 
 // ---------- the preview ----------
 
@@ -743,6 +755,13 @@ export function buildReport(lines: readonly ReportLine[], at: Date = new Date())
     ],
     at,
   );
+}
+
+/** Why no company was created, when none was: every row skipped, every row a problem, or both. */
+export function noneCreatedReason(lines: readonly ReportLine[]): string {
+  if (lines.every((line) => line.result === "Skipped")) return "Every row was skipped.";
+  if (lines.every((line) => line.result === "Problem")) return "Every row had a problem.";
+  return "Every row was skipped or had a problem.";
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");

@@ -23,6 +23,7 @@ import {
   buildTemplate,
   importCompaniesOpen,
   loadImportChoices,
+  noneCreatedReason,
   previewRows,
   readCompaniesFile,
   reportFileName,
@@ -93,13 +94,17 @@ function rowNote(item: PreviewRow): { text: string; tone: "muted" | "warn" | "da
     case "new": {
       const notes: string[] = [];
       if (item.row.warning) notes.push(item.row.warning);
+      notes.push(...item.row.notices);
       if (item.sameAs) {
         notes.push(
           `Also on ${item.sameAs.length === 1 ? "row" : "rows"} ${item.sameAs.join(", ")}: this row is created, the other skipped.`,
         );
       }
       return notes.length > 0
-        ? { text: notes.join(" "), tone: item.row.warning ? "warn" : "muted" }
+        ? {
+            text: notes.join(" "),
+            tone: item.row.warning || item.row.notices.length > 0 ? "warn" : "muted",
+          }
         : null;
     }
   }
@@ -353,9 +358,14 @@ function ReportStep({ lines, onClose }: { lines: ReportLine[]; onClose: () => vo
   return (
     <div className="mt-5 space-y-4">
       <p className="text-sm text-fg" role="status">
-        {plural(created, "company", "companies")} created, {count("Skipped")} skipped,{" "}
-        {plural(count("Problem"), "problem")}.
-        {created > 0 && " You are the admin of every company created."}
+        {created === 0 ? (
+          <>No company was created. {noneCreatedReason(lines)}</>
+        ) : (
+          <>
+            {plural(created, "company", "companies")} created, {count("Skipped")} skipped,{" "}
+            {plural(count("Problem"), "problem")}. You are the admin of every company created.
+          </>
+        )}
       </p>
       <div className="max-h-[50vh] overflow-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
@@ -488,9 +498,13 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
     );
     const created = lines.filter((line) => line.result === "Created").length;
     if (created > 0) await queryClient.invalidateQueries({ queryKey: ["memberships"] });
-    toast.success(`${plural(created, "company", "companies")} created`, {
-      description: "The report says what happened to every row.",
-    });
+    if (created > 0) {
+      toast.success(`${plural(created, "company", "companies")} created`, {
+        description: "The report says what happened to every row.",
+      });
+    } else {
+      toast.error("No company was created", { description: noneCreatedReason(lines) });
+    }
     setStep({ kind: "report", lines });
   };
 

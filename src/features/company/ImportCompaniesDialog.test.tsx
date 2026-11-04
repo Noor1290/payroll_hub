@@ -92,6 +92,7 @@ const creates = () =>
 
 beforeEach(() => {
   toast.success.mockReset();
+  toast.error.mockReset();
   fake.reset((calls) => {
     const from = fake.arg(calls, "from");
     const rpc = fake.arg(calls, "rpc");
@@ -218,6 +219,21 @@ describe("<ImportCompaniesDialog>", () => {
       p_name: "First Ltd",
       p_shared_setup_id: null,
       p_mra_template_ids: [],
+    });
+  });
+
+  it("says so, and why, when no company was created", async () => {
+    renderAll();
+    act(() => importCompaniesOpen.set(true));
+    upload([FILE_ROWS[0]!, ["Second Ltd", "C2222222"], ["", "C3333333"]]);
+    await screen.findByRole("table");
+    fireEvent.click(await screen.findByRole("button", { name: "Create 1 company" }));
+    expect(
+      await screen.findByText("No company was created. Every row had a problem."),
+    ).toBeTruthy();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("No company was created", {
+      description: "Every row had a problem.",
     });
   });
 
