@@ -4,6 +4,7 @@ import { useLocation, useOutlet } from "react-router-dom";
 import { AuroraBackground } from "@/components/brand";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AddCompanyDialog } from "@/features/company/AddCompanyDialog";
+import { ImportCompaniesDialog } from "@/features/company/ImportCompaniesDialog";
 import { BridgeDialogs } from "@/features/workspace/BridgeDialogs";
 import { ProfileOpener } from "@/features/workspace/ProfileOpener";
 import { WorkspaceHost } from "@/features/workspace/WorkspaceHost";
@@ -99,6 +100,7 @@ export function AppShell() {
       <BridgeDialogs />
       <ProfileOpener />
       <AddCompanyDialog />
+      <ImportCompaniesDialog />
     </div>
   );
 }

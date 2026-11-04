@@ -3,6 +3,7 @@ import { Command } from "cmdk";
 import {
   ArrowLeftRight,
   Building2,
+  FileSpreadsheet,
   Lock,
   LogOut,
   Monitor,
@@ -17,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { Kbd } from "@/components/ui/misc";
 import { useAuth } from "@/features/auth/auth-context";
 import { useCompany } from "@/features/company/company-context";
+import { importCompaniesOpen } from "@/features/company/companyImport";
 import { addCompanyOpen } from "@/features/company/createCompany";
 import { askBeforeLeaving } from "@/features/company/leaveGuard";
 import { linkIcon } from "@/features/links/icons";
@@ -133,6 +135,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     }
                   >
                     Add company
+                  </Item>
+                )}
+                {canAddCompany && (
+                  <Item
+                    value="import companies from excel"
+                    keywords={["new", "create", "brn", "xlsx", "upload", "template"]}
+                    icon={FileSpreadsheet}
+                    onSelect={() => run(() => importCompaniesOpen.set(true))}
+                  >
+                    Import companies from Excel
                   </Item>
                 )}
                 {isAdmin && (

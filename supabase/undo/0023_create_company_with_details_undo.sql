@@ -1,0 +1,23 @@
+-- =====================================================================
+-- UNDO of migration 0023_create_company_with_details.sql. NOT a migration: kept outside
+-- supabase/migrations on purpose, and every line is commented out, so running this file as it
+-- is does nothing.
+--
+-- What it would do: drop the one function 0023 added, public.create_company_with_details. The
+-- companies already created with it stay exactly as they are, with their details, MRA details,
+-- members, column setups and MRA templates: no table, row, policy or grant is touched. The
+-- dashboard's "Import companies from Excel" then says the database is not set up for it; "Add
+-- company" works as before.
+--
+-- To use it, only when the owner decides: remove the "-- " at the start of every line below
+-- this header, then run it in Supabase dashboard -> SQL Editor.
+-- =====================================================================
+
+-- drop function if exists public.create_company_with_details(text, text, text, text, jsonb, jsonb, uuid, uuid[]);
+--
+-- notify pgrst, 'reload schema';
+--
+-- -- The result is the one row below. Every column should be true.
+-- select
+--   (select count(*) = 0 from pg_proc where proname = 'create_company_with_details') as function_gone,
+--   (select count(*) = 1 from pg_proc where proname = 'create_company') as create_company_kept;

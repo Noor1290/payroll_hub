@@ -352,6 +352,21 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
     args: (t) => ({ p_company_id: t.a, p_new_company: null, p_setup: null, p_expected: null, p_months: [] }),
     expect: NOT_ADMIN,
   },
+  // 0023: a company with its details from the Excel import. Guard: no BRN. (It adds a company,
+  // so it cannot be aimed at a TEST company.)
+  create_company_with_details: {
+    args: () => ({
+      p_name: "",
+      p_brn: "",
+      p_address: null,
+      p_vat: null,
+      p_details: [],
+      p_mra: null,
+      p_shared_setup_id: null,
+      p_mra_template_ids: [],
+    }),
+    expect: NOT_ADMIN,
+  },
   // Guard: the typed name is not the company's.
   // 0021: making oneself a member is the attack that matters most. All three are refused first
   // by "admin of this company"; the second guard is a role that does not exist.

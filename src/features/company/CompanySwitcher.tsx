@@ -1,4 +1,4 @@
-import { Building2, Check, ChevronsUpDown, CircleAlert, Plus } from "lucide-react";
+import { Building2, Check, ChevronsUpDown, CircleAlert, FileSpreadsheet, Plus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,7 @@ import { Badge, Skeleton } from "@/components/ui/misc";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { Role } from "@/lib/supabase/schemas";
 import { useCompany } from "./company-context";
+import { importCompaniesOpen } from "./companyImport";
 import { addCompanyOpen } from "./createCompany";
 import { askBeforeLeaving } from "./leaveGuard";
 
@@ -105,6 +106,13 @@ export function CompanySwitcher() {
                 <Plus aria-hidden="true" />
               </span>
               <span className="text-fg">Add company</span>
+            </DropdownMenuItem>
+            {/* Nothing is selected afterwards, so there is nothing to ask about first. */}
+            <DropdownMenuItem onSelect={() => importCompaniesOpen.set(true)}>
+              <span className="grid size-4 shrink-0 place-items-center">
+                <FileSpreadsheet aria-hidden="true" />
+              </span>
+              <span className="text-fg">Import companies from Excel</span>
             </DropdownMenuItem>
           </>
         )}

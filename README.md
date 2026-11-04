@@ -69,6 +69,8 @@ The schema lives in `supabase/migrations/`. Run each file once, in order, by pas
 15. `0015_keep_awake.sql`: one function, `keep_awake()`, that the keep-awake job calls with the anon key (see [Safety checks](#safety-checks)).
 16. `0016_shared_setup_needs_admin.sql`: a new shared column setup can be created only by an admin of at least one company. It replaces a function of 0013, so never run 0013 again after this one: that would put back the old function without the rule.
 
+Migrations 0017 to 0021 are described at the top of each file. `0023_create_company_with_details.sql` adds one function, the one behind "Import companies from Excel" (below).
+
 Then:
 
 1. In Supabase, under **Authentication**, switch off sign-ups and create your user (tick "Auto Confirm User"). The dashboard has no sign-up screen.
@@ -133,6 +135,14 @@ What the dashboard does on top of that:
 - A company needs a name and a BRN. The BRN has to be exactly the one in that company's payroll JSON exports, because imports are matched to a company by BRN. Each BRN can belong to one company only.
 - It works through one database function, `create_company` (migration `0003`), which checks the rule, creates the company and adds the admin membership in a single step. The `companies` table itself still accepts no inserts from the dashboard; the function is the only way in.
 - If someone tries to add a BRN that already exists, they are told it exists, even when it belongs to a company they cannot see. That follows from BRNs being unique; nothing else about that company is shown.
+
+### Many companies from an Excel file
+
+"Import companies from Excel" sits next to "Add company" (company switcher and command palette), for the same people. "Download the companies template" gives an .xlsx file with a "Read me" sheet (every column, whether it is required, its format and an example) and a "Companies" sheet with one heading per company detail: Company name and BRN (required), Address, VAT, TAN, and the MRA details (ERN, Telephone, Mobile, Name of declarant). Every column of the Companies sheet is formatted as Text, so leading zeros are kept. Any other heading becomes a Company profile detail with that label (not sensitive).
+
+- Uploading the filled-in file shows a preview, one line per row, and saves nothing until "Create" is pressed: **New** (ticked; a BRN that is not one letter then 6 to 10 digits is shown with a warning and not ticked), **Already in the dashboard** (same BRN with capitals and spaces ignored: skipped, naming that company), **Twice in the file** (the first row is created, the later ones skipped), **Problem** (a missing name or BRN, a BRN with characters other than letters and digits, an unreadable cell, an ERN stored as a number, a value the database would refuse: not created, with the reason).
+- The new companies use the shared column setup that most of the user's companies use (or another, or none yet), and, when ticked, the ready-made MRA templates the user already shares ("MRA CSG (PACO)" and "MRA PRGF", as MRA Returns' "Use them for all my companies" does; the box is greyed out when none of their companies uses them).
+- Companies are created one at a time through one database function, `create_company_with_details` (migration `0023`): the company, its details, its MRA details, the user as its admin, its column setup and its MRA templates, all or nothing. One failing does not stop the others. A report says what happened to every row, on screen and as an Excel file. The BRN is saved in capitals with spaces removed.
 
 ### Deleting a company
 
@@ -325,6 +335,7 @@ dev/           mock apps for demo mode (not part of the build)
 | "Can't reach the database"                          | You are offline, or the Supabase project is paused. Resume it in the Supabase dashboard.              |
 | "The import function isn't installed"               | Run `supabase/migrations/0002_import_payroll_run.sql` in the SQL editor.                              |
 | "Adding companies isn't set up in the database yet" | Run `supabase/migrations/0003_create_company.sql` in the SQL editor.                                  |
+| "Creating companies from a file isn't set up in the database yet" | Run `supabase/migrations/0023_create_company_with_details.sql` in the SQL editor. |
 | "Deleting companies isn't set up in the database yet" | Run `supabase/migrations/0007_delete_company_any_runs.sql` in the SQL editor.                       |
 | "The database needs an update" (deleting a company) | The database still has the old rule about approved runs. Run `0007_delete_company_any_runs.sql`.      |
 | "Company details aren't set up in the database yet" | Run `supabase/migrations/0005_company_details.sql` in the SQL editor.                               |
