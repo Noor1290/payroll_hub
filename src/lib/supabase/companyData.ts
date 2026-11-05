@@ -9,7 +9,9 @@ import {
   demoFetchSensitiveValues,
   demoSaveOrder,
   demoUpdateCompanyCore,
+  demoUpdateCompanyCoreIfUnchanged,
   demoUpdateDetail,
+  demoUpdateDetailValueIfUnchanged,
   demoUpdateLink,
 } from "@/lib/demo/demoCompanyData";
 import { isUnlocked } from "@/lib/unlock";
@@ -201,6 +203,57 @@ export async function updateCompanyCore(
   if (error) throw error;
   expectChanged(data);
   return companySchema.parse(data![0]);
+}
+
+/** A company's name, address and VAT, as they were read. */
+export type CompanyCore = { name: string; address: string | null; vat: string | null };
+
+/**
+ * Changes a company's name, address and VAT only if they are still `before`, in one statement.
+ * False (nothing written) when the company was changed since `before` was read, or when the
+ * caller is not its admin. The BRN is never written.
+ */
+export async function updateCompanyCoreIfUnchanged(
+  viewer: Viewer,
+  companyId: string,
+  before: CompanyCore,
+  after: CompanyCore,
+): Promise<boolean> {
+  if (import.meta.env.DEV && viewer.isDemo)
+    return demoUpdateCompanyCoreIfUnchanged(companyId, before, after);
+  let query = client()
+    .from("companies")
+    .update({ name: after.name, address: after.address, vat: after.vat })
+    .eq("id", companyId)
+    .eq("name", before.name);
+  query = before.address === null ? query.is("address", null) : query.eq("address", before.address);
+  query = before.vat === null ? query.is("vat", null) : query.eq("vat", before.vat);
+  const { data, error } = await query.select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Changes the value of a detail that is not sensitive, only if it is still `before`. False
+ * (nothing written) when it was changed or made sensitive since, or the caller is not an admin.
+ */
+export async function updateDetailValueIfUnchanged(
+  viewer: Viewer,
+  id: string,
+  before: string | null,
+  after: string,
+): Promise<boolean> {
+  if (import.meta.env.DEV && viewer.isDemo)
+    return demoUpdateDetailValueIfUnchanged(id, before, after);
+  let query = client()
+    .from("company_details")
+    .update({ value: after })
+    .eq("id", id)
+    .eq("is_sensitive", false);
+  query = before === null ? query.is("value", null) : query.eq("value", before);
+  const { data, error } = await query.select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
 }
 
 // ---------------------------------------------------------------- links

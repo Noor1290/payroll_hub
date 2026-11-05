@@ -699,7 +699,7 @@ describe("creating the companies", () => {
     ]);
     const cells = (await readXlsxSheet(report, "Report"))!.map((r) => r.map((c) => c?.text ?? ""));
     expect(cells).toEqual([
-      ["Row", "Company name", "BRN", "Result", "Why"],
+      ["Row", "Company name", "BRN", "Result", "Why", "Before", "After"],
       ["2", "First Ltd", "C0111111", "Created"],
       ["3", "ABC again", "C1234567", "Skipped", "Already in the dashboard as ABC Co Ltd."],
     ]);

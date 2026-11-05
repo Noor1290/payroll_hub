@@ -374,3 +374,83 @@ describe("0023: all or nothing", () => {
     expect(await companyByBrn("C1000003")).toBeDefined();
   });
 });
+
+// The template filled in with your companies, uploaded again: each change is written by the
+// dashboard as an ordinary update, only where the old value is still there. No migration; these
+// are the rules already in place (0001, 0005), seen here as the Data API runs them.
+describe("updating a company from the file, with the existing rules", () => {
+  const updateCore = (user: string, name: string, oldName: string) =>
+    as(
+      "authenticated",
+      user,
+      async () =>
+        (
+          await db.query(
+            "update public.companies set name = $1, address = $2, vat = $3 where id = $4 and name = $5 and address is null and vat is null returning id",
+            [name, "1 TEST Street", "V1", ABC, oldName],
+          )
+        ).rows.length,
+    );
+  const updateDetail = (user: string, id: string, value: string, old: string) =>
+    as(
+      "authenticated",
+      user,
+      async () =>
+        (
+          await db.query(
+            "update public.company_details set value = $1 where id = $2 and is_sensitive = false and value = $3 returning id",
+            [value, id, old],
+          )
+        ).rows.length,
+    );
+  const DETAIL = "50000000-0000-4000-8000-000000000001";
+  const SENSITIVE = "50000000-0000-4000-8000-000000000002";
+  beforeEach(async () => {
+    await db.exec(`insert into public.company_details (id, company_id, label, value, is_sensitive) values
+      ('${DETAIL}', '${ABC}', 'TAN', '00123', false),
+      ('${SENSITIVE}', '${ABC}', 'Bank account', '111', true);`);
+  });
+
+  it("lets an admin change the name, address and VAT while they are still as read", async () => {
+    expect(await updateCore(A, "ABC Trading Ltd", "ABC Co Ltd")).toEqual({
+      result: 1,
+      error: null,
+    });
+    expect(await companyByBrn("C1234567")).toMatchObject({
+      name: "ABC Trading Ltd",
+      address: "1 TEST Street",
+      vat: "V1",
+    });
+  });
+
+  it("writes nothing when the company was changed since it was read", async () => {
+    expect(await updateCore(A, "ABC Trading Ltd", "An older name")).toEqual({
+      result: 0,
+      error: null,
+    });
+    expect(await companyByBrn("C1234567")).toMatchObject({ name: "ABC Co Ltd" });
+  });
+
+  it("writes nothing for a viewer, and nobody can change a BRN", async () => {
+    expect(await updateCore(V, "Taken over Ltd", "ABC Co Ltd")).toEqual({ result: 0, error: null });
+    const brn = await as("authenticated", A, () =>
+      db.query("update public.companies set brn = 'C9999999' where id = $1", [ABC]),
+    );
+    expect(brn.error).toMatch(/permission denied/);
+    expect(await companyByBrn("C1234567")).toMatchObject({ name: "ABC Co Ltd" });
+  });
+
+  it("changes a detail only while its value is as read, and never a sensitive one", async () => {
+    expect(await updateDetail(A, DETAIL, "00124", "00999")).toEqual({ result: 0, error: null });
+    expect(await updateDetail(A, DETAIL, "00124", "00123")).toEqual({ result: 1, error: null });
+    expect(await updateDetail(A, SENSITIVE, "222", "111")).toEqual({ result: 0, error: null });
+    expect(await updateDetail(V, DETAIL, "00125", "00124")).toEqual({ result: 0, error: null });
+    const values = await db.query<{ label: string; value: string }>(
+      "select label, value from public.company_details order by label",
+    );
+    expect(values.rows).toEqual([
+      { label: "Bank account", value: "111" },
+      { label: "TAN", value: "00124" },
+    ]);
+  });
+});

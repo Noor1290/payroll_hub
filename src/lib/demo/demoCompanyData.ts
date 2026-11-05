@@ -260,6 +260,39 @@ export async function demoUpdateCompanyCore(
   return company;
 }
 
+type Core = { name: string; address: string | null; vat: string | null };
+
+/** Like `updateCompanyCoreIfUnchanged`: written only if the company is still `before`. */
+export async function demoUpdateCompanyCoreIfUnchanged(
+  companyId: string,
+  before: Core,
+  after: Core,
+): Promise<boolean> {
+  await pause(150);
+  const index = demoMemberships.findIndex((m) => m.company.id === companyId);
+  const membership = demoMemberships[index];
+  if (!membership || membership.role !== "admin") return false;
+  const { name, address, vat } = membership.company;
+  if (name !== before.name || address !== before.address || vat !== before.vat) return false;
+  demoMemberships[index] = { ...membership, company: { ...membership.company, ...after } };
+  return true;
+}
+
+/** Like `updateDetailValueIfUnchanged`: written only if the detail is still `before` and not sensitive. */
+export async function demoUpdateDetailValueIfUnchanged(
+  id: string,
+  before: string | null,
+  after: string,
+): Promise<boolean> {
+  await pause(150);
+  const existing = details.find((d) => d.id === id);
+  if (!existing || existing.is_sensitive || roleIn(existing.company_id) !== "admin") return false;
+  if (existing.value !== before) return false;
+  existing.value = after;
+  existing.updated_at = new Date().toISOString();
+  return true;
+}
+
 // ---------------------------------------------------------------- links
 
 export async function demoFetchLinks(companyId: string): Promise<CompanyLink[]> {

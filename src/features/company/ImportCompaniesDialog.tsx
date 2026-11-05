@@ -19,10 +19,14 @@ import { useStore } from "@/lib/store";
 import { downloadBytes, XLSX_TYPE } from "@/lib/xlsx/writeXlsx";
 import { useCompany } from "./company-context";
 import {
+  buildFilledTemplate,
   buildReport,
   buildTemplate,
+  filledTemplateFileName,
   importCompaniesOpen,
+  isTickable,
   loadImportChoices,
+  MAX_COMPANIES,
   noneCreatedReason,
   previewRows,
   readCompaniesFile,
@@ -33,6 +37,7 @@ import {
   type PreviewRow,
   type ReportLine,
 } from "./companyImport";
+import { changesText, fetchAdminCompanies } from "./companyUpdate";
 
 const SELECT_CLASS =
   "h-10 w-full rounded-lg border border-line bg-surface px-2.5 text-sm text-fg shadow-inner-glow hover:border-line-strong disabled:opacity-50";
@@ -43,8 +48,8 @@ const NO_SETUP = "";
 type Step =
   | { kind: "choose"; why: string | null; reading: boolean }
   | { kind: "preview"; fileName: string; rows: PreviewRow[] }
-  | { kind: "running"; done: number; total: number }
-  | { kind: "report"; lines: ReportLine[] };
+  | { kind: "running"; done: number; total: number; next: "create" | "update" | null }
+  | { kind: "report"; lines: ReportLine[]; updates: boolean };
 
 type Choices =
   | { status: "loading" }
@@ -74,6 +79,8 @@ const STATUS_BADGE: Record<
   { tone: "accent" | "neutral" | "warn" | "danger"; text: string }
 > = {
   new: { tone: "accent", text: "New" },
+  update: { tone: "warn", text: "Update" },
+  same: { tone: "neutral", text: "No changes" },
   existing: { tone: "neutral", text: "Already in the dashboard" },
   twice: { tone: "warn", text: "Twice in the file" },
   problem: { tone: "danger", text: "Problem" },
@@ -85,12 +92,40 @@ function rowNote(item: PreviewRow): { text: string; tone: "muted" | "warn" | "da
     case "problem":
       return { text: `Not created: ${item.row.problems.join(" ")}`, tone: "danger" };
     case "existing":
-      return { text: `Skipped: ${item.existingName} already has this BRN.`, tone: "muted" };
+      return {
+        text: `Skipped: ${item.existingName} already has this BRN; you are not its admin.`,
+        tone: "muted",
+      };
     case "twice":
       return {
-        text: `Skipped: same BRN as row ${item.sameAs?.[0]}, which is created instead.`,
+        text: `Skipped: same BRN as row ${item.sameAs?.[0]}, which is used instead.`,
         tone: "warn",
       };
+    case "update":
+    case "same": {
+      const comparison = item.comparison!;
+      const notes: string[] = [
+        item.status === "update"
+          ? `Changes: ${changesText(comparison.changes)}.`
+          : "Already up to date.",
+      ];
+      if (comparison.leftAsIs.length > 0) {
+        notes.push(`Left as it is: ${comparison.leftAsIs.join(", ")} (empty in the file).`);
+      }
+      for (const label of comparison.sensitive) {
+        notes.push(`Not changed: ${label} is sensitive; change it on the Company profile.`);
+      }
+      notes.push(...item.row.notices);
+      if (item.sameAs) {
+        notes.push(
+          `Also on ${item.sameAs.length === 1 ? "row" : "rows"} ${item.sameAs.join(", ")}: this row is used, the other skipped.`,
+        );
+      }
+      return {
+        text: notes.join(" "),
+        tone: item.status === "update" || item.row.notices.length > 0 ? "warn" : "muted",
+      };
+    }
     case "new": {
       const notes: string[] = [];
       if (item.row.warning) notes.push(item.row.warning);
@@ -124,6 +159,17 @@ function rowDetails(item: PreviewRow): string {
   return parts.join(" · ");
 }
 
+/** What the download screen says of the companies the filled-in template will hold. */
+function filledCounts(memberships: readonly { role: string; company: { brn: string | null } }[]) {
+  const admin = memberships.filter((m) => m.role === "admin");
+  const withBrn = admin.filter((m) => (m.company.brn ?? "").trim() !== "").length;
+  return {
+    inFile: Math.min(withBrn, MAX_COMPANIES),
+    noBrn: admin.length - withBrn,
+    overLimit: Math.max(0, withBrn - MAX_COMPANIES),
+  };
+}
+
 function ChooseStep({
   step,
   onFile,
@@ -133,21 +179,77 @@ function ChooseStep({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const inputId = useId();
+  const { user } = useAuth();
+  const { memberships } = useCompany();
+  const [filled, setFilled] = useState<
+    { status: "idle" } | { status: "preparing" } | { status: "error"; message: string }
+  >({ status: "idle" });
+  const counts = filledCounts(memberships);
+
+  const downloadFilled = async () => {
+    if (!user) return;
+    setFilled({ status: "preparing" });
+    try {
+      const companies = await fetchAdminCompanies(
+        { id: user.id, isDemo: user.isDemo },
+        memberships,
+      );
+      downloadBytes(buildFilledTemplate(companies), filledTemplateFileName(), XLSX_TYPE);
+      setFilled({ status: "idle" });
+    } catch (error) {
+      setFilled({ status: "error", message: classifyDataError(error).message });
+    }
+  };
+
   return (
     <div className="mt-5 space-y-4">
       <ol className="list-decimal space-y-3 pl-5 text-sm text-muted">
         <li>
           <p>
-            Download the template and fill in its Companies sheet, one row per company. Company name
+            Download a template and fill in its Companies sheet, one row per company. Company name
             and BRN are required; the Read me sheet explains every column.
           </p>
-          <Button
-            className="mt-2"
-            onClick={() => downloadBytes(buildTemplate(), TEMPLATE_FILE_NAME, XLSX_TYPE)}
-          >
-            <Download aria-hidden="true" />
-            Download the companies template
-          </Button>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Button onClick={() => downloadBytes(buildTemplate(), TEMPLATE_FILE_NAME, XLSX_TYPE)}>
+                <Download aria-hidden="true" />
+                Download the blank template
+              </Button>
+              <p className="text-xs">No companies in it, for adding new ones.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Button
+                disabled={counts.inFile === 0 || filled.status === "preparing"}
+                onClick={() => void downloadFilled()}
+              >
+                {filled.status === "preparing" ? (
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download aria-hidden="true" />
+                )}
+                {filled.status === "preparing"
+                  ? "Preparing the file"
+                  : "Download the template with my companies"}
+              </Button>
+              <p className="text-xs">
+                Filled in with the{" "}
+                {counts.inFile === 1 ? "1 company" : `${counts.inFile} companies`} you are admin of,
+                to change their details or add new companies below them.
+                {counts.noBrn > 0 &&
+                  ` ${counts.noBrn === 1 ? "1 of your companies has" : `${counts.noBrn} of your companies have`} no BRN, so ${counts.noBrn === 1 ? "it is" : "they are"} not in it: a row is matched to its company by BRN.`}
+                {counts.overLimit > 0 &&
+                  ` Only the first ${MAX_COMPANIES} by name are in it: an import takes at most ${MAX_COMPANIES} companies.`}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 text-xs">
+            The filled-in template holds your companies' details. Keep it on your computer.
+          </p>
+          {filled.status === "error" && (
+            <div className="mt-2">
+              <Problem title="Your companies couldn't be read" message={filled.message} />
+            </div>
+          )}
         </li>
         <li>
           <p>
@@ -318,9 +420,9 @@ function PreviewTable({
                   <input
                     type="checkbox"
                     className={CHECKBOX_CLASS}
-                    aria-label={`Create row ${item.row.line}${item.row.name ? `, ${item.row.name}` : ""}`}
+                    aria-label={`${item.status === "update" ? "Update" : "Create"} row ${item.row.line}${item.row.name ? `, ${item.row.name}` : ""}`}
                     checked={item.ticked}
-                    disabled={disabled || item.status !== "new"}
+                    disabled={disabled || !isTickable(item)}
                     onChange={(event) => onTick(item.row.line, event.target.checked)}
                   />
                 </td>
@@ -351,19 +453,37 @@ function PreviewTable({
   );
 }
 
-function ReportStep({ lines, onClose }: { lines: ReportLine[]; onClose: () => void }) {
+/** "No company was created", or "No company was created or updated" when the file had updates. */
+const noneSaved = (updates: boolean) =>
+  updates ? "No company was created or updated" : "No company was created";
+
+function ReportStep({
+  lines,
+  updates,
+  onClose,
+}: {
+  lines: ReportLine[];
+  /** Whether any row of the file could update a company. */
+  updates: boolean;
+  onClose: () => void;
+}) {
   const count = (result: ReportLine["result"]) =>
     lines.filter((line) => line.result === result).length;
   const created = count("Created");
+  const updated = count("Updated");
   return (
     <div className="mt-5 space-y-4">
       <p className="text-sm text-fg" role="status">
-        {created === 0 ? (
-          <>No company was created. {noneCreatedReason(lines)}</>
+        {created === 0 && updated === 0 ? (
+          <>
+            {noneSaved(updates)}. {noneCreatedReason(lines)}
+          </>
         ) : (
           <>
-            {plural(created, "company", "companies")} created, {count("Skipped")} skipped,{" "}
-            {plural(count("Problem"), "problem")}. You are the admin of every company created.
+            {plural(created, "company", "companies")} created,{" "}
+            {updates || updated > 0 ? `${updated} updated, ` : ""}
+            {count("Skipped")} skipped, {plural(count("Problem"), "problem")}.
+            {created > 0 && " You are the admin of every company created."}
           </>
         )}
       </p>
@@ -394,7 +514,7 @@ function ReportStep({ lines, onClose }: { lines: ReportLine[]; onClose: () => vo
                 <td className="px-2 py-2.5">
                   <Badge
                     tone={
-                      line.result === "Created"
+                      line.result === "Created" || line.result === "Updated"
                         ? "accent"
                         : line.result === "Problem"
                           ? "danger"
@@ -468,49 +588,81 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
   }, [attempt, user?.id]);
 
   const readFile = async (file: File) => {
+    if (!viewer) return;
     setStep({ kind: "choose", why: null, reading: true });
+    let result;
     try {
-      const result = await readCompaniesFile(file);
-      if (!result.ok) return setStep({ kind: "choose", why: result.why, reading: false });
-      setStep({
-        kind: "preview",
-        fileName: file.name,
-        rows: previewRows(result.rows, memberships),
-      });
+      result = await readCompaniesFile(file);
     } catch {
-      setStep({
+      return setStep({
         kind: "choose",
         why: "The file couldn't be read. Save it again in Excel as .xlsx and try again.",
         reading: false,
       });
     }
+    if (!result.ok) return setStep({ kind: "choose", why: result.why, reading: false });
+    // The companies the user is admin of, as they are now: what each row is compared with.
+    let admin;
+    try {
+      admin = await fetchAdminCompanies(viewer, memberships);
+    } catch (error) {
+      return setStep({
+        kind: "choose",
+        why: `Your companies' details couldn't be read, so the file can't be compared with them. ${classifyDataError(error).message}`,
+        reading: false,
+      });
+    }
+    setStep({
+      kind: "preview",
+      fileName: file.name,
+      rows: previewRows(result.rows, memberships, admin),
+    });
   };
 
   const create = async (rows: PreviewRow[]) => {
-    if (!viewer || choices.status !== "ready") return;
-    const chosen = {
-      sharedSetupId: setupId === NO_SETUP ? null : setupId,
-      mraTemplateIds: useTemplates ? choices.value.templates.map((template) => template.id) : [],
-    };
-    setStep({ kind: "running", done: 0, total: 0 });
-    const lines = await runImport(viewer, rows, chosen, (done, total) =>
-      setStep({ kind: "running", done, total }),
+    if (!viewer) return;
+    const creating = rows.some((item) => item.status === "new" && item.ticked);
+    if (creating && choices.status !== "ready") return;
+    const chosen =
+      choices.status === "ready"
+        ? {
+            sharedSetupId: setupId === NO_SETUP ? null : setupId,
+            mraTemplateIds: useTemplates
+              ? choices.value.templates.map((template) => template.id)
+              : [],
+          }
+        : { sharedSetupId: null, mraTemplateIds: [] };
+    const updates = rows.some((item) => item.status === "update");
+    setStep({ kind: "running", done: 0, total: 0, next: null });
+    const lines = await runImport(viewer, rows, chosen, (done, total, next) =>
+      setStep({ kind: "running", done, total, next }),
     );
     const created = lines.filter((line) => line.result === "Created").length;
-    if (created > 0) await queryClient.invalidateQueries({ queryKey: ["memberships"] });
-    if (created > 0) {
-      toast.success(`${plural(created, "company", "companies")} created`, {
+    const updated = lines.filter((line) => line.result === "Updated").length;
+    const changedSome = lines.some(
+      (line) => line.result === "Updated" || (line.result === "Problem" && !!line.before),
+    );
+    if (created > 0 || changedSome) {
+      await queryClient.invalidateQueries({ queryKey: ["memberships"] });
+    }
+    if (created > 0 || updated > 0) {
+      const done = [
+        created > 0 ? `${plural(created, "company", "companies")} created` : null,
+        updated > 0 ? `${plural(updated, "company", "companies")} updated` : null,
+      ].filter(Boolean);
+      toast.success(done.join(", "), {
         description: "The report says what happened to every row.",
       });
     } else {
-      toast.error("No company was created", { description: noneCreatedReason(lines) });
+      toast.error(noneSaved(updates), { description: noneCreatedReason(lines) });
     }
-    setStep({ kind: "report", lines });
+    setStep({ kind: "report", lines, updates });
   };
 
   if (step.kind === "choose")
     return <ChooseStep step={step} onFile={(file) => void readFile(file)} />;
-  if (step.kind === "report") return <ReportStep lines={step.lines} onClose={onDone} />;
+  if (step.kind === "report")
+    return <ReportStep lines={step.lines} updates={step.updates} onClose={onDone} />;
 
   if (step.kind === "running") {
     return (
@@ -518,25 +670,36 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
         <LoaderCircle className="size-4 animate-spin text-accent" aria-hidden="true" />
         {step.total === 0
           ? "Starting"
-          : `Creating ${Math.min(step.done + 1, step.total)} of ${step.total}`}
+          : `${step.next === "update" ? "Updating" : "Creating"} ${Math.min(step.done + 1, step.total)} of ${step.total}`}
         . Keep this window open.
       </p>
     );
   }
 
-  const ticked = step.rows.filter((item) => item.ticked).length;
+  const toCreate = step.rows.filter((item) => item.status === "new" && item.ticked).length;
+  const toUpdate = step.rows.filter((item) => item.status === "update" && item.ticked).length;
   const counts = (status: PreviewRow["status"]) =>
     step.rows.filter((item) => item.status === status).length;
   const setupChosen = choices.status === "ready" && setupId !== null;
+  const go =
+    toUpdate === 0
+      ? toCreate === 1
+        ? "Create 1 company"
+        : `Create ${toCreate} companies`
+      : toCreate === 0
+        ? toUpdate === 1
+          ? "Update 1 company"
+          : `Update ${toUpdate} companies`
+        : `Create ${plural(toCreate, "company", "companies")} and update ${toUpdate}`;
   return (
     <div className="mt-5 space-y-4">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
         <FileSpreadsheet className="size-4 text-accent" aria-hidden="true" />
         <span className="font-medium text-fg">{step.fileName}</span>
         <span>
-          {plural(step.rows.length, "row")}: {counts("new")} new, {counts("existing")} already in
-          the dashboard, {counts("twice")} twice in the file, {plural(counts("problem"), "problem")}
-          .
+          {plural(step.rows.length, "row")}: {counts("new")} new, {counts("update")} to update,{" "}
+          {counts("same")} with no changes, {counts("existing")} already in the dashboard,{" "}
+          {counts("twice")} twice in the file, {plural(counts("problem"), "problem")}.
         </span>
       </p>
       <Options
@@ -563,7 +726,7 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
           })
         }
       />
-      {step.rows.some((item) => item.row.warning) && (
+      {step.rows.some((item) => item.status === "new" && item.row.warning) && (
         <p className="flex items-start gap-2 text-xs text-warn">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />A BRN that
           doesn't look like one is not ticked. Tick it if it is right.
@@ -582,10 +745,10 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
           </Dialog.Close>
           <Button
             variant="primary"
-            disabled={ticked === 0 || !setupChosen}
+            disabled={toCreate + toUpdate === 0 || (toCreate > 0 && !setupChosen)}
             onClick={() => void create(step.rows)}
           >
-            {ticked === 1 ? "Create 1 company" : `Create ${ticked} companies`}
+            {go}
           </Button>
         </div>
       </div>

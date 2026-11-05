@@ -17,6 +17,14 @@ import type { Membership } from "@/lib/supabase/schemas";
 import { NotAnExcelFile, readXlsxSheet, type XlsxCell } from "@/lib/xlsx/readXlsx";
 import { writeXlsx, type XlsxSheet } from "@/lib/xlsx/writeXlsx";
 import { createStore } from "@/lib/store";
+import {
+  changesText,
+  compareRow,
+  updateCompany,
+  type Change,
+  type Comparison,
+  type CurrentCompany,
+} from "./companyUpdate";
 
 // "Import companies from Excel": the template to download, reading a filled-in file, the
 // preview (what each row will do), the choices for the new companies, creating them one at a
@@ -28,6 +36,9 @@ export const COMPANY_IMPORT_MIGRATION = "0023_create_company_with_details.sql";
 export const COMPANIES_SHEET = "Companies";
 export const READ_ME_SHEET = "Read me";
 export const TEMPLATE_FILE_NAME = "Companies template.xlsx";
+/** "My companies 2026-11-05.xlsx": the template filled in with the user's companies. */
+export const filledTemplateFileName = (at: Date = new Date()) =>
+  `My companies ${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}.xlsx`;
 /** At most this many companies in one file, and this many detail columns. */
 export const MAX_COMPANIES = 200;
 export const MAX_DETAILS = 50;
@@ -158,6 +169,86 @@ const headingText = (column: TemplateColumn) =>
 
 /** The companies template: a "Read me" sheet, then the "Companies" sheet with its headings only. */
 export function buildTemplate(at: Date = new Date()): Uint8Array {
+  return writeTemplate(at, null);
+}
+
+/** The companies that go in the filled-in template: with a BRN, the first 200 by name. */
+export function companiesForTemplate(companies: readonly CurrentCompany[]): {
+  inFile: CurrentCompany[];
+  /** Left out: no BRN, so a row could not be matched to them. */
+  noBrn: number;
+  /** Left out: after the first 200. */
+  overLimit: number;
+} {
+  const withBrn = companies
+    .filter((company) => (company.brn ?? "").trim() !== "")
+    .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
+  return {
+    inFile: withBrn.slice(0, MAX_COMPANIES),
+    noBrn: companies.length - withBrn.length,
+    overLimit: Math.max(0, withBrn.length - MAX_COMPANIES),
+  };
+}
+
+/**
+ * The same template, its Companies sheet filled in with these companies (those the user is admin
+ * of): one row each, with a BRN, at most 200, by name. Sensitive details are never in it: their
+ * values are not even read.
+ */
+export function buildFilledTemplate(
+  companies: readonly CurrentCompany[],
+  at: Date = new Date(),
+): Uint8Array {
+  return writeTemplate(at, companiesForTemplate(companies).inFile);
+}
+
+const TAN = "tan";
+const longDate = (at: Date) =>
+  at.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+function writeTemplate(at: Date, companies: CurrentCompany[] | null): Uint8Array {
+  // The details that get a column of their own, after the template's: every label not sensitive
+  // in the companies, in the order first met, capitals ignored.
+  const extra: string[] = [];
+  const clashing: string[] = [];
+  const overMax: string[] = [];
+  const seen = new Set<string>([TAN]);
+  for (const company of companies ?? []) {
+    for (const detail of company.details) {
+      if (detail.sensitive) continue;
+      const key = detail.label.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (fieldByHeading.has(normaliseHeading(detail.label))) clashing.push(detail.label);
+      // The TAN column is a detail too: at most MAX_DETAILS in all.
+      else if (extra.length + 1 >= MAX_DETAILS) overMax.push(detail.label);
+      else extra.push(detail.label);
+    }
+  }
+
+  const intro: string[][] = [
+    [companies ? "Companies template with my companies" : "Companies template"],
+    [
+      'Fill in the Companies sheet, one row per company, then upload this file in the dashboard with "Import companies from Excel". Nothing is saved before you confirm the preview.',
+    ],
+  ];
+  if (companies) {
+    intro.push([
+      `Filled in on ${longDate(at)} with the ${companies.length === 1 ? "1 company" : `${companies.length} companies`} you are admin of. Sensitive details are not included.`,
+    ]);
+    if (clashing.length > 0) {
+      intro.push([
+        `Not in this file: the details labelled ${clashing.join(", ")}, because a column of the template already has that heading.`,
+      ]);
+    }
+    if (overMax.length > 0) {
+      intro.push([
+        `Not in this file: the details labelled ${overMax.join(", ")}, because a file holds at most ${MAX_DETAILS} details.`,
+      ]);
+    }
+  }
+  const headingRow = intro.length + 1;
+  const moreRow = headingRow + TEMPLATE_COLUMNS.length + 2;
   const readMe: XlsxSheet = {
     name: READ_ME_SHEET,
     columns: [
@@ -167,12 +258,9 @@ export function buildTemplate(at: Date = new Date()): Uint8Array {
       { width: 60, wrap: true },
       { width: 26, text: true },
     ],
-    boldRows: [0, 3, 3 + TEMPLATE_COLUMNS.length + 2],
+    boldRows: [0, headingRow, moreRow],
     rows: [
-      ["Companies template"],
-      [
-        'Fill in the Companies sheet, one row per company, then upload this file in the dashboard with "Import companies from Excel". Nothing is saved before you confirm the preview.',
-      ],
+      ...intro,
       [],
       ["Column", "Required", "What it is", "Format", "Example"],
       ...TEMPLATE_COLUMNS.map((column) => [
@@ -192,21 +280,52 @@ export function buildTemplate(at: Date = new Date()): Uint8Array {
         "Every column of the Companies sheet is formatted as Text, so Excel keeps leading zeros. Keep it that way; do not rename or remove the sheet. Rows left empty are ignored.",
       ],
       [
-        "A company whose BRN is already in the dashboard, with capitals and spaces ignored, is skipped. A BRN on two rows: the first row is created, the second skipped.",
+        "A row whose BRN is a company you are admin of shows its changes in the preview and is updated only if you tick it. An empty cell leaves the value as it is.",
+      ],
+      [
+        "A company whose BRN is already in the dashboard but that you are not admin of is skipped, with capitals and spaces ignored. A BRN on two rows: the first row is used, the second skipped.",
       ],
     ],
   };
-  const companies: XlsxSheet = {
+
+  const detailValue = (company: CurrentCompany, label: string) =>
+    company.details.find((d) => !d.sensitive && d.label.toLowerCase() === label.toLowerCase())
+      ?.value ?? null;
+  const valueOf = (company: CurrentCompany, column: TemplateColumn): string | null => {
+    switch (column.field) {
+      case "name":
+        return company.name;
+      case "brn":
+        return company.brn;
+      case "address":
+        return company.address;
+      case "vat":
+        return company.vat;
+      case "detail":
+        return detailValue(company, column.heading);
+      default:
+        return company.mra?.[column.field] ?? null;
+    }
+  };
+
+  const companiesSheet: XlsxSheet = {
     name: COMPANIES_SHEET,
     columns: [
       ...TEMPLATE_COLUMNS.map((column) => ({ width: column.width, text: true })),
+      ...extra.map(() => ({ width: 18, text: true })),
       ...Array.from({ length: SPARE_TEXT_COLUMNS }, () => ({ width: 18, text: true })),
     ],
     boldRows: [0],
     freezeFirstRow: true,
-    rows: [TEMPLATE_COLUMNS.map(headingText)],
+    rows: [
+      [...TEMPLATE_COLUMNS.map(headingText), ...extra],
+      ...(companies ?? []).map((company) => [
+        ...TEMPLATE_COLUMNS.map((column) => valueOf(company, column)),
+        ...extra.map((label) => detailValue(company, label)),
+      ]),
+    ],
   };
-  return writeXlsx([readMe, companies], at);
+  return writeXlsx([readMe, companiesSheet], at);
 }
 
 // ---------- reading a filled-in file ----------
@@ -230,6 +349,8 @@ export interface FileRow {
   address: string | null;
   vat: string | null;
   details: { label: string; value: string }[];
+  /** The labels of the detail columns left empty on this row. */
+  emptyDetails: string[];
   mra: MraFields;
   /** Reasons it cannot be created. */
   problems: string[];
@@ -414,9 +535,13 @@ function readRow(
   }
 
   const rowDetails: FileRow["details"] = [];
+  const emptyDetails: string[] = [];
   for (const { label, column } of details) {
     const value = cellText(cells[column]);
-    if (value === "") continue;
+    if (value === "") {
+      emptyDetails.push(label);
+      continue;
+    }
     if (value.length > 2000) problems.push(`"${label}" is longer than 2000 characters.`);
     if (label.toLowerCase() === "tan" && cells[column]?.kind === "number") {
       notices.push(typedAsNumber(label));
@@ -432,6 +557,7 @@ function readRow(
     address: address === "" ? null : address,
     vat: vat === "" ? null : vat,
     details: rowDetails,
+    emptyDetails,
     mra,
     problems: [...new Set(problems)],
     warning,
@@ -445,44 +571,74 @@ const typedAsNumber = (column: string) =>
 
 // ---------- the preview ----------
 
-export type RowStatus = "new" | "existing" | "twice" | "problem";
+export type RowStatus = "new" | "update" | "same" | "existing" | "twice" | "problem";
 
 export interface PreviewRow {
   row: FileRow;
   status: RowStatus;
-  /** "new" only: ticked when the preview opens (not when the BRN only looks unusual). */
+  /**
+   * "new": ticked when the preview opens (not when the BRN only looks unusual).
+   * "update": never ticked when the preview opens; updated only if ticked by hand.
+   */
   ticked: boolean;
-  /** "existing": the name of the company in the dashboard with this BRN. */
+  /** "existing": the name of the company in the dashboard with this BRN (one the user is not admin of). */
   existingName?: string;
-  /** "twice": the row created instead. "new": the later rows with the same BRN, skipped. */
+  /** "twice": the row used instead. "new", "update", "same": the later rows with the same BRN, skipped. */
   sameAs?: number[];
+  /** "update" and "same": the company the user is admin of with this BRN, as it is now. */
+  company?: CurrentCompany;
+  /** "update" and "same": what the row would change. */
+  comparison?: Comparison;
 }
 
+/** The rows that can be ticked: a new company, or a company with changes. */
+export const isTickable = (item: PreviewRow) => item.status === "new" || item.status === "update";
+
 /**
- * What each row will do. A row with a problem is not created. Of the others, one whose BRN is
- * already in the dashboard (capitals and spaces ignored) is skipped; of rows with the same BRN,
- * the first is created and the later ones skipped.
+ * What each row will do. A row with a problem is not created. Of the others, one whose BRN is a
+ * company the user is admin of (capitals and spaces ignored) is compared with it: changes are
+ * shown, and saved only if ticked by hand. One whose BRN is a company the user is only a member
+ * of is skipped. Of rows with the same BRN, the first is used and the later ones skipped.
+ *
+ * `admin`: the companies the user is admin of, as they are now (fetchAdminCompanies).
  */
 export function previewRows(
   rows: readonly FileRow[],
   memberships: readonly Membership[],
+  admin: readonly CurrentCompany[] = [],
 ): PreviewRow[] {
   const inDashboard = new Map<string, string>();
   for (const { company } of memberships) {
     if (company.brn) inDashboard.set(normaliseBrn(company.brn), company.name);
   }
+  const adminByBrn = new Map<string, CurrentCompany>();
+  for (const company of admin) {
+    if (company.brn) adminByBrn.set(normaliseBrn(company.brn), company);
+  }
   const firstLine = new Map<string, number>();
   const preview: PreviewRow[] = rows.map((row) => {
     if (row.problems.length > 0) return { row, status: "problem", ticked: false };
-    const existingName = inDashboard.get(row.brn);
-    if (existingName !== undefined) return { row, status: "existing", ticked: false, existingName };
     const first = firstLine.get(row.brn);
     if (first !== undefined) return { row, status: "twice", ticked: false, sameAs: [first] };
+    const company = adminByBrn.get(row.brn);
+    if (company) {
+      firstLine.set(row.brn, row.line);
+      const comparison = compareRow(row, company);
+      return {
+        row,
+        status: comparison.changes.length > 0 ? "update" : "same",
+        ticked: false,
+        company,
+        comparison,
+      };
+    }
+    const existingName = inDashboard.get(row.brn);
+    if (existingName !== undefined) return { row, status: "existing", ticked: false, existingName };
     firstLine.set(row.brn, row.line);
     return { row, status: "new", ticked: row.warning === null };
   });
   for (const item of preview) {
-    if (item.status !== "new") continue;
+    if (item.status !== "new" && item.status !== "update" && item.status !== "same") continue;
     const later = preview
       .filter((other) => other.status === "twice" && other.sameAs?.[0] === item.row.line)
       .map((other) => other.row.line);
@@ -645,7 +801,7 @@ export function importFailureReason(error: unknown): string {
 
 // ---------- the report ----------
 
-export type ReportResult = "Created" | "Skipped" | "Problem";
+export type ReportResult = "Created" | "Updated" | "Skipped" | "Problem";
 
 export interface ReportLine {
   line: number;
@@ -653,9 +809,12 @@ export interface ReportLine {
   brn: string;
   result: ReportResult;
   why: string;
+  /** For an update: the values before and after, one per line ("Address: 1 Old Street"). */
+  before?: string;
+  after?: string;
 }
 
-/** What the preview says of a row that is not created. */
+/** What the preview says of a row that is not created or updated. */
 export function skippedLine(item: PreviewRow): ReportLine {
   const base = { line: item.row.line, name: item.row.name, brn: item.row.brn };
   switch (item.status) {
@@ -671,12 +830,68 @@ export function skippedLine(item: PreviewRow): ReportLine {
       return {
         ...base,
         result: "Skipped",
-        why: `Same BRN as row ${item.sameAs?.[0]}, which is created instead.`,
+        why: `Same BRN as row ${item.sameAs?.[0]}, which is used instead.`,
       };
+    case "same":
+      return { ...base, result: "Skipped", why: "Already up to date." };
     case "new":
+    case "update":
       return { ...base, result: "Skipped", why: "Not ticked." };
   }
 }
+
+/** How a change is named in "Updated: name, address. Not updated: TAN". */
+const listLabel = (change: Change) => {
+  if (change.kind === "detail") return change.label;
+  const named = {
+    name: "name",
+    address: "address",
+    vat: "VAT",
+    ern: "ERN",
+    telephone: "telephone",
+    mobile: "mobile",
+    declarant: "name of declarant",
+  } as const;
+  return named[change.field];
+};
+const valuesOf = (changes: readonly Change[], which: "before" | "after") =>
+  changes.map((change) => `${change.label}: ${change[which] || "(empty)"}`).join("\n");
+
+/** The report line of an update, from what was written and what was not. */
+export function updateLine(
+  base: { line: number; name: string; brn: string },
+  outcome: { saved: Change[]; notSaved: Change[]; why: string | null; stale: boolean },
+): ReportLine {
+  const written = {
+    before: valuesOf(outcome.saved, "before"),
+    after: valuesOf(outcome.saved, "after"),
+  };
+  if (outcome.notSaved.length === 0) {
+    return {
+      ...base,
+      result: "Updated",
+      why: `Changes: ${changesText(outcome.saved)}.`,
+      ...written,
+    };
+  }
+  const reason = outcome.stale ? STALE : (outcome.why ?? "");
+  if (outcome.saved.length === 0) {
+    return {
+      ...base,
+      result: "Problem",
+      why: outcome.stale
+        ? "Not updated: it was changed in the dashboard after the preview. Upload the file again."
+        : `Not updated: ${reason}.`,
+    };
+  }
+  return {
+    ...base,
+    result: "Problem",
+    why: `Updated: ${outcome.saved.map(listLabel).join(", ")}. Not updated: ${outcome.notSaved.map(listLabel).join(", ")} (${reason}).`,
+    ...written,
+  };
+}
+const STALE = "it was changed in the dashboard after the preview";
 
 /** The input for a ticked row, with the choices made in the preview. */
 export function inputOf(
@@ -696,38 +911,55 @@ export function inputOf(
 }
 
 /**
- * Creates the ticked rows one at a time; one failing does not stop the others. Returns a line
- * for every row of the file, in the file's order.
+ * Creates and updates the ticked rows one at a time, in the file's order; one failing does not
+ * stop the others. Returns a line for every row of the file, in the file's order.
+ * `onProgress`: how many are done, of how many, and what the next one does.
  */
 export async function runImport(
   viewer: Viewer,
   preview: readonly PreviewRow[],
   choices: { sharedSetupId: string | null; mraTemplateIds: string[] },
-  onProgress: (done: number, total: number) => void = () => {},
+  onProgress: (done: number, total: number, next: "create" | "update" | null) => void = () => {},
 ): Promise<ReportLine[]> {
-  const ticked = preview.filter((item) => item.status === "new" && item.ticked);
+  const ticked = preview.filter((item) => isTickable(item) && item.ticked);
   const results = new Map<PreviewRow, ReportLine>();
+  const kindOf = (item: PreviewRow | undefined) =>
+    item ? (item.status === "update" ? "update" : "create") : null;
   let done = 0;
-  onProgress(done, ticked.length);
+  onProgress(done, ticked.length, kindOf(ticked[0]));
   for (const item of ticked) {
     const base = { line: item.row.line, name: item.row.name, brn: item.row.brn };
-    try {
-      const created = await createCompanyWithDetails(viewer, inputOf(item.row, choices));
-      results.set(item, {
-        ...base,
-        name: created.name,
-        brn: created.brn,
-        result: "Created",
-        why: "",
-      });
-    } catch (error) {
-      results.set(item, {
-        ...base,
-        result: "Problem",
-        why: `${importFailureReason(error)} Nothing of this company was created.`,
-      });
+    if (item.status === "update" && item.company && item.comparison) {
+      try {
+        const outcome = await updateCompany(viewer, item.company, item.comparison.changes);
+        results.set(item, updateLine(base, outcome));
+      } catch (error) {
+        results.set(item, {
+          ...base,
+          result: "Problem",
+          why: `Not updated: ${importFailureReason(error)}`,
+        });
+      }
+    } else {
+      try {
+        const created = await createCompanyWithDetails(viewer, inputOf(item.row, choices));
+        results.set(item, {
+          ...base,
+          name: created.name,
+          brn: created.brn,
+          result: "Created",
+          why: "",
+        });
+      } catch (error) {
+        results.set(item, {
+          ...base,
+          result: "Problem",
+          why: `${importFailureReason(error)} Nothing of this company was created.`,
+        });
+      }
     }
-    onProgress(++done, ticked.length);
+    done += 1;
+    onProgress(done, ticked.length, kindOf(ticked[done]));
   }
   return preview.map((item) => results.get(item) ?? skippedLine(item));
 }
@@ -744,12 +976,22 @@ export function buildReport(lines: readonly ReportLine[], at: Date = new Date())
           { width: 16, text: true },
           { width: 12 },
           { width: 80, wrap: true },
+          { width: 40, wrap: true },
+          { width: 40, wrap: true },
         ],
         boldRows: [0],
         freezeFirstRow: true,
         rows: [
-          ["Row", "Company name", "BRN", "Result", "Why"],
-          ...lines.map((line) => [String(line.line), line.name, line.brn, line.result, line.why]),
+          ["Row", "Company name", "BRN", "Result", "Why", "Before", "After"],
+          ...lines.map((line) => [
+            String(line.line),
+            line.name,
+            line.brn,
+            line.result,
+            line.why,
+            line.before ?? "",
+            line.after ?? "",
+          ]),
         ],
       },
     ],
@@ -757,7 +999,7 @@ export function buildReport(lines: readonly ReportLine[], at: Date = new Date())
   );
 }
 
-/** Why no company was created, when none was: every row skipped, every row a problem, or both. */
+/** Why no company was created or updated, when none was: every row skipped, every row a problem, or both. */
 export function noneCreatedReason(lines: readonly ReportLine[]): string {
   if (lines.every((line) => line.result === "Skipped")) return "Every row was skipped.";
   if (lines.every((line) => line.result === "Problem")) return "Every row had a problem.";
