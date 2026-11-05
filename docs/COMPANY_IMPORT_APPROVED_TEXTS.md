@@ -13,8 +13,7 @@ Approved by the owner on 4 Nov 2026 (branch `companies-and-autocopy`, Part A), w
 
 ### First step
 
-1. Download the template and fill in its Companies sheet, one row per company. Company name and BRN are required; the Read me sheet explains every column.
-   Button: **Download the companies template** (file: `Companies template.xlsx`)
+1. (Replaced on 5 Nov 2026: see "The template with my companies" below.)
 2. Upload the filled-in file. You see what will happen to each row before anything is saved.
    Button: **Choose the filled-in file** (while reading: **Reading the file**)
 
@@ -49,7 +48,7 @@ When the file can't be used, a red box **This file can't be imported** with one 
   - **New** with: This BRN doesn't look like one (one letter then 6 to 10 digits). Tick it if it is right.
   - **New**, still ticked, with: {VAT / TAN} was typed as a number, so leading zeros may be lost; check it.
   - **Already in the dashboard**: Skipped: {company name} already has this BRN.
-  - **Twice in the file**: Skipped: same BRN as row {n}, which is created instead.
+  - **Twice in the file**: Skipped: same BRN as row {n}, which is used instead. (Was "which is created instead" until 5 Nov 2026.)
   - **Problem**: Not created: {reasons}
 - Empty cells shown as (no name) and (no BRN)
 - Below the table, when a BRN only looks unusual: A BRN that doesn't look like one is not ticked. Tick it if it is right.
@@ -77,7 +76,7 @@ Problem reasons (one row can have several):
 - When none was created: No company was created. {Every row was skipped. / Every row had a problem. / Every row was skipped or had a problem.}
 - Table: Row · Company · BRN · Result, with **Created**, **Skipped** or **Problem** and why:
   - Already in the dashboard as {name}.
-  - Same BRN as row {n}, which is created instead.
+  - Same BRN as row {n}, which is used instead. (Was "which is created instead" until 5 Nov 2026.)
   - Not ticked.
   - {the problem reasons above}
   - When the database refuses a company, followed by "Nothing of this company was created.":
@@ -113,6 +112,50 @@ Sheet **Read me**:
 - More details
 - Any other heading you add on the Companies sheet becomes a detail of the Company profile, with that heading as its label (not sensitive; you can mark it sensitive later on the Company profile). Leave a cell empty to add nothing.
 - Every column of the Companies sheet is formatted as Text, so Excel keeps leading zeros. Keep it that way; do not rename or remove the sheet. Rows left empty are ignored.
-- A company whose BRN is already in the dashboard, with capitals and spaces ignored, is skipped. A BRN on two rows: the first row is created, the second skipped.
+- A row whose BRN is a company you are admin of shows its changes in the preview and is updated only if you tick it. An empty cell leaves the value as it is.
+- A company whose BRN is already in the dashboard but that you are not admin of is skipped, with capitals and spaces ignored. A BRN on two rows: the first row is used, the second skipped.
+  (These two lines replaced "A company whose BRN is already in the dashboard, with capitals and spaces ignored, is skipped. A BRN on two rows: the first row is created, the second skipped." on 5 Nov 2026.)
 
 Sheet **Companies**: the nine headings above, in that order, row 1 frozen; columns A to Y formatted as Text.
+
+## The template with my companies
+
+Approved by the owner on 5 Nov 2026 (branch `companies-template`): the texts of the Stage 0 plan and the 18 of `NEW_TEXTS.md` section A, all as written. `{…}` is filled in by the dashboard.
+
+### First step
+
+1. Download a template and fill in its Companies sheet, one row per company. Company name and BRN are required; the Read me sheet explains every column.
+   - Button: **Download the blank template** (file: `Companies template.xlsx`). Under it: No companies in it, for adding new ones.
+   - Button: **Download the template with my companies** (file: `My companies {yyyy-mm-dd}.xlsx`; while it is made: **Preparing the file**). Under it: Filled in with the {n} companies you are admin of, to change their details or add new companies below them. (One: "the 1 company".)
+     - When some have no BRN: {n} of your companies have no BRN, so they are not in it: a row is matched to its company by BRN. (One: "1 of your companies has no BRN, so it is not in it: …")
+     - Over 200: Only the first 200 by name are in it: an import takes at most 200 companies.
+   - Under both: The filled-in template holds your companies' details. Keep it on your computer.
+   - When it can't be made: **Your companies couldn't be read**, then the usual reason.
+2. When the file can't be compared: This file can't be imported / Your companies' details couldn't be read, so the file can't be compared with them. {the usual reason}
+
+### The preview
+
+- Count line: {n} rows: {n} new, {n} to update, {n} with no changes, {n} already in the dashboard, {n} twice in the file, {n} problems.
+- **Update** (unticked when the preview opens): Changes: {Label}: {before} → {after}; {Label}: {before} → {after}. An empty value shows as (empty).
+- **No changes**: Already up to date.
+- Either may add: Left as it is: {labels} (empty in the file). / Not changed: {label} is sensitive; change it on the Company profile. / Also on row {n}: this row is used, the other skipped.
+- **Already in the dashboard**: Skipped: {name} already has this BRN; you are not its admin.
+- Checkbox (screen readers): Update row {n}, {name} (new rows: Create row {n}, {name})
+- Buttons: **Create {n} companies and update {n}**, **Update {n} companies** / **Update 1 company**, **Create {n} companies**
+- Progress: Updating {n} of {n}. Keep this window open. (new rows: Creating {n} of {n}.)
+
+### The report
+
+- Summary: {n} companies created, {n} updated, {n} skipped, {n} problems. ("{n} updated" only when the file had rows to update; "You are the admin of every company created." only when one was created.)
+- Nothing saved, with rows to update in the file: No company was created or updated. {reason} (otherwise: No company was created. {reason})
+- Toast: {n} companies created, {n} companies updated / 1 company updated
+- **Updated**: Changes: {Label}: {before} → {after}; …
+- **Skipped**: Already up to date. / Not ticked.
+- **Problem**: Not updated: it was changed in the dashboard after the preview. Upload the file again. / Not updated: you are no longer its admin. / Not updated: the database refused the value: {detail}. / Updated: {labels}. Not updated: {labels} ({reason}).
+- Report file: two more columns, **Before** and **After**, one value per line ("Address: 1 Test Street"), an empty one as (empty).
+
+### Read me of the filled-in file
+
+- Title: Companies template with my companies
+- Filled in on {5 November 2026} with the {n} companies you are admin of. Sensitive details are not included.
+- When needed: Not in this file: the details labelled {labels}, because a column of the template already has that heading. / Not in this file: the details labelled {labels}, because a file holds at most 50 details.
