@@ -22,6 +22,9 @@ const toast = vi.hoisted(() => ({
   dismiss: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast }));
+// The unlock form wakes the database with keep_awake(), which reads no table (tested in
+// src/lib/supabase/wakeDatabase.test.tsx); here every database call counted is a payslip read.
+vi.mock("@/lib/supabase/wakeDatabase", () => ({ wakeDatabase: () => {} }));
 
 // FAKE values only.
 const ME = "00000000-0000-4000-8000-0000000000a1";

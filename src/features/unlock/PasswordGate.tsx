@@ -8,6 +8,7 @@ import type { AuthFailure } from "@/features/auth/authErrors";
 import { unlockMinutes } from "@/lib/preferences";
 import { useStore } from "@/lib/store";
 import type { LockReason } from "@/lib/unlock";
+import { wakeDatabase } from "@/lib/supabase/wakeDatabase";
 import { useUnlock } from "./useUnlock";
 
 const minutesText = (minutes: number) => (minutes === 1 ? "1 minute" : `${minutes} minutes`);
@@ -23,6 +24,8 @@ const LOCKED_BECAUSE: Partial<Record<LockReason, string>> = {
  * the user to unlock in place (for example a dialog).
  */
 export function UnlockForm({ autoFocus = true }: { autoFocus?: boolean }) {
+  // The database may be asleep: wake it while the password is typed (reads no table).
+  useEffect(() => wakeDatabase(), []);
   const { unlock } = useUnlock();
   const { user } = useAuth();
   const [password, setPassword] = useState("");

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/misc";
 import { idleMinutes } from "@/lib/preferences";
 import { supabase } from "@/lib/supabase/client";
+import { wakeDatabase } from "@/lib/supabase/wakeDatabase";
 import { useAuth, type SignOutNotice } from "./auth-context";
 import { authFailure, type AuthFailure } from "./authErrors";
 
@@ -27,6 +28,8 @@ function redirectTarget(state: unknown): string {
 }
 
 export function LoginPage() {
+  // The database may be asleep: wake it while the password is typed (reads no table).
+  useEffect(() => wakeDatabase(), []);
   const { status, notice, signIn, signInDemo, clearNotice } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState("");

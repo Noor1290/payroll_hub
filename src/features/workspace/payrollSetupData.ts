@@ -179,13 +179,19 @@ export async function answerPayrollSetupRequest(
         const own = await fetchCompanySetup(viewer, membership.company.id);
         // Not attached yet: nothing to load. The app offers its import, or to start one.
         if (!own) return answer([]);
-        const setup = await fetchSharedSetup(viewer, own.shared_setup_id);
-        if (!setup) return NO_SETUP;
-        const [access, attached, memberships] = await Promise.all([
-          fetchSharedSetupAccess(viewer, setup.id),
-          fetchAttachedCompanySetups(viewer, setup.id),
+        // Everything else needs only the shared setup's id, so it is read at the same time as
+        // the shared setup: two waits for the database instead of three. What the shared setup
+        // read says still comes first, as before (no setup, or its error).
+        const reading = fetchSharedSetup(viewer, own.shared_setup_id);
+        const others = Promise.all([
+          fetchSharedSetupAccess(viewer, own.shared_setup_id),
+          fetchAttachedCompanySetups(viewer, own.shared_setup_id),
           fetchMemberships(viewer),
         ]);
+        others.catch(() => {}); // not needed when there is no setup; never left unhandled
+        const setup = await reading;
+        if (!setup) return NO_SETUP;
+        const [access, attached, memberships] = await others;
         const byId = new Map(memberships.map((m) => [m.company.id, m]));
         const companies = attached.flatMap((company) => {
           const member = byId.get(company.company_id);
