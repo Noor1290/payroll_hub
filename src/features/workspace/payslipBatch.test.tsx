@@ -156,6 +156,8 @@ function database(more: (calls: Call[]) => Answer | undefined = () => undefined)
       case "payslip_template_in_use":
         return company === ABC ? { data: [{ template_id: T1, version: 2 }] } : { data: [] };
       case "payslip_templates":
+        // One template's own values (migration 0022): none.
+        if (single(calls)) return { data: { own_values: {}, values_revision: 1 } };
         return company === ABC
           ? { data: [summary(T1, "Monthly payslip"), summary(T2, "Weekly")] }
           : { data: [summary(T3, "Only one")] };
@@ -403,6 +405,40 @@ describe("load: one company at a time, only as allowed", () => {
       }),
     ]);
     expect(JSON.stringify(row)).not.toContain(ME);
+  });
+
+  it("gives the company's own values for its template (migration 0022), or none before it is run", async () => {
+    database((calls) =>
+      table(calls) === "payslip_templates" && single(calls) && eqValue(calls, "company_id") === ABC
+        ? { data: { own_values: { cb5: "ABC Company Limited" }, values_revision: 3 } }
+        : undefined,
+    );
+    await askAndAllow({ companies: ["C1234567"] });
+    const answer = await request({ ...LOAD, company_brn: "C1234567" });
+    expect(answer).toMatchObject({
+      ok: true,
+      rows: [
+        { template: { template_id: T1, version: 2, own_values: { cb5: "ABC Company Limited" } } },
+      ],
+    });
+    const read = fake.state.queries.find(
+      (calls) => table(calls) === "payslip_templates" && single(calls),
+    )!;
+    expect(eqValue(read, "id")).toBe(T1);
+    expect(eqValue(read, "company_id")).toBe(ABC);
+
+    // Before 0022 is run, the column is missing: no own values, and the load still answers.
+    database((calls) =>
+      table(calls) === "payslip_templates" && single(calls)
+        ? {
+            error: { code: "42703", message: "column payslip_templates.own_values does not exist" },
+          }
+        : undefined,
+    );
+    expect(await request({ ...LOAD, company_brn: "C1234567" })).toMatchObject({
+      ok: true,
+      rows: [{ template: { template_id: T1, own_values: {} } }],
+    });
   });
 
   it("uses a company's one published template when none was chosen, and says when there is none or several", async () => {

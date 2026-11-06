@@ -10,6 +10,7 @@ import { fetchRunEntries, fetchRuns } from "@/lib/supabase/payroll";
 import {
   fetchTemplateInUse,
   fetchTemplates,
+  fetchTemplateValues,
   fetchTemplateVersion,
   IN_USE_MIGRATION,
 } from "@/lib/supabase/payslipTemplates";
@@ -141,7 +142,14 @@ async function loadCompany(
     fetchIssuedPayslips(viewer, company.id, `${period}-01`),
   ]);
   const run = runs.find((found) => found.period === `${period}-01`);
-  const entries = run ? await fetchRunEntries(viewer, run.id) : [];
+  // The company's own values for its template ("this company only", migration 0022): a layout
+  // from a file prints them. Before 0022 is run there are none.
+  const [entries, values] = await Promise.all([
+    run ? fetchRunEntries(viewer, run.id) : Promise.resolve([]),
+    chosen.template
+      ? fetchTemplateValues(viewer, company.id, chosen.template.template_id)
+      : Promise.resolve(null),
+  ]);
   return {
     brn: company.brn,
     company: company.name.slice(0, 120),
@@ -153,6 +161,7 @@ async function loadCompany(
       name: chosen.template.name,
       version: chosen.template.version,
       body: chosen.template.body,
+      own_values: values?.own_values ?? {},
     },
     template_reason: chosen.reason,
     rates: rates.map(({ created_by, effective_from, ...row }) => ({

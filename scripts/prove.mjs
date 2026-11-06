@@ -1265,6 +1265,23 @@ const BREAKS = [
     mustFail: "cannot reach a template of another company",
   },
 
+  {
+    what: "Batch: a company's own values for its template are not sent",
+    file: "src/features/workspace/payslipBatchData.ts",
+    find: "      own_values: values?.own_values ?? {},",
+    replace: "      own_values: {},",
+    test: "src/features/workspace/payslipBatch.test.tsx",
+    mustFail: "gives the company's own values for its template",
+  },
+  {
+    what: "Batch: another template's own values are sent",
+    file: "src/features/workspace/payslipBatchData.ts",
+    find: "fetchTemplateValues(viewer, company.id, chosen.template.template_id)",
+    replace: "fetchTemplateValues(viewer, company.id, \"00000000-0000-4000-8000-000000000000\")",
+    test: "src/features/workspace/payslipBatch.test.tsx",
+    mustFail: "gives the company's own values for its template",
+  },
+
   // ---------- Publishing a template to several companies (migration 0018) ----------
   {
     what: "Anyone signed in can see a company's newest run columns",
