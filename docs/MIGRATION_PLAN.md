@@ -655,7 +655,7 @@ On the branch `phase-3-followups` in `payroll_hub`, `Payroll_sys` and `payslip` 
 - the six Database page tabs showed TEST Co Ltd's rows (the shared setup through the join: 1 setup, 4 revisions), every body and month masked until revealed, no write button, no user id;
 - with the window's requests to the database cut off, the payroll app offered "Open the read-only copy of TEST Co Ltd from [date] at [time]"; it opened with the label, no write control on either column tab, the months not in it, and nothing reached the database; the kept copy held no employee, salary or ID; "Try the dashboard again" went back;
 - locking the dashboard with a month's History open left nothing of the month in the dialog, and covered the table;
-- afterwards only the two TEST companies have a payroll setup (BC CO LTD and "Test Co Ltd", C1234566, have none).
+- afterwards only the two TEST companies have a payroll setup (a third company and "Test Co Ltd", C1234566, have none).
 
 Found on the way: reloading the whole dashboard page locks the gate (it is kept in memory only), as designed; and, before the commit, the "what restoring it would change" list counted columns as changed when only the order of their stored properties differed (the database does not keep it). Fixed (compared by content) with a test that fails on the old comparison.
 
