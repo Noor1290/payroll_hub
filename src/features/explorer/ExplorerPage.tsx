@@ -256,12 +256,15 @@ export function ExplorerPage() {
         actions={<UnlockStatus />}
       />
       <div className="mt-8">
-        {/* Password first; masking with click-to-reveal still applies once it is open. */}
-        <PasswordGate what="The data explorer">
-          <CompanyGate>
-            {(current) => <CompanyExplorer key={current.company.id} current={current} />}
-          </CompanyGate>
-        </PasswordGate>
+        {/* A company first: with none, there is nothing to unlock, so no password is asked for
+            (TODO C12). Then the password; masking with click-to-reveal still applies once it is open. */}
+        <CompanyGate>
+          {(current) => (
+            <PasswordGate what="The data explorer">
+              <CompanyExplorer key={current.company.id} current={current} />
+            </PasswordGate>
+          )}
+        </CompanyGate>
       </div>
     </>
   );
