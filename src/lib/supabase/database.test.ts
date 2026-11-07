@@ -579,17 +579,28 @@ describe("parseRow", () => {
     });
     expect(other.user_id).toBe(member.user_id);
     expect(other.__key).not.toBe(member.__key);
+  });
 
-    const run = parseRow(DB_TABLES.payroll_runs, {
-      id: RUN,
-      company_id: COMPANY,
-      period: "2026-09-01",
-      status: "draft",
-      created_by: user,
-      created_at: NOW,
-      deleted_at: null,
-    });
-    expect(run.created_by).toBe(shortId(user));
+  it("says You or Another admin for who created a payroll run, and keeps no user id (TODO C14)", () => {
+    const run = (createdBy: string | null) =>
+      parseRow(
+        DB_TABLES.payroll_runs,
+        {
+          id: RUN,
+          company_id: COMPANY,
+          period: "2026-09-01",
+          status: "draft",
+          created_by: createdBy,
+          created_at: NOW,
+          deleted_at: null,
+        },
+        VIEWER.id,
+      );
+    expect(run(VIEWER.id).created_by).toBe("You");
+    expect(run(OTHER_USER).created_by).toBe("Another admin");
+    expect(run(null).created_by).toBeNull();
+    expect(JSON.stringify(run(OTHER_USER))).not.toContain(OTHER_USER.slice(0, 8));
+    expect(DB_TABLES.payroll_runs.columns.find((c) => c.key === "created_by")?.kind).toBe("actor");
   });
 
   it("says You or Another admin in the payslip tables, and keeps no user id", () => {

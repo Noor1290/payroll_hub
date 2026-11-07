@@ -135,7 +135,8 @@ export const DB_TABLES: Record<DbTableName, DbTable> = {
       id("company_id"),
       { key: "period", kind: "date" },
       text("status", { nullable: false }),
-      { key: "created_by", kind: "user", nullable: true },
+      // "You" or "Another admin", like every other tab (TODO C14: it showed a shortened user id).
+      actor("created_by"),
       stamp("created_at"),
       stamp("deleted_at", true),
     ],
