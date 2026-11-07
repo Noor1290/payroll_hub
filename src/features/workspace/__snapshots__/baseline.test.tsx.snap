@@ -9,6 +9,7 @@ exports[`baseline: an app asks for a saved run (Get from dashboard) > asks the u
     "payload": {
       "dataType": "payroll-result",
       "meta": {
+        "brn": "C1234567",
         "label": "ABC Co Ltd",
         "period": "2026-10",
       },

@@ -27,6 +27,7 @@ import {
   appsAccepting,
   getApp,
   PAYROLL_RESULT,
+  runMeta,
   type AppConfig,
   type ExpectedField,
 } from "@/config/apps.config";
@@ -1167,7 +1168,7 @@ export function TransferPage() {
                       table={table}
                       source={{ label: `Database, ${formatPeriod(run.period)}`, gated: true }}
                       dataType={PAYROLL_RESULT}
-                      meta={{ period: run.period.slice(0, 7), label: current.company.name }}
+                      meta={runMeta(run.period, current.company)}
                       state={state}
                       update={update}
                     />

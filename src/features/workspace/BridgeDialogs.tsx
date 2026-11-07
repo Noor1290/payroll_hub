@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/ui/misc";
-import { appsAccepting, getApp, PAYROLL_RESULT } from "@/config/apps.config";
+import { appsAccepting, getApp, PAYROLL_RESULT, runMeta } from "@/config/apps.config";
 import { toExportRow } from "@/config/payrollFields";
 import { useAuth } from "@/features/auth/auth-context";
 import { useCompany } from "@/features/company/company-context";
@@ -256,7 +256,7 @@ function RequestDialog({ request }: { request: DataRequest }) {
                 ok: true,
                 dataType,
                 rows: entries.map((row) => toExportRow(row, current.company)),
-                meta: { period: run.period.slice(0, 7), label: current.company.name },
+                meta: runMeta(run.period, current.company),
               };
       }
     } catch (error) {

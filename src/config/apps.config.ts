@@ -201,3 +201,18 @@ export function appsAccepting(dataType: string, exceptId?: string): AppConfig[] 
 export function isOffDeployedOrigin(): boolean {
   return !(import.meta.env.DEV && DEMO_MODE) && window.location.origin !== HOSTING.dashboard;
 }
+
+/**
+ * The meta of a saved run sent to an app: its month, the company's name and its BRN, so the app
+ * can check that the rows are for the company it expects (TODO C11; the payslip app does).
+ */
+export function runMeta(
+  period: string,
+  company: { name: string; brn?: string | null },
+): { period: string; label: string; brn?: string } {
+  return {
+    period: period.slice(0, 7),
+    label: company.name.slice(0, 120),
+    ...(company.brn ? { brn: company.brn } : {}),
+  };
+}

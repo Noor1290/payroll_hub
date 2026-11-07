@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import sample from "../../samples/ABC Co Ltd-pdf-fill-2026-09.json?raw";
 import olderSample from "../../samples/ABC Co Ltd-pdf-fill-2026-10.json?raw";
 import { parsePayrollRows } from "@/features/import/parsePayroll";
-import { appOrigin, APPS, appsAccepting, getApp, PAYROLL_RESULT } from "./apps.config";
+import { appOrigin, APPS, appsAccepting, getApp, PAYROLL_RESULT, runMeta } from "./apps.config";
 import { HOSTING } from "./origins";
 import { PAYROLL_FIELDS, toExportRow, type PayrollRow } from "./payrollFields";
 
@@ -201,5 +201,23 @@ describe('toExportRow: "Date of Employment"', () => {
   it("does not let an old stored copy of the key travel as an unknown field", () => {
     const row = toExportRow(saved({ extra: { "Date of Employment": "1999-01-01" } }), company);
     expect(row).not.toHaveProperty("Date of Employment");
+  });
+});
+
+// TODO C11: a saved run sent to an app did not say which company it is for.
+describe("runMeta", () => {
+  it("names the month, the company and its BRN", () => {
+    expect(runMeta("2026-09-01", { name: "ABC Co Ltd", brn: "C1234567" })).toEqual({
+      period: "2026-09",
+      label: "ABC Co Ltd",
+      brn: "C1234567",
+    });
+  });
+
+  it("leaves the BRN out when the company has none", () => {
+    expect(runMeta("2026-09-01", { name: "ABC Co Ltd", brn: null })).toEqual({
+      period: "2026-09",
+      label: "ABC Co Ltd",
+    });
   });
 });
