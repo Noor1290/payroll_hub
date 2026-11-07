@@ -10,3 +10,5 @@ Branch `cleanup`, Stage 2 of the big cleanup (November 2026). Each line says whe
 | C12 | The same, signed in, the companies could not be loaded | (the same sentence) | The dashboard could not load your companies. Reload the dashboard, then try again. |
 | C13 | Data explorer, a field the dashboard has no column for ("Bonus (extra)") whose values are all numbers | 18115 | Rs 18,115.00 (a field with any text in it is shown as before) |
 | C14 | Database page, payroll_runs, column created_by | a shortened user id (e.g. 3f2a…) | You / Another admin, as on every other tab (no longer sortable, like the other "who" columns) |
+| C21 | Data explorer, the date-of-employment button (screen reader and tooltip name) | Set the date of employment of DOE | Set the date of employment of DOE, JANE (also "Change ...") |
+| C21 | The toast after saving a date of employment | Date of employment saved for DOE | Date of employment saved for DOE, JANE |

@@ -62,3 +62,11 @@ export function sumMoney(values: readonly number[]): number {
   for (const value of values) cents += Math.round(value * 100);
   return cents / 100;
 }
+
+/**
+ * An employee as the date dialog names them: "DOE, JANE", or the surname alone. Used wherever one
+ * employee is named, so two people with one surname read differently (TODO C21, rehearsal B5).
+ */
+export function formatEmployeeName(row: { surname: string; other_names?: string | null }): string {
+  return row.other_names ? `${row.surname}, ${row.other_names}` : row.surname;
+}

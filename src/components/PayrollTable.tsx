@@ -39,7 +39,7 @@ import {
   ROW_FIELDS,
   type PayrollRow,
 } from "@/config/payrollFields";
-import { formatCount, formatMoney } from "@/lib/format";
+import { formatCount, formatEmployeeName, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const MASK = "••••••";
@@ -133,7 +133,7 @@ function buildColumns(
                   <button
                     type="button"
                     onClick={() => onEditDate(row.original)}
-                    aria-label={`${value ? "Change" : "Set"} the date of employment of ${row.original.surname}`}
+                    aria-label={`${value ? "Change" : "Set"} the date of employment of ${formatEmployeeName(row.original)}`}
                     className="rounded p-0.5 text-subtle hover:text-fg"
                   >
                     <Pencil className="size-3.5" aria-hidden="true" />

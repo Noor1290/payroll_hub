@@ -8,6 +8,7 @@ import { FailureNote, FormField } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { isEmploymentDate, type PayrollRow } from "@/config/payrollFields";
 import { useAuth } from "@/features/auth/auth-context";
+import { formatEmployeeName } from "@/lib/format";
 import type { DataFailure } from "@/lib/supabase/errors";
 import { classifyEmployeeDateError, setEmployeeDate } from "@/lib/supabase/payroll";
 
@@ -33,7 +34,9 @@ function DateForm({ row, onDone }: { row: PayrollRow; onDone: () => void }) {
       // The date belongs to the employee, so every run that shows them is out of date.
       await queryClient.invalidateQueries({ queryKey: ["run-entries"] });
       toast.success(
-        next ? `Date of employment saved for ${row.surname}` : `Date of employment cleared`,
+        next
+          ? `Date of employment saved for ${formatEmployeeName(row)}`
+          : `Date of employment cleared`,
       );
       onDone();
     } catch (problem) {
@@ -110,7 +113,7 @@ export function EmployeeDateDialog({
             <div className="min-w-0">
               <Dialog.Title className="text-lg font-semibold">Date of employment</Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-muted">
-                {row ? `${row.surname}${row.other_names ? `, ${row.other_names}` : ""}` : ""}
+                {row ? formatEmployeeName(row) : ""}
               </Dialog.Description>
             </div>
           </div>

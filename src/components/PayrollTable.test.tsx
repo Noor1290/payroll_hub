@@ -86,8 +86,15 @@ describe("PayrollTable: date of employment", () => {
     const buttons = screen.getAllByLabelText(/date of employment of/);
     expect(buttons).toHaveLength(saved.length);
     expect(buttons.every((button) => button.tagName === "BUTTON")).toBe(true);
-    fireEvent.click(screen.getByLabelText(`Change the date of employment of ${saved[0]!.surname}`));
-    expect(edited).toEqual([saved[0]!.surname]);
+    // The surname and the other names (TODO C21: the surname alone, which two people can share).
+    const first = saved[0]!;
+    expect(first.other_names).toBeTruthy();
+    fireEvent.click(
+      screen.getByLabelText(
+        `Change the date of employment of ${first.surname}, ${first.other_names}`,
+      ),
+    );
+    expect(edited).toEqual([first.surname]);
   });
 });
 
