@@ -65,3 +65,46 @@ describe("no name that may be real, in any file of the repo (A8)", () => {
     expect(hits).toEqual([]);
   });
 });
+
+/** The old Basic Salary of DOE JANE, which may have come from a real payslip. */
+const OLD_BASIC = new Set(["434a7e656c53f103"]);
+
+/** Every DOE JANE row of the samples, of the example in docs/BRIEF.md and of the import test. */
+function doeJaneRows(): { path: string; basic: unknown }[] {
+  const rows: { path: string; basic: unknown }[] = [];
+  for (const [path, text] of Object.entries(files)) {
+    if (/^\/samples\/.*\.json$/.test(path)) {
+      const parsed: unknown = JSON.parse(text);
+      for (const row of Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : []) {
+        if (row?.Surname === "DOE" && row?.["Other names"] === "JANE")
+          rows.push({ path, basic: row["Basic Salary"] });
+      }
+    }
+  }
+  const brief = /```json\n(\{[\s\S]*?\n\})\n```/.exec(files["/docs/BRIEF.md"] ?? "");
+  if (brief) rows.push({ path: "/docs/BRIEF.md", basic: JSON.parse(brief[1]!)["Basic Salary"] });
+  const test = files["/src/features/import/parsePayroll.test.ts"] ?? "";
+  for (const m of test.matchAll(/"Basic Salary": (\d+)/g))
+    rows.push({ path: "/src/features/import/parsePayroll.test.ts", basic: Number(m[1]) });
+  return rows;
+}
+
+describe("DOE JANE has invented pay, the same as in the payslip app (A8)", () => {
+  it("in every sample, in docs/BRIEF.md and in the import test", async () => {
+    const rows = doeJaneRows();
+    expect(rows.map((row) => row.path)).toEqual(
+      expect.arrayContaining([
+        "/samples/ABC Co Ltd-pdf-fill-2026-09.json",
+        "/samples/ABC Co Ltd-pdf-fill-2026-10.json",
+        "/docs/BRIEF.md",
+        "/src/features/import/parsePayroll.test.ts",
+      ]),
+    );
+    const hashes = await Promise.all(rows.map((row) => digest(String(row.basic))));
+    expect(rows.filter((_, i) => OLD_BASIC.has(hashes[i]!)).map((row) => row.path)).toEqual([]);
+    // The payslip app's sample month has DOE JANE on 23,600 (payslip samples/).
+    const samples = rows.filter((row) => row.path.startsWith("/samples/"));
+    expect(samples.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(samples.map((row) => row.basic))).toEqual(new Set([23600]));
+  });
+});

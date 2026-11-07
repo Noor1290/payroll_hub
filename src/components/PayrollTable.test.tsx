@@ -45,7 +45,7 @@ describe('PayrollTable: "Employee CSG" and "Employee NSF"', () => {
     expect(new Set(column("Employee CSG"))).toEqual(new Set(["••••••"]));
     fireEvent.click(revealButton("Employee CSG"));
     // Sorted by surname: DOE comes first.
-    expect(column("Employee CSG")[0]).toBe("Rs 279.53");
+    expect(column("Employee CSG")[0]).toBe("Rs 363.52");
   });
 
   it("shows nothing, not Rs 0.00, for a run that does not have the figures", () => {

@@ -97,7 +97,7 @@ describe("source tables", () => {
       money: true,
       sensitive: true,
     });
-    expect(table.rows[0]!.values["Employee CSG"]).toBe(279.53);
+    expect(table.rows[0]!.values["Employee CSG"]).toBe(363.52);
   });
 });
 
@@ -235,7 +235,7 @@ describe("validateRows (type checks, row by row)", () => {
         optional,
       ),
     ).toEqual([]);
-    expect(validateRows([row(4, { "Employee CSG": "279.53" })], map, optional)).toEqual([
+    expect(validateRows([row(4, { "Employee CSG": "363.52" })], map, optional)).toEqual([
       { row: 4, field: "Employee CSG", message: "must be a number" },
     ]);
   });
@@ -352,14 +352,14 @@ describe("buildOutput: a figure the row does not have", () => {
 
   it('leaves an empty optional number out of that row: no key, never "" and never 0', () => {
     const rows = [
-      row(1, { Name: "A", "Net Pay": 1, "Employee CSG": 279.53 }),
+      row(1, { Name: "A", "Net Pay": 1, "Employee CSG": 363.52 }),
       row(2, { Name: "B", "Net Pay": 2 }),
       row(3, { Name: "C", "Net Pay": 3, "Employee CSG": null }),
       row(4, { Name: "D", "Net Pay": 4, "Employee CSG": "" }),
       row(5, { Name: "E", "Net Pay": 5, "Employee CSG": 0 }),
     ];
     expect(buildOutput(rows, mapping, fields)).toEqual([
-      { Name: "A", "Net Pay": 1, "Employee CSG": 279.53 },
+      { Name: "A", "Net Pay": 1, "Employee CSG": 363.52 },
       { Name: "B", "Net Pay": 2 },
       { Name: "C", "Net Pay": 3 },
       { Name: "D", "Net Pay": 4 },

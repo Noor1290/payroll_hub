@@ -15,23 +15,23 @@ const base = {
   ID: "X0000000000000",
   Surname: "DOE",
   "Other names": "JANE",
-  "Basic Salary": 18000,
+  "Basic Salary": 23600,
   "Govt Increment": 635,
-  "New Basic Salary": 18635,
+  "New Basic Salary": 24235,
   "Full time / Part time": "Full Time ",
   Allowances: 0,
-  Emoluments: 18635,
-  Travelling: 0,
-  "Gross Pay": 18635,
+  Emoluments: 24235,
+  Travelling: 3150,
+  "Gross Pay": 27385,
   "Age 60+": "No",
-  CSG: 559.05,
-  NSF: 449.5,
+  CSG: 727.05,
+  NSF: 684.63,
   PAYE: 0,
-  "Total deductions": 465.88,
-  "Net Pay": 18169.12,
+  "Total deductions": 637.38,
+  "Net Pay": 26747.63,
   Levy: 270,
-  PRGF: 838.58,
-  "Total MRA contributions": 2580.1,
+  PRGF: 1090.57,
+  "Total MRA contributions": 3409.63,
   EDF: 390000,
   "EDF (monthly)": 30000,
   Total: 0,
@@ -54,16 +54,16 @@ describe("parsePayrollFile: mapping", () => {
       other_names: "JANE",
       employment_type: "Full Time",
       age_60_plus: false,
-      basic_salary: 18000,
+      basic_salary: 23600,
       govt_increment: 635,
-      new_basic_salary: 18635,
-      gross_pay: 18635,
-      csg: 559.05,
-      nsf: 449.5,
-      total_deductions: 465.88,
-      net_pay: 18169.12,
-      prgf: 838.58,
-      total_mra_contributions: 2580.1,
+      new_basic_salary: 24235,
+      gross_pay: 27385,
+      csg: 727.05,
+      nsf: 684.63,
+      total_deductions: 637.38,
+      net_pay: 26747.63,
+      prgf: 1090.57,
+      total_mra_contributions: 3409.63,
       edf: 390000,
       edf_monthly: 30000,
       total: 0,
@@ -99,7 +99,7 @@ describe("parsePayrollFile: mapping", () => {
     const { ["Net Pay"]: netPay, ...rest } = base;
     const { rows, errors } = parse({ ...rest, "net  pay ": netPay });
     expect(errors).toEqual([]);
-    expect(rows[0]?.net_pay).toBe(18169.12);
+    expect(rows[0]?.net_pay).toBe(26747.63);
     expect(rows[0]?.extra).toEqual({});
   });
 
@@ -207,7 +207,7 @@ describe("parsePayrollFile: row-level errors", () => {
   });
 
   it("does not accept numbers written as text", () => {
-    expect(parse({ ...base, CSG: "559.05" }).errors).toEqual([
+    expect(parse({ ...base, CSG: "727.05" }).errors).toEqual([
       { row: 1, field: "CSG", message: "must be a number" },
     ]);
   });
@@ -293,15 +293,15 @@ describe("parsePayrollFile: file-level errors", () => {
 
 describe("checkMoney (decimals)", () => {
   it("keeps values with up to 2 decimals exactly", () => {
-    expect(checkMoney(465.88)).toEqual({ ok: true, value: 465.88 });
-    expect(checkMoney(2580.1)).toEqual({ ok: true, value: 2580.1 });
+    expect(checkMoney(637.38)).toEqual({ ok: true, value: 637.38 });
+    expect(checkMoney(3409.63)).toEqual({ ok: true, value: 3409.63 });
     expect(checkMoney(-12.5)).toEqual({ ok: true, value: -12.5 });
   });
 
   it("silently removes floating-point noise", () => {
     expect(checkMoney(0.1 + 0.2)).toEqual({ ok: true, value: 0.3 });
-    expect(checkMoney(18169.12 + 1e-11)).toEqual({ ok: true, value: 18169.12 });
-    expect(checkMoney(559.05 - 1e-11)).toEqual({ ok: true, value: 559.05 });
+    expect(checkMoney(26747.63 + 1e-11)).toEqual({ ok: true, value: 26747.63 });
+    expect(checkMoney(727.05 - 1e-11)).toEqual({ ok: true, value: 727.05 });
   });
 
   it("refuses real precision beyond 2 decimals instead of rounding it", () => {
