@@ -17,7 +17,7 @@ vi.mock("sonner", () => ({ toast }));
 
 // FAKE values, chosen to be easy to search for.
 const SECRET_ID = "X0000000000001";
-const SECRET_PAY = 18169.12;
+const SECRET_PAY = 26747.63;
 const ROWS = [{ ID: SECRET_ID, Surname: "DOE", "Net Pay": SECRET_PAY }];
 
 const rows = () => transferLog.get().map((row) => ({ ...row, at: undefined, id: undefined }));

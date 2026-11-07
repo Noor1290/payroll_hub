@@ -337,7 +337,7 @@ describe("forgetCompany", () => {
       ["memberships", VIEWER.id],
       [membership(ABC, "ABC Co Ltd"), membership(XYZ, "XYZ")],
     );
-    queryClient.setQueryData(["overview", ABC, VIEWER.id], { latestRunNetPay: 18169.12 });
+    queryClient.setQueryData(["overview", ABC, VIEWER.id], { latestRunNetPay: 26747.63 });
     queryClient.setQueryData(["runs", ABC, VIEWER.id], [{ id: "r1" }]);
     queryClient.setQueryData(["db", "rows", "employees", ABC, VIEWER.id], { rows: [], total: 0 });
     queryClient.setQueryData(["run-entries", "r1", VIEWER.id], [{ national_id: "X0000000000001" }]);

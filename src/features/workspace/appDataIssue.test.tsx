@@ -55,7 +55,7 @@ const signIn = (role: Membership["role"] = "admin", of = company) =>
 
 const LINES = [
   { section: "earnings", label: "Basic salary", amount: 25000 },
-  { section: "totals", label: "Net pay", amount: 18169.12 },
+  { section: "totals", label: "Net pay", amount: 26747.63 },
 ];
 const RATES = {
   effective_from: "2026-07",
@@ -584,7 +584,7 @@ describe("payslip-issue over the bridge: a prompt for a read, the gate for both"
       description: "Saved from Payslip Automation.",
     });
     // No national ID, no figure, no label of a line: in the log or in a toast.
-    expect(seen()).not.toMatch(/X00000|18169|25000|502\.8|Net pay|rounding/);
+    expect(seen()).not.toMatch(/X00000|26747|25000|502\.8|Net pay|rounding/);
   });
 
   it("refuses a save while locked over the bridge too, says so in the dashboard, and stores nothing", async () => {
@@ -656,7 +656,7 @@ describe("payslip-issue over the bridge: a prompt for a read, the gate for both"
         rowCount: 2,
       }),
     ]);
-    expect(seen()).not.toMatch(/X00000|18169|25000/);
+    expect(seen()).not.toMatch(/X00000|26747|25000/);
   });
 
   it("tells the app the user said no, and reads nothing", async () => {

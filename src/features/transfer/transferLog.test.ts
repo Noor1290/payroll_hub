@@ -21,7 +21,7 @@ const { deliver, retryTransfer } = await import("@/features/workspace/deliver");
 
 // FAKE values, chosen to be easy to search for.
 const SECRET_ID = "X0000000000001";
-const SECRET_PAY = 18169.12;
+const SECRET_PAY = 26747.63;
 const PAYLOAD: SendDataPayload = {
   dataType: "payroll-result",
   rows: [

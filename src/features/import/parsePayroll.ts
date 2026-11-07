@@ -60,7 +60,7 @@ function trimDeep(value: unknown): unknown {
 
 /**
  * Checks a money value without changing it, apart from removing floating-point noise
- * (18169.120000000003 -> 18169.12). Anything with real precision beyond 2 decimals is refused,
+ * (26747.629999999997 -> 26747.63). Anything with real precision beyond 2 decimals is refused,
  * because the database would otherwise round it silently.
  */
 export function checkMoney(

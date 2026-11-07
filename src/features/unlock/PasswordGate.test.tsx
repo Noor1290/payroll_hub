@@ -10,7 +10,7 @@ vi.mock("./verifyPassword", () => ({ verifyPassword: vi.fn() }));
 const verify = vi.mocked(verifyPassword);
 
 const PASSWORD = "correct-horse-battery-staple-9431";
-const SECRET = "X0000000000001 earns Rs 18,169.12";
+const SECRET = "X0000000000001 earns Rs 26,747.63";
 
 const auth: AuthContextValue = {
   status: "signed-in",

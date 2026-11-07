@@ -474,7 +474,7 @@ describe("after deleting", () => {
 
   async function deleteIt(memberships: Membership[]) {
     queryClient.setQueryData(["memberships", USER], memberships);
-    queryClient.setQueryData(["overview", ABC, USER], { latestRunNetPay: 18169.12 });
+    queryClient.setQueryData(["overview", ABC, USER], { latestRunNetPay: 26747.63 });
     queryClient.setQueryData(["run-entries", "run-1", USER], [{ national_id: "X0000000000001" }]);
     localStorage.setItem("payroll-hub:company", ABC);
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");

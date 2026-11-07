@@ -113,13 +113,13 @@ describe('toExportRow: "Employee CSG" and "Employee NSF"', () => {
   });
 
   it("returns them under the payroll app's own names, value for value", () => {
-    const row = toExportRow(stored({ employee_csg: 279.53, employee_nsf: 186.35 }), company);
-    expect(row["Employee CSG"]).toBe(279.53);
-    expect(row["Employee NSF"]).toBe(186.35);
+    const row = toExportRow(stored({ employee_csg: 363.52, employee_nsf: 273.85 }), company);
+    expect(row["Employee CSG"]).toBe(363.52);
+    expect(row["Employee NSF"]).toBe(273.85);
   });
 
   it("never sends the storage names", () => {
-    const row = toExportRow(stored({ employee_csg: 279.53, employee_nsf: 186.35 }), company);
+    const row = toExportRow(stored({ employee_csg: 363.52, employee_nsf: 273.85 }), company);
     expect(row).not.toHaveProperty("employee_csg");
     expect(row).not.toHaveProperty("employee_nsf");
   });
@@ -130,17 +130,17 @@ describe('toExportRow: "Employee CSG" and "Employee NSF"', () => {
       expect(row).not.toHaveProperty("Employee CSG");
       expect(row).not.toHaveProperty("Employee NSF");
     }
-    const one = toExportRow(stored({ employee_nsf: 186.35 }), company);
+    const one = toExportRow(stored({ employee_nsf: 273.85 }), company);
     expect(one).not.toHaveProperty("Employee CSG");
-    expect(one["Employee NSF"]).toBe(186.35);
+    expect(one["Employee NSF"]).toBe(273.85);
   });
 
   it("sends a real 0 as 0", () => {
-    const row = toExportRow(stored({ employee_csg: 279.53, employee_nsf: 0 }), company);
+    const row = toExportRow(stored({ employee_csg: 363.52, employee_nsf: 0 }), company);
     expect(row["Employee NSF"]).toBe(0);
   });
 
-  it.each([null, "", "279.53", Number.NaN, { a: 1 }])(
+  it.each([null, "", "363.52", Number.NaN, { a: 1 }])(
     "treats a stored %j as absent instead of sending it",
     (value) => {
       const row = toExportRow(stored({ employee_csg: value }), company);

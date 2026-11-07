@@ -66,8 +66,8 @@ describe("runSummaryRowSchema", () => {
 
 describe("moneySchema", () => {
   it("accepts numbers and numeric strings without changing the value", () => {
-    expect(moneySchema.parse(18169.12)).toBe(18169.12);
-    expect(moneySchema.parse("18169.12")).toBe(18169.12);
+    expect(moneySchema.parse(26747.63)).toBe(26747.63);
+    expect(moneySchema.parse("26747.63")).toBe(26747.63);
     expect(moneySchema.parse(0)).toBe(0);
   });
 

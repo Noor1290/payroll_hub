@@ -19,7 +19,7 @@ const MONTHS = [
   "December",
 ] as const;
 
-/** Mauritian rupees, e.g. "Rs 18,169.12". Display only: never feed the result back into data. */
+/** Mauritian rupees, e.g. "Rs 26,747.63". Display only: never feed the result back into data. */
 export function formatMoney(value: number): string {
   return `Rs ${moneyFormat.format(value)}`;
 }

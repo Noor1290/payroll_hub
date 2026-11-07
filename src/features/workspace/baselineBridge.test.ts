@@ -54,7 +54,7 @@ function connect(appId: string) {
 /** The log without what changes on every run: the time and the generated id. */
 const logged = () => transferLog.get().map((row) => ({ ...row, at: "(time)", id: "(id)" }));
 
-const ROW = { ID: "X0000000000001", Surname: "DOE", "Net Pay": 18169.12 };
+const ROW = { ID: "X0000000000001", Surname: "DOE", "Net Pay": 26747.63 };
 
 beforeEach(() => bridge.start());
 afterEach(() => {

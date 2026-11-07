@@ -107,4 +107,25 @@ describe("DOE JANE has invented pay, the same as in the payslip app (A8)", () =>
     expect(samples.length).toBeGreaterThanOrEqual(4);
     expect(new Set(samples.map((row) => row.basic))).toEqual(new Set([23600]));
   });
+
+  it("nowhere in the repo: not her old Net Pay, nor her old Employee CSG, written in any way", async () => {
+    // Every amount with two decimals, without its thousands separators: "18,169.12" and
+    // "18_169.12" are read as "18169.12".
+    const firstFile = new Map<string, string>();
+    for (const [path, text] of Object.entries(files)) {
+      for (const m of text.matchAll(/\d[\d,_]*\.\d{2}(?!\d)/g)) {
+        const amount = m[0].replace(/[,_]/g, "");
+        if (!firstFile.has(amount)) firstFile.set(amount, path);
+      }
+    }
+    const amounts = [...firstFile.keys()];
+    expect(amounts).toContain("26747.63");
+    const hashes = await Promise.all(amounts.map(digest));
+    expect(
+      amounts.filter((_, i) => OLD_FIGURES.has(hashes[i]!)).map((a) => firstFile.get(a)),
+    ).toEqual([]);
+  });
 });
+
+/** The old Net Pay and Employee CSG of DOE JANE. */
+const OLD_FIGURES = new Set(["b7390984ba0090bd", "2fa15047b945ce7d"]);

@@ -126,14 +126,14 @@ describe("parsePayrollFile: mapping", () => {
 
 describe('parsePayrollFile: "Employee CSG" and "Employee NSF"', () => {
   it("stores both inside extra under their column names, with the numbers unchanged", () => {
-    const { rows, errors } = parse({ ...base, "Employee CSG": 279.53, "Employee NSF": 186.35 });
+    const { rows, errors } = parse({ ...base, "Employee CSG": 363.52, "Employee NSF": 273.85 });
     expect(errors).toEqual([]);
-    expect(rows[0]?.extra).toEqual({ employee_csg: 279.53, employee_nsf: 186.35 });
+    expect(rows[0]?.extra).toEqual({ employee_csg: 363.52, employee_nsf: 273.85 });
   });
 
   it("keeps them next to unknown fields, which still travel untouched", () => {
-    const { rows } = parse({ ...base, "employee  csg ": 279.53, Bonus: 1500 });
-    expect(rows[0]?.extra).toEqual({ Bonus: 1500, employee_csg: 279.53 });
+    const { rows } = parse({ ...base, "employee  csg ": 363.52, Bonus: 1500 });
+    expect(rows[0]?.extra).toEqual({ Bonus: 1500, employee_csg: 363.52 });
   });
 
   it.each([
@@ -148,19 +148,19 @@ describe('parsePayrollFile: "Employee CSG" and "Employee NSF"', () => {
   });
 
   it("accepts one without the other", () => {
-    const { rows, errors } = parse({ ...base, "Employee NSF": 186.35 });
+    const { rows, errors } = parse({ ...base, "Employee NSF": 273.85 });
     expect(errors).toEqual([]);
-    expect(rows[0]?.extra).toEqual({ employee_nsf: 186.35 });
+    expect(rows[0]?.extra).toEqual({ employee_nsf: 273.85 });
   });
 
   it("keeps a real 0: it is a figure, not a missing one", () => {
-    const { rows, errors } = parse({ ...base, "Employee CSG": 279.53, "Employee NSF": 0 });
+    const { rows, errors } = parse({ ...base, "Employee CSG": 363.52, "Employee NSF": 0 });
     expect(errors).toEqual([]);
-    expect(rows[0]?.extra).toEqual({ employee_csg: 279.53, employee_nsf: 0 });
+    expect(rows[0]?.extra).toEqual({ employee_csg: 363.52, employee_nsf: 0 });
   });
 
   it("refuses text, like the other money fields", () => {
-    expect(parse({ ...base, "Employee CSG": "279.53", "Employee NSF": "n/a" }).errors).toEqual([
+    expect(parse({ ...base, "Employee CSG": "363.52", "Employee NSF": "n/a" }).errors).toEqual([
       { row: 1, field: "Employee CSG", message: "must be a number" },
       { row: 1, field: "Employee NSF", message: "must be a number" },
     ]);

@@ -3,7 +3,7 @@ import { formatCount, formatMoney, formatPeriod, sumMoney } from "./format";
 
 describe("formatMoney", () => {
   it("shows rupees with two decimals and thousands separators", () => {
-    expect(formatMoney(18169.12)).toBe("Rs 18,169.12");
+    expect(formatMoney(26747.63)).toBe("Rs 26,747.63");
     expect(formatMoney(0)).toBe("Rs 0.00");
     expect(formatMoney(390000)).toBe("Rs 390,000.00");
   });
@@ -32,7 +32,7 @@ describe("sumMoney", () => {
   it("adds without floating-point drift", () => {
     expect(0.1 + 0.2).not.toBe(0.3);
     expect(sumMoney([0.1, 0.2])).toBe(0.3);
-    expect(sumMoney([18169.12, 559.05, 449.5])).toBe(19177.67);
+    expect(sumMoney([26747.63, 727.05, 684.63])).toBe(28159.31);
   });
 
   it("is zero for no values", () => {

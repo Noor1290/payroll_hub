@@ -174,7 +174,7 @@ describe("toRpcRow", () => {
   });
 
   it("sends every column the import function reads, and nothing display-only", () => {
-    const payload = toRpcRow(row("A", "DOE", { net_pay: 18169.12, extra: { Bonus: 1 } }), 0);
+    const payload = toRpcRow(row("A", "DOE", { net_pay: 26747.63, extra: { Bonus: 1 } }), 0);
     expect(Object.keys(payload).sort()).toEqual(
       [
         "national_id",
@@ -186,7 +186,7 @@ describe("toRpcRow", () => {
         ...NUMERIC_COLUMNS,
       ].sort(),
     );
-    expect(payload.net_pay).toBe(18169.12);
+    expect(payload.net_pay).toBe(26747.63);
     expect(payload.extra).toEqual({ Bonus: 1, [ROW_POSITION_KEY]: 1 });
   });
 });

@@ -107,7 +107,7 @@ exports[`baseline: what the dashboard answers over the bridge > the payroll app 
         "rows": [
           {
             "ID": "X0000000000001",
-            "Net Pay": 18169.12,
+            "Net Pay": 26747.63,
             "Surname": "DOE",
           },
         ],

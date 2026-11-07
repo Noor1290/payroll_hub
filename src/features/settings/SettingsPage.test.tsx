@@ -65,7 +65,7 @@ const renderSettings = (role: "admin" | "viewer" = "viewer") =>
 
 const PAYLOAD = {
   dataType: "payroll-result",
-  rows: [{ ID: "X0000000000001", "Net Pay": 18169.12 }],
+  rows: [{ ID: "X0000000000001", "Net Pay": 26747.63 }],
 };
 
 afterEach(() => {
@@ -195,7 +195,7 @@ describe("Clear all in-memory data", () => {
   it("wipes everything held in memory, and nothing that is a saved preference", () => {
     // Fill every place that holds data.
     queryClient.setQueryData(["run-entries", "run-1", "u"], [{ national_id: "X0000000000001" }]);
-    queryClient.setQueryData(["overview", "c", "u"], { latestRunNetPay: 18169.12 });
+    queryClient.setQueryData(["overview", "c", "u"], { latestRunNetPay: 26747.63 });
     queryClient.setQueryData(["db", "rows", "employees"], { rows: [], total: 0 });
     beginTransfer("transfer-00001", "pdf-editor", "PDF Form Filler", PAYLOAD, {
       label: "Payroll System",
