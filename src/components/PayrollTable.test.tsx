@@ -90,3 +90,24 @@ describe("PayrollTable: date of employment", () => {
     expect(edited).toEqual([saved[0]!.surname]);
   });
 });
+
+// TODO C13 (rehearsal L9): a field the dashboard has no column for showed figures as "18115".
+describe("PayrollTable: fields the dashboard has no column for", () => {
+  it("shows a field of figures as money, and a field with text as written", () => {
+    const rows = JSON.parse(withFigures) as Record<string, unknown>[];
+    rows[0] = { ...rows[0], Bonus: 18115, Note: "paid late" };
+    rows[1] = { ...rows[1], Note: 2 };
+    const { column } = renderGrid(JSON.stringify(rows));
+    fireEvent.click(revealButton("Bonus (extra)"));
+    fireEvent.click(revealButton("Note (extra)"));
+    const bonus = column("Bonus (extra)");
+    expect(bonus).toContain("Rs 18,115.00");
+    expect(bonus).toContain("Rs 1,500.00");
+    expect(bonus.filter((v) => v !== "").every((v) => v!.startsWith("Rs "))).toBe(true);
+    expect(
+      column("Note (extra)")
+        .filter((v) => v !== "")
+        .sort(),
+    ).toEqual(["2", "paid late"]);
+  });
+});

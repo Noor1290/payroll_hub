@@ -60,6 +60,14 @@ function showExtra(value: unknown): string {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
+/** Whether every value an extra field has is a number (and it has one at least). */
+function isFigureField(rows: readonly PayrollRow[], key: string): boolean {
+  const values = rows
+    .map((row) => row.extra[key])
+    .filter((v) => v !== null && v !== undefined && v !== "");
+  return values.length > 0 && values.every((v) => typeof v === "number" && Number.isFinite(v));
+}
+
 function buildColumns(
   rows: readonly PayrollRow[],
   onEditDate: ((row: PayrollRow) => void) | undefined,
@@ -89,14 +97,22 @@ function buildColumns(
   const extraKeys = [...new Set(rows.flatMap((row) => Object.keys(row.extra)))]
     .filter((key) => !RESERVED_EXTRA_KEYS.has(key))
     .sort();
-  const extras: ColumnDef<PayrollRow>[] = extraKeys.map((key) => ({
-    id: `extra:${key}`,
-    accessorFn: (row) => showExtra(row.extra[key]),
-    header: key,
-    // Unknown fields are treated as sensitive until someone decides otherwise.
-    meta: { label: `${key} (extra)`, sensitive: true, numeric: false } satisfies ColumnMeta,
-    cell: ({ getValue }) => getValue() as string,
-  }));
+  const extras: ColumnDef<PayrollRow>[] = extraKeys.map((key) => {
+    // TODO C13 (rehearsal L9): a field of figures ("Bonus") showed "18115", not "Rs 18,115.00".
+    // Shown as money when every value it has is a number; otherwise as text, as before.
+    const numeric = isFigureField(rows, key);
+    return {
+      id: `extra:${key}`,
+      accessorFn: (row) => showExtra(row.extra[key]),
+      header: key,
+      // Unknown fields are treated as sensitive until someone decides otherwise.
+      meta: { label: `${key} (extra)`, sensitive: true, numeric } satisfies ColumnMeta,
+      cell: ({ row, getValue }) => {
+        const value = row.original.extra[key];
+        return numeric && typeof value === "number" ? formatMoney(value) : (getValue() as string);
+      },
+    };
+  });
 
   // Saved rows from a database that has the column (migration 0008). Not part of an import.
   const date: ColumnDef<PayrollRow>[] = rows.some((row) => row.date_of_employment !== undefined)
