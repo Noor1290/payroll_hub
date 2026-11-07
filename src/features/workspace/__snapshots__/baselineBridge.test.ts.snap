@@ -202,7 +202,7 @@ exports[`baseline: what the dashboard answers over the bridge > the payslip app 
       "id": "message-0000003",
       "payload": {
         "code": "unavailable",
-        "error": "Nobody is signed in to the dashboard, or no company is selected.",
+        "error": "Nobody is signed in to the dashboard. Sign in there, then try again.",
         "ok": false,
       },
       "targetOrigin": "https://noor1290.github.io",

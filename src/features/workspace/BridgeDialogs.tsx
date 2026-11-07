@@ -30,7 +30,7 @@ import { isUnlocked } from "@/lib/unlock";
 import { UnlockForm } from "@/features/unlock/PasswordGate";
 import { useUnlock } from "@/features/unlock/useUnlock";
 import { exchangeContext } from "./appData";
-import { exchangeContextLoading, exchangeHasNoCompany } from "./exchangeContext";
+import { exchangeContextLoading, exchangeHasNoCompany, exchangeSignedIn } from "./exchangeContext";
 // Registers the PDF form filler's data types with the bridge.
 import "./pdfData";
 import "./payrollSetupData";
@@ -384,10 +384,12 @@ export function BridgeDialogs() {
     exchangeHasNoCompany.set(
       Boolean(userId) && companyStatus === "ready" && memberships.length === 0,
     );
+    exchangeSignedIn.set(Boolean(userId));
     return () => {
       exchangeContext.set(null);
       exchangeContextLoading.set(false);
       exchangeHasNoCompany.set(false);
+      exchangeSignedIn.set(false);
     };
   }, [userId, isDemo, current, memberships, companyStatus]);
 

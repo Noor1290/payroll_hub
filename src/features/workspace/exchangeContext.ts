@@ -24,10 +24,18 @@ export const exchangeContextLoading = createStore(false);
  */
 export const exchangeHasNoCompany = createStore(false);
 
+/**
+ * True when someone is signed in, whatever the state of their companies. Set by BridgeDialogs. With
+ * no context and this true, the refusal says the companies did not load, not that nobody is signed
+ * in (TODO C12).
+ */
+export const exchangeSignedIn = createStore(false);
+
 registerSessionCleanup(() => {
   exchangeContext.set(null);
   exchangeContextLoading.set(false);
   exchangeHasNoCompany.set(false);
+  exchangeSignedIn.set(false);
 });
 
 /**

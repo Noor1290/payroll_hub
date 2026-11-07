@@ -6,7 +6,12 @@ import { demoMemberships } from "@/lib/demo/demoData";
 import { demoForgetPayrollSetups } from "@/lib/demo/demoPayrollSetups";
 import { runSessionCleanup } from "@/lib/sessionCleanup";
 import { exchangeContext } from "./appData";
-import { exchangeContextLoading, exchangeHasNoCompany, SIGN_IN_WAIT_MS } from "./exchangeContext";
+import {
+  exchangeContextLoading,
+  exchangeHasNoCompany,
+  exchangeSignedIn,
+  SIGN_IN_WAIT_MS,
+} from "./exchangeContext";
 // The handlers register themselves with the bridge when imported, as BridgeDialogs does.
 import "./appData";
 import "./payrollSetupData";
@@ -123,7 +128,7 @@ describe("an app that asks before the dashboard knows who is signed in", () => {
     expect(reply("early-000003")!.payload).toMatchObject({
       ok: false,
       code: "unavailable",
-      error: "Nobody is signed in to the dashboard, or no company is selected.",
+      error: "Nobody is signed in to the dashboard. Sign in there, then try again.",
     });
   });
 
@@ -165,5 +170,45 @@ describe("an app that asks before the dashboard knows who is signed in", () => {
     });
     await vi.waitFor(() => expect(reply("early-000004")).toBeTruthy(), { timeout: 1000 });
     expect(reply("early-000004")!.payload).toMatchObject({ ok: true });
+  });
+});
+
+// TODO C12 (rehearsal): someone signed in, whose companies had not loaded, was told "Nobody is
+// signed in to the dashboard, or no company is selected". Each case now has its own sentence.
+describe("why an app's question is refused when no company is selected", () => {
+  const ask = async (id: string) => {
+    const fromApp = connect("payroll");
+    fromApp("request-data", id, { dataType: "payroll-setup", params: { action: "load" } });
+    await vi.advanceTimersByTimeAsync(SIGN_IN_WAIT_MS + 100);
+    await vi.waitFor(() => expect(reply(id)).toBeTruthy());
+    return reply(id)!.payload;
+  };
+
+  it("signed in, the companies still loading after the wait", async () => {
+    exchangeSignedIn.set(true);
+    expect(await ask("why-000001")).toMatchObject({
+      ok: false,
+      code: "unavailable",
+      error: "The dashboard is still loading your companies. Try again in a moment.",
+    });
+  });
+
+  it("signed in, the companies could not be loaded", async () => {
+    exchangeSignedIn.set(true);
+    exchangeContextLoading.set(false);
+    expect(await ask("why-000002")).toMatchObject({
+      ok: false,
+      code: "unavailable",
+      error: "The dashboard could not load your companies. Reload the dashboard, then try again.",
+    });
+  });
+
+  it("nobody signed in", async () => {
+    exchangeContextLoading.set(false);
+    expect(await ask("why-000003")).toMatchObject({
+      ok: false,
+      code: "unavailable",
+      error: "Nobody is signed in to the dashboard. Sign in there, then try again.",
+    });
   });
 });

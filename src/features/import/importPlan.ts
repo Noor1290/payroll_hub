@@ -1,5 +1,6 @@
 import { NUMERIC_COLUMNS, ROW_POSITION_KEY, type PayrollRow } from "@/config/payrollFields";
-import type { Membership, RunStatus } from "@/lib/supabase/schemas";
+import { formatCount } from "@/lib/format";
+import type { ImportResult, Membership, RunStatus } from "@/lib/supabase/schemas";
 import type { FileCompany } from "./parsePayroll";
 
 /** BRNs are compared ignoring case and surrounding whitespace. */
@@ -117,4 +118,26 @@ export function toRpcRow(row: PayrollRow, index: number): Record<string, unknown
   };
   for (const column of NUMERIC_COLUMNS) payload[column] = row[column];
   return payload;
+}
+
+/** "1 entry", "2 entries". */
+function countOf(count: number, one: string, many: string): string {
+  return `${formatCount(count)} ${count === 1 ? one : many}`;
+}
+
+/**
+ * What a saved run did, in one sentence, e.g. "8 entries saved as a draft, 1 new employee added."
+ * TODO C12 (rehearsal L8): it said "1 new employees added".
+ */
+export function describeSavedRun(
+  result: Pick<ImportResult, "entries" | "employeesNew" | "entriesRemoved">,
+): string {
+  const parts = [`${countOf(result.entries, "entry", "entries")} saved as a draft`];
+  if (result.employeesNew > 0)
+    parts.push(`${countOf(result.employeesNew, "new employee", "new employees")} added`);
+  if (result.entriesRemoved > 0)
+    parts.push(
+      `${countOf(result.entriesRemoved, "entry", "entries")} removed that ${result.entriesRemoved === 1 ? "was" : "were"} not in this file`,
+    );
+  return `${parts.join(", ")}.`;
 }

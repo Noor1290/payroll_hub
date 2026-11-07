@@ -5,7 +5,7 @@ import { CompanyContext, type CompanyContextValue } from "@/features/company/com
 import { demoMemberships } from "@/lib/demo/demoData";
 import { runSessionCleanup } from "@/lib/sessionCleanup";
 import { BridgeDialogs } from "./BridgeDialogs";
-import { exchangeContext, exchangeContextLoading } from "./exchangeContext";
+import { exchangeContext, exchangeContextLoading, exchangeSignedIn } from "./exchangeContext";
 
 /**
  * Known issue 4: what the dashboard's handlers wait on is set from the dashboard's own state. Right
@@ -68,6 +68,8 @@ describe("the dashboard says when it is still loading who is signed in", () => {
       show(signedIn, companies({ status: "error", current: null, memberships: [] })),
     );
     expect(exchangeContextLoading.get()).toBe(false);
+    // Still signed in, so the refusal says the companies did not load (TODO C12).
+    expect(exchangeSignedIn.get()).toBe(true);
     view.rerender(
       show(
         { ...signedIn, status: "signed-out", user: null },
@@ -75,5 +77,6 @@ describe("the dashboard says when it is still loading who is signed in", () => {
       ),
     );
     expect(exchangeContextLoading.get()).toBe(false);
+    expect(exchangeSignedIn.get()).toBe(false);
   });
 });

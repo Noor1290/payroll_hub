@@ -34,6 +34,7 @@ import {
   type EmploymentDatesStored,
 } from "@/lib/supabase/payroll";
 import type { ImportResult, Membership } from "@/lib/supabase/schemas";
+import { describeSavedRun } from "./importPlan";
 import { cn } from "@/lib/utils";
 import { importInbox, type InboxItem } from "./importInbox";
 import { companyDifferences, diffEmployees, matchCompanyByBrn, runConflict } from "./importPlan";
@@ -198,20 +199,15 @@ function SavedPanel({ saved }: { saved: SavedSummary }) {
         <p className="font-medium">
           {formatPeriod(period)} run {verb} for {companyName}
         </p>
-        <p className="mt-1 text-muted">
-          {formatCount(result.entries)} entries saved as a draft
-          {result.employeesNew > 0 && `, ${formatCount(result.employeesNew)} new employees added`}
-          {result.entriesRemoved > 0 &&
-            `, ${formatCount(result.entriesRemoved)} entries removed that were not in this file`}
-          .
-        </p>
+        <p className="mt-1 text-muted">{describeSavedRun(result)}</p>
         {saved.dates?.ok === true && (
           <p className="mt-1 text-muted">
             Dates of employment: {formatCount(saved.dates.stored.stored)} stored for employees who
             had none
             {saved.dates.stored.changed > 0 &&
               `, ${formatCount(saved.dates.stored.changed)} changed to the date in this file`}
-            {saved.dates.stored.kept > 0 && `, ${formatCount(saved.dates.stored.kept)} already the same`}
+            {saved.dates.stored.kept > 0 &&
+              `, ${formatCount(saved.dates.stored.kept)} already the same`}
             {saved.dates.stored.keptNewer > 0 &&
               `, ${formatCount(saved.dates.stored.keptNewer)} kept because their date came from a newer month`}
             .
@@ -286,7 +282,10 @@ function SavePlan({
       if (!fileDates) return { result };
       try {
         if (beforeFailed) throw beforeFailed;
-        const stored = await storeEmploymentDates(viewer, company.id, fileDates, { period, newestBefore });
+        const stored = await storeEmploymentDates(viewer, company.id, fileDates, {
+          period,
+          newestBefore,
+        });
         return { result, dates: { ok: true as const, stored } };
       } catch (error) {
         return {

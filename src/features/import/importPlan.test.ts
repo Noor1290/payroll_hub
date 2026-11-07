@@ -3,6 +3,7 @@ import { NUMERIC_COLUMNS, type NumericColumn, type PayrollRow } from "@/config/p
 import type { Membership } from "@/lib/supabase/schemas";
 import {
   companyDifferences,
+  describeSavedRun,
   diffEmployees,
   matchCompanyByBrn,
   runConflict,
@@ -188,5 +189,22 @@ describe("toRpcRow", () => {
     );
     expect(payload.net_pay).toBe(26747.63);
     expect(payload.extra).toEqual({ Bonus: 1, [ROW_POSITION_KEY]: 1 });
+  });
+});
+
+describe('describeSavedRun (TODO C12: it said "1 new employees added")', () => {
+  it("says one entry and one new employee in the singular", () => {
+    expect(describeSavedRun({ entries: 1, employeesNew: 1, entriesRemoved: 1 })).toBe(
+      "1 entry saved as a draft, 1 new employee added, 1 entry removed that was not in this file.",
+    );
+  });
+
+  it("and several in the plural, with only what happened", () => {
+    expect(describeSavedRun({ entries: 1200, employeesNew: 2, entriesRemoved: 3 })).toBe(
+      "1,200 entries saved as a draft, 2 new employees added, 3 entries removed that were not in this file.",
+    );
+    expect(describeSavedRun({ entries: 8, employeesNew: 0, entriesRemoved: 0 })).toBe(
+      "8 entries saved as a draft.",
+    );
   });
 });

@@ -83,7 +83,13 @@ import { answerRequest, recordSave } from "./deliver";
 
 // Who is signed in and which company is selected: kept in its own file so deliver.ts can wait
 // for it (known issue 4). Re-exported here, where the handlers and their tests have always found it.
-import { exchangeContext, exchangeHasNoCompany, type ExchangeContext } from "./exchangeContext";
+import {
+  exchangeContext,
+  exchangeContextLoading,
+  exchangeHasNoCompany,
+  exchangeSignedIn,
+  type ExchangeContext,
+} from "./exchangeContext";
 export { exchangeContext, type ExchangeContext };
 
 // ---------- shared pieces ----------
@@ -99,6 +105,11 @@ export const brnSchema = z.string().trim().min(1).max(50);
 /** Every app shows this same sentence for an account that belongs to no company. */
 const NO_COMPANY =
   "Your account isn't a member of any company in the dashboard yet. Ask an admin to add you.";
+const NOBODY_SIGNED_IN = "Nobody is signed in to the dashboard. Sign in there, then try again.";
+const COMPANIES_STILL_LOADING =
+  "The dashboard is still loading your companies. Try again in a moment.";
+const COMPANIES_NOT_LOADED =
+  "The dashboard could not load your companies. Reload the dashboard, then try again.";
 
 /**
  * The signed-in user and the selected company, or why there is nothing to work with.
@@ -109,9 +120,11 @@ function context(brn: string | undefined): ExchangeContext | Refusal {
   const current = exchangeContext.get();
   if (!current) {
     if (exchangeHasNoCompany.get()) return refuse("no-company", NO_COMPANY);
+    // TODO C12: someone signed in was told "Nobody is signed in". Each case has its own sentence.
+    if (!exchangeSignedIn.get()) return refuse("unavailable", NOBODY_SIGNED_IN);
     return refuse(
       "unavailable",
-      "Nobody is signed in to the dashboard, or no company is selected.",
+      exchangeContextLoading.get() ? COMPANIES_STILL_LOADING : COMPANIES_NOT_LOADED,
     );
   }
   if (brn !== undefined) {
