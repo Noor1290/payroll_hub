@@ -243,3 +243,24 @@ Approved by the owner: S1–S8 and F1–F3. Also used as approved in the plan (E
 ### Reused as they are
 
 - The value in "{heading}" can't be read ({#N/A}). (the Companies sheet's text, for a cell Excel could not work out)
+
+## Employees sheet, Stage 3: saving and the report (approved 9 November 2026)
+
+Approved by the owner: W1–W14. Also used as approved in the plan (EMPLOYEES_IMPORT_PLAN.md §9): "Create and update", "2 companies, 15 employees", "Added to October 2026", "Updated in October 2026", "Not changed: the month was saved by someone else after the preview. Upload the file again.", "Not added: its company was not created.", and the report sheet "Employees" with the columns BRN, Company, Row, ID ("(not shown)"), Surname, What happened, Before, After.
+
+| # | Where | Text |
+|---|---|---|
+| W1 | Button count with no company ticked | 4 employees (the company part is left out when it would be 0) |
+| W2 | While saving | Saving the employees of company 1 of 3. Keep this window open. |
+| W3 | Report on screen, heading and summary | Employees · 3 employees added, 1 updated. · with failures: …, 2 not saved. |
+| W4 | Report on screen, table headings and badges | Row · Company · Surname · What happened; badges Added, Updated, Skipped, Problem |
+| W5 | Report lines for rows not saved | No changes. · Not ticked. · Problem: {the preview's own text} |
+| W6 | Approved after the preview | Not changed: October 2026 was approved after the preview, so it can't be changed. |
+| W7 | No longer admin | Not changed: you are no longer an admin of this company. |
+| W8 | Month too big | Not changed: the month would be larger than the dashboard accepts (5000 employees or 1 MB). |
+| W9 | Database not set up | Not changed: saving employees isn't set up in the database yet: the owner needs to run supabase/migrations/0019_import_payroll_company.sql. |
+| W10 | A just-created company with no setup | Not added: its company has no column setup in Payroll System. |
+| W11 | Any other failure | Not changed: {the dashboard's usual error title} |
+| W12 | Toast when only employees were in the file and none was saved | No employee was saved · The report says what happened to every row. |
+| W13 | Toast after saving | e.g. 1 company created, 3 employees added, 1 updated |
+| W14 | Report file, Before/After | Surname: Testone (names and dates) · Basic Salary: (not shown) and ID: (not shown) (the ID and every figure) |
