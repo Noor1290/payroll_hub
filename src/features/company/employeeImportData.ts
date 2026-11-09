@@ -94,6 +94,10 @@ export async function loadExistingCompanies(
       name: company.name,
       brn: normaliseBrn(company.brn!),
       fields: setup && body ? setupFields(body, setup.body) : null,
+      setupRevisions:
+        setup && body
+          ? { shared: shared.get(setup.shared_setup_id)!.revision, company: setup.revision }
+          : null,
       newest: month
         ? {
             period: month.period,

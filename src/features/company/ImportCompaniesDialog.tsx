@@ -27,6 +27,7 @@ import {
   importCompaniesOpen,
   isTickable,
   loadImportChoices,
+  normaliseBrn,
   MAX_COMPANIES,
   noneCreatedReason,
   previewRows,
@@ -43,6 +44,7 @@ import { employeeCounts } from "./employeeSheet";
 import {
   isEmployeeTickable,
   previewEmployees,
+  type EmployeeContext,
   type EmployeeFileRow,
   type EmployeePreview,
   type ExistingCompany,
@@ -56,6 +58,7 @@ import {
   thisMonth,
 } from "./employeeImportData";
 import { EmployeesPreview } from "./EmployeesPreview";
+import { employeesDone, runEmployeeImport, type EmployeeReportLine } from "./employeeSave";
 import {
   fetchBlankTemplateSetup,
   fetchTemplateEmployees,
@@ -81,8 +84,13 @@ interface EmployeesStep {
 type Step =
   | { kind: "choose"; why: string | null; reading: boolean; locked?: boolean }
   | { kind: "preview"; fileName: string; rows: PreviewRow[]; employees: EmployeesStep | null }
-  | { kind: "running"; done: number; total: number; next: "create" | "update" | null }
-  | { kind: "report"; lines: ReportLine[]; updates: boolean };
+  | {
+      kind: "running";
+      done: number;
+      total: number;
+      next: "create" | "update" | "employees" | null;
+    }
+  | { kind: "report"; lines: ReportLine[]; updates: boolean; employees: EmployeeReportLine[] };
 
 type Choices =
   | { status: "loading" }
@@ -564,37 +572,14 @@ function PreviewTable({
 const noneSaved = (updates: boolean) =>
   updates ? "No company was created or updated" : "No company was created";
 
-function ReportStep({
-  lines,
-  updates,
-  onClose,
-}: {
-  lines: ReportLine[];
-  /** Whether any row of the file could update a company. */
-  updates: boolean;
-  onClose: () => void;
-}) {
-  const count = (result: ReportLine["result"]) =>
-    lines.filter((line) => line.result === result).length;
-  const created = count("Created");
-  const updated = count("Updated");
+function EmployeesReport({ lines }: { lines: EmployeeReportLine[] }) {
   return (
-    <div className="mt-5 space-y-4">
+    <section aria-label="Employees" className="space-y-2">
+      <h3 className="text-sm font-semibold text-fg">Employees</h3>
       <p className="text-sm text-fg" role="status">
-        {created === 0 && updated === 0 ? (
-          <>
-            {noneSaved(updates)}. {noneCreatedReason(lines)}
-          </>
-        ) : (
-          <>
-            {plural(created, "company", "companies")} created,{" "}
-            {updates || updated > 0 ? `${updated} updated, ` : ""}
-            {count("Skipped")} skipped, {plural(count("Problem"), "problem")}.
-            {created > 0 && " You are the admin of every company created."}
-          </>
-        )}
+        {employeesDone(lines)}.
       </p>
-      <div className="max-h-[50vh] overflow-auto rounded-lg border border-line">
+      <div className="max-h-[40vh] overflow-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-elevated text-xs text-muted">
             <tr className="border-b border-line">
@@ -605,10 +590,10 @@ function ReportStep({
                 Company
               </th>
               <th scope="col" className="px-2 py-2">
-                BRN
+                Surname
               </th>
               <th scope="col" className="px-2 py-2">
-                Result
+                What happened
               </th>
             </tr>
           </thead>
@@ -616,12 +601,15 @@ function ReportStep({
             {lines.map((line) => (
               <tr key={line.line} className="border-b border-line align-top last:border-b-0">
                 <td className="tabular px-3 py-2.5 text-muted">{line.line}</td>
-                <td className="px-2 py-2.5 font-medium text-fg">{line.name || "(no name)"}</td>
-                <td className="tabular px-2 py-2.5 whitespace-nowrap">{line.brn || "(no BRN)"}</td>
+                <td className="px-2 py-2.5">
+                  <span className="font-medium text-fg">{line.company || "(no company)"}</span>
+                  {line.brn && <span className="block text-xs text-muted">{line.brn}</span>}
+                </td>
+                <td className="px-2 py-2.5">{line.surname || "(no surname)"}</td>
                 <td className="px-2 py-2.5">
                   <Badge
                     tone={
-                      line.result === "Created" || line.result === "Updated"
+                      line.result === "Added" || line.result === "Updated"
                         ? "accent"
                         : line.result === "Problem"
                           ? "danger"
@@ -630,15 +618,105 @@ function ReportStep({
                   >
                     {line.result}
                   </Badge>
-                  {line.why && <p className="mt-1 text-xs text-muted">{line.why}</p>}
+                  <p className="mt-1 text-xs text-muted">{line.what}</p>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function ReportStep({
+  lines,
+  updates,
+  employees,
+  onClose,
+}: {
+  lines: ReportLine[];
+  /** Whether any row of the file could update a company. */
+  updates: boolean;
+  employees: EmployeeReportLine[];
+  onClose: () => void;
+}) {
+  const count = (result: ReportLine["result"]) =>
+    lines.filter((line) => line.result === result).length;
+  const created = count("Created");
+  const updated = count("Updated");
+  return (
+    <div className="mt-5 space-y-4">
+      {lines.length > 0 && (
+        <p className="text-sm text-fg" role="status">
+          {created === 0 && updated === 0 ? (
+            <>
+              {noneSaved(updates)}. {noneCreatedReason(lines)}
+            </>
+          ) : (
+            <>
+              {plural(created, "company", "companies")} created,{" "}
+              {updates || updated > 0 ? `${updated} updated, ` : ""}
+              {count("Skipped")} skipped, {plural(count("Problem"), "problem")}.
+              {created > 0 && " You are the admin of every company created."}
+            </>
+          )}
+        </p>
+      )}
+      {lines.length > 0 && (
+        <div className="max-h-[50vh] overflow-auto rounded-lg border border-line">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-elevated text-xs text-muted">
+              <tr className="border-b border-line">
+                <th scope="col" className="w-12 px-3 py-2">
+                  Row
+                </th>
+                <th scope="col" className="px-2 py-2">
+                  Company
+                </th>
+                <th scope="col" className="px-2 py-2">
+                  BRN
+                </th>
+                <th scope="col" className="px-2 py-2">
+                  Result
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((line) => (
+                <tr key={line.line} className="border-b border-line align-top last:border-b-0">
+                  <td className="tabular px-3 py-2.5 text-muted">{line.line}</td>
+                  <td className="px-2 py-2.5 font-medium text-fg">{line.name || "(no name)"}</td>
+                  <td className="tabular px-2 py-2.5 whitespace-nowrap">
+                    {line.brn || "(no BRN)"}
+                  </td>
+                  <td className="px-2 py-2.5">
+                    <Badge
+                      tone={
+                        line.result === "Created" || line.result === "Updated"
+                          ? "accent"
+                          : line.result === "Problem"
+                            ? "danger"
+                            : "neutral"
+                      }
+                    >
+                      {line.result}
+                    </Badge>
+                    {line.why && <p className="mt-1 text-xs text-muted">{line.why}</p>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {employees.length > 0 && <EmployeesReport lines={employees} />}
       <div className="flex flex-wrap justify-end gap-2">
-        <Button onClick={() => downloadBytes(buildReport(lines), reportFileName(), XLSX_TYPE)}>
+        <Button
+          onClick={() =>
+            downloadBytes(buildReport(lines, new Date(), employees), reportFileName(), XLSX_TYPE)
+          }
+        >
           <Download aria-hidden="true" />
           Download the report
         </Button>
@@ -671,17 +749,22 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
     choices.status === "ready"
       ? (choices.value.setups.find((setup) => setup.id === setupId)?.fields ?? null)
       : null;
-  const employeesPreview = useMemo(() => {
+  const employeeContext = useMemo((): EmployeeContext | null => {
     if (!previewStep?.employees) return null;
     const people = previewStep.employees;
-    return previewEmployees(people.rows, people.headings, {
+    return {
       existing: people.existing,
       notAdmin: people.notAdmin,
       newCompanies: newCompaniesOf(previewStep.rows),
       newSetup: newSetupFields,
       startPeriod,
-    });
+    };
   }, [previewStep, newSetupFields, startPeriod]);
+  const employeesPreview = useMemo(() => {
+    if (!previewStep?.employees || !employeeContext) return null;
+    const people = previewStep.employees;
+    return previewEmployees(people.rows, people.headings, employeeContext);
+  }, [previewStep, employeeContext]);
   const employeeTicked = (item: EmployeePreview) =>
     isEmployeeTickable(item) && (employeeTicks.get(item.row.line) ?? item.ticked);
 
@@ -793,6 +876,28 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
     const lines = await runImport(viewer, rows, chosen, (done, total, next) =>
       setStep({ kind: "running", done, total, next }),
     );
+    // Then the employees, company by company: into the companies just created too.
+    let employees: EmployeeReportLine[] = [];
+    if (employeesPreview && employeeContext) {
+      const createdIds = new Map(
+        lines.flatMap((line) =>
+          line.result === "Created" && line.companyId
+            ? [[normaliseBrn(line.brn), line.companyId] as const]
+            : [],
+        ),
+      );
+      employees = await runEmployeeImport(
+        viewer,
+        employeesPreview,
+        employeeContext,
+        createdIds,
+        employeeTicked,
+        (done, total) => setStep({ kind: "running", done, total, next: "employees" }),
+      );
+    }
+    const savedPeople = employees.filter(
+      (line) => line.result === "Added" || line.result === "Updated",
+    ).length;
     const created = lines.filter((line) => line.result === "Created").length;
     const updated = lines.filter((line) => line.result === "Updated").length;
     const changedSome = lines.some(
@@ -801,24 +906,36 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
     if (created > 0 || changedSome) {
       await queryClient.invalidateQueries({ queryKey: ["memberships"] });
     }
-    if (created > 0 || updated > 0) {
+    if (created > 0 || updated > 0 || savedPeople > 0) {
       const done = [
         created > 0 ? `${plural(created, "company", "companies")} created` : null,
         updated > 0 ? `${plural(updated, "company", "companies")} updated` : null,
+        savedPeople > 0 ? employeesDone(employees) : null,
       ].filter(Boolean);
       toast.success(done.join(", "), {
         description: "The report says what happened to every row.",
       });
-    } else {
+    } else if (lines.length > 0) {
       toast.error(noneSaved(updates), { description: noneCreatedReason(lines) });
+    } else {
+      toast.error("No employee was saved", {
+        description: "The report says what happened to every row.",
+      });
     }
-    setStep({ kind: "report", lines, updates });
+    setStep({ kind: "report", lines, updates, employees });
   };
 
   if (step.kind === "choose")
     return <ChooseStep step={step} onFile={(file) => void readFile(file)} />;
   if (step.kind === "report")
-    return <ReportStep lines={step.lines} updates={step.updates} onClose={onDone} />;
+    return (
+      <ReportStep
+        lines={step.lines}
+        updates={step.updates}
+        employees={step.employees}
+        onClose={onDone}
+      />
+    );
 
   if (step.kind === "running") {
     return (
@@ -826,7 +943,9 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
         <LoaderCircle className="size-4 animate-spin text-accent" aria-hidden="true" />
         {step.total === 0
           ? "Starting"
-          : `${step.next === "update" ? "Updating" : "Creating"} ${Math.min(step.done + 1, step.total)} of ${step.total}`}
+          : step.next === "employees"
+            ? `Saving the employees of company ${Math.min(step.done + 1, step.total)} of ${step.total}`
+            : `${step.next === "update" ? "Updating" : "Creating"} ${Math.min(step.done + 1, step.total)} of ${step.total}`}
         . Keep this window open.
       </p>
     );
@@ -837,6 +956,10 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
   const counts = (status: PreviewRow["status"]) =>
     step.rows.filter((item) => item.status === status).length;
   const setupChosen = choices.status === "ready" && setupId !== null;
+  const toSavePeople = (employeesPreview?.companies ?? [])
+    .filter((company) => company.period !== null)
+    .flatMap((company) => company.rows)
+    .filter(employeeTicked).length;
   const go =
     toUpdate === 0
       ? toCreate === 1
@@ -914,12 +1037,24 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
           <Dialog.Close asChild>
             <Button>Cancel</Button>
           </Dialog.Close>
+          {toSavePeople > 0 && (
+            <span className="self-center text-sm text-muted" data-testid="import-count">
+              {[
+                toCreate + toUpdate > 0
+                  ? plural(toCreate + toUpdate, "company", "companies")
+                  : null,
+                plural(toSavePeople, "employee"),
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            </span>
+          )}
           <Button
             variant="primary"
-            disabled={toCreate + toUpdate === 0 || (toCreate > 0 && !setupChosen)}
+            disabled={toCreate + toUpdate + toSavePeople === 0 || (toCreate > 0 && !setupChosen)}
             onClick={() => void create(step.rows)}
           >
-            {go}
+            {toSavePeople > 0 ? "Create and update" : go}
           </Button>
         </div>
       </div>

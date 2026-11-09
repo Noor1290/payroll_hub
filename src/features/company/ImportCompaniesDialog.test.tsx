@@ -405,6 +405,22 @@ describe("<ImportCompaniesDialog>", () => {
           },
         };
       }
+      if (fake.arg(calls, "rpc") === "import_payroll_company") {
+        return {
+          data: {
+            company_id: ABC.company.id,
+            brn: "C1234567",
+            name: "ABC Co Ltd",
+            created: false,
+            shared_setup_id: SETUP,
+            shared_created: false,
+            attached: false,
+            shared_revision: 1,
+            company_revision: 1,
+            months: [{ period: "2026-10-01", revision: 3, employee_count: 3, replaced: true }],
+          },
+        };
+      }
       if (from === "payroll_months" && fake.arg(calls, "select") === "company_id, period")
         return { data: [{ company_id: ABC.company.id, period: "2026-10-01" }] };
       if (from === "payroll_months") {
@@ -478,6 +494,49 @@ describe("<ImportCompaniesDialog>", () => {
       expect((update as HTMLInputElement).checked).toBe(true);
       // No company rows: no companies table.
       expect(screen.queryByText(/^0 rows/)).toBeNull();
+
+      // Nothing is saved before the button; then the month, in one call.
+      const saves = () =>
+        fake.state.queries.filter((q) => fake.arg(q, "rpc") === "import_payroll_company");
+      expect(saves()).toHaveLength(0);
+      expect(screen.getByTestId("import-count").textContent).toBe("2 employees");
+      fireEvent.click(screen.getByRole("button", { name: "Create and update" }));
+      expect(await screen.findByText("Updated in October 2026")).toBeTruthy();
+      expect(screen.getByText("Added to October 2026")).toBeTruthy();
+      expect(screen.getByText("1 employee added, 1 updated.")).toBeTruthy();
+      expect(saves()).toHaveLength(1);
+      const args = fake.arg(saves()[0]!, "rpc", 1) as {
+        p_company_id: string;
+        p_new_company: unknown;
+        p_setup: unknown;
+        p_expected: unknown;
+        p_months: {
+          period: string;
+          expected_revision: number;
+          replace: boolean;
+          employees: { id: string; values: Record<string, unknown> }[];
+        }[];
+      };
+      expect(args.p_company_id).toBe(ABC.company.id);
+      expect(args.p_new_company).toBeNull();
+      expect(args.p_setup).toBeNull();
+      expect(args.p_expected).toEqual({ shared_revision: 1, company_revision: 1 });
+      expect(args.p_months).toHaveLength(1);
+      const [saved] = args.p_months;
+      expect([saved!.period, saved!.expected_revision, saved!.replace]).toEqual([
+        "2026-10-01",
+        2,
+        true,
+      ]);
+      // Everyone stays; the change applied; the new employee at the end.
+      expect(saved!.employees.map((e) => e.values)).toEqual([
+        { id: "T0101", surname: "Testonee" },
+        { id: "T0202", surname: "Testtwo" },
+        { id: "T0909", surname: "Testnew" },
+      ]);
+      expect(toast.success).toHaveBeenCalledWith("1 employee added, 1 updated", {
+        description: "The report says what happened to every row.",
+      });
     } finally {
       lock();
     }

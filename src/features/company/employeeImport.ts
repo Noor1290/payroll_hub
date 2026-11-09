@@ -145,6 +145,8 @@ export interface ExistingCompany {
   brn: string;
   /** Null when it has no column setup in Payroll System yet. */
   fields: SetupFields | null;
+  /** The revisions of its column setup as read for the preview: a save is refused if they moved. */
+  setupRevisions: { shared: number; company: number } | null;
   /** Its newest saved month; null when none is saved. */
   newest: SavedMonthContent | null;
   /** Whether the saved run of its newest month is approved. */
@@ -190,6 +192,8 @@ export interface EmployeePreview {
   ticked: boolean;
   /** How the employee is named in the preview: Surname and Other names, or the ID. */
   label: string;
+  /** Their Surname (the file's, or the month's); "" when there is none. */
+  surname: string;
   problems: string[];
   warning: string | null;
   /** Update: what changes. New: what the employee is given. */
@@ -481,6 +485,8 @@ function companyPreview(
     const id = idOf(employee);
     if (id) byId.set(id, [...(byId.get(id) ?? []), employee]);
   }
+  const surnameOf = (values: Record<string, unknown>) =>
+    surnameField ? textOf(values[surnameField.key]).trim() : "";
   const labelOf = (values: Record<string, unknown>) =>
     [surnameField, otherNamesField]
       .flatMap((field) => (field ? [textOf(values[field.key]).trim()] : []))
@@ -617,7 +623,9 @@ function companyPreview(
   const matched = new Set<Employee>();
   company.rows = worked.map((w) => {
     const problems = [...new Set(w.problems)];
-    if (problems.length > 0) return problemRow(w.row, problems, labelOf(w.values));
+    if (problems.length > 0) {
+      return problemRow(w.row, problems, labelOf(w.values), surnameOf(w.values));
+    }
     if (!w.match) {
       const employee = { id: makeId(), values: w.values };
       return {
@@ -625,6 +633,7 @@ function companyPreview(
         status: "new",
         ticked: w.warning === null,
         label: labelOf(w.values),
+        surname: surnameOf(w.values),
         problems: [],
         warning: w.warning,
         changes: w.filled.map((field) => ({
@@ -655,6 +664,7 @@ function companyPreview(
       status: changes.length > 0 ? "update" : "same",
       ticked: false,
       label: labelOf(saved),
+      surname: surnameOf({ ...saved, ...patch }),
       problems: [],
       warning: changes.length > 0 ? w.warning : null,
       changes,
@@ -677,12 +687,18 @@ function knownElsewhere(key: string, context: EmployeeContext): boolean {
   return false;
 }
 
-function problemRow(row: EmployeeFileRow, problems: string[], label = ""): EmployeePreview {
+function problemRow(
+  row: EmployeeFileRow,
+  problems: string[],
+  label = "",
+  surname = "",
+): EmployeePreview {
   return {
     row,
     status: "problem",
     ticked: false,
     label,
+    surname,
     problems: problems.filter((p) => p !== ""),
     warning: null,
     changes: [],

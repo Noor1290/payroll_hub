@@ -17,6 +17,7 @@ import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import { NotAnExcelFile, readXlsxSheet, type XlsxCell } from "@/lib/xlsx/readXlsx";
 import { writeXlsx, type XlsxSheet } from "@/lib/xlsx/writeXlsx";
+import { employeesReportSheet, type EmployeeReportLine } from "./employeeSave";
 import { createStore } from "@/lib/store";
 import { readEmployeesSheet, type EmployeeFileRow } from "./employeeImport";
 import {
@@ -894,6 +895,8 @@ export interface ReportLine {
   /** For an update: the values before and after, one per line ("Address: 1 Old Street"). */
   before?: string;
   after?: string;
+  /** For a company created: its id (not in the report file). */
+  companyId?: string;
 }
 
 /** What the preview says of a row that is not created or updated. */
@@ -1031,6 +1034,7 @@ export async function runImport(
           brn: created.brn,
           result: "Created",
           why: "",
+          companyId: created.id,
         });
       } catch (error) {
         results.set(item, {
@@ -1047,7 +1051,11 @@ export async function runImport(
 }
 
 /** The report as an Excel file. */
-export function buildReport(lines: readonly ReportLine[], at: Date = new Date()): Uint8Array {
+export function buildReport(
+  lines: readonly ReportLine[],
+  at: Date = new Date(),
+  employees: readonly EmployeeReportLine[] = [],
+): Uint8Array {
   return writeXlsx(
     [
       {
@@ -1076,6 +1084,7 @@ export function buildReport(lines: readonly ReportLine[], at: Date = new Date())
           ]),
         ],
       },
+      ...(employees.length > 0 ? [employeesReportSheet(employees)] : []),
     ],
     at,
   );

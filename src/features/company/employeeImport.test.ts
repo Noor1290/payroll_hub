@@ -74,6 +74,7 @@ const alpha = (over: Partial<ExistingCompany> = {}): ExistingCompany => ({
   name: "TEST Alpha Ltd",
   brn: "C0000101",
   fields: setupFields(SHARED, ALPHA_OWN),
+  setupRevisions: { shared: 4, company: 1 },
   newest: {
     period: "2026-10-01",
     revision: 3,
@@ -478,6 +479,26 @@ describe("which companies of the Companies sheet are being created", () => {
       ["C1", { name: "TEST C1", created: true }],
       ["C2", { name: "TEST C2", created: false }],
       ["C3", { name: "TEST C3", created: false }],
+    ]);
+  });
+});
+
+describe("the surname each row carries to the report", () => {
+  it("is the file's Surname, also on a row with a problem", () => {
+    const p = preview([
+      {
+        "Company BRN *": t("C0000101"),
+        ID: t("T0606"),
+        Surname: t("Testsix"),
+        "Date of Employment": t("31/02/2026"),
+      },
+      { "Company BRN *": t("C0000101"), ID: t("T0707"), Surname: t("Testseven") },
+      { "Company BRN *": t("C0000101"), ID: t("T0101"), "Basic Salary": t("1") },
+    ]);
+    expect(p.companies[0]!.rows.map((row) => [row.status, row.surname])).toEqual([
+      ["problem", "Testsix"],
+      ["new", "Testseven"],
+      ["update", "Testone"],
     ]);
   });
 });

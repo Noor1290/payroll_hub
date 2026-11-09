@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { demoImportPayrollCompany } from "@/lib/demo/demoPayrollImport";
 import { supabase } from "./client";
 import { NotConfiguredError } from "./errors";
 import type { Viewer } from "./queries";
@@ -59,12 +60,15 @@ function client() {
   return supabase;
 }
 
-/** Imports one company, all or nothing. The demo workspace has no database to do it in. */
+/**
+ * Imports one company, all or nothing. The demo workspace does it only for a company that exists
+ * and has a column setup (the companies import's employees); anything else needs the database.
+ */
 export async function importPayrollCompany(
   viewer: Viewer,
   input: ImportInput,
 ): Promise<ImportedCompany> {
-  if (import.meta.env.DEV && viewer.isDemo) throw new NotConfiguredError();
+  if (import.meta.env.DEV && viewer.isDemo) return demoImportPayrollCompany(input);
   const { data, error } = await client().rpc("import_payroll_company", {
     p_company_id: input.companyId,
     p_new_company: input.newCompany,
