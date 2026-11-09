@@ -211,3 +211,35 @@ Fill in the Companies sheet, one row per company, and, if you like, the Employee
 | C9 | Reference (leave as is) | No | Which employee of the dashboard the row is. Leave it as it is. For a new employee, leave it empty. | Filled in by the dashboard. | |
 
 **Sheet headings:** "Employees" (sheet name), "Company BRN *", "Company name", "Reference (leave as is)"; the other headings are the names in your column setup.
+
+## Employees sheet, Stage 2: reading the file and the preview (approved 9 November 2026)
+
+Approved by the owner: S1–S8 and F1–F3. Also used as approved in the plan (EMPLOYEES_IMPORT_PLAN.md §6 and §9): every check message, the month choice, the company line and the badges. The owner's decisions with them:
+
+- The notice "…is already saved and is not changed" is removed: employees always go into the newest saved month, so no later month can be saved.
+- For a BRN with no company to name (in neither the file nor the dashboard), the company line shows the message alone: "BRN C0099999 is not on the Companies sheet and is not one of your companies in the dashboard."
+
+### New on screen
+
+| # | Where | Text |
+|---|---|---|
+| S1 | Upload, dashboard locked (shot 01) | Confirm your password first: the file has employees of your companies, and they are compared with your saved months. Then choose the file again. |
+| S2 | Upload, when the months can't be read | Your employees couldn't be read, so the file can't be compared with them. {the usual reason} |
+| S3 | Under a company's line (from plan §4) | {n} employees of October 2026 are not in the file: they stay as they are. — one: 1 employee of October 2026 is not in the file: it stays as it is. |
+| S4 | Table headings | Row · Employee · What happens (screen readers: Add or update) |
+| S5 | Tick box (screen readers) | Add row {n}, {name} / Update row {n}, {name} |
+| S6 | A new employee's line | {heading} {value} · {heading} {value} … e.g. "ID T0505805678905 · Surname Testfive · Date of Employment 01/11/2026 · Basic Salary 21,500" |
+| S7 | An update's line (same form as for companies) | Changes: {heading}: {before} → {after}; … (an empty value shows as (empty)) |
+| S8 | A row with no name | (no name) |
+
+### New file errors (the file is refused, as for the Companies sheet)
+
+| # | Text |
+|---|---|
+| F1 | Column {B} of the Employees sheet has values but no heading in row 1. |
+| F2 | The heading "{heading}" is there twice on the Employees sheet. |
+| F3 | The Employees sheet has no "Company BRN" column. Use the companies template. |
+
+### Reused as they are
+
+- The value in "{heading}" can't be read ({#N/A}). (the Companies sheet's text, for a cell Excel could not work out)

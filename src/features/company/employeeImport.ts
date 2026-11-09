@@ -699,7 +699,8 @@ export const isEmployeeTickable = (item: EmployeePreview) =>
 export function companyLine(company: CompanyEmployees): string {
   const who = [company.brn, company.name].filter(Boolean).join(" ");
   if (company.problem || !company.period) {
-    return who ? `${who}: ${company.problem ?? ""}` : (company.problem ?? "");
+    // A BRN with no company to name (unknown, or none): the message alone, which says the BRN.
+    return company.name ? `${who}: ${company.problem ?? ""}` : (company.problem ?? "");
   }
   const count = (status: EmployeeStatus) =>
     company.rows.filter((row) => row.status === status).length;

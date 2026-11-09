@@ -277,7 +277,7 @@ describe("the checks (EMPLOYEES_IMPORT_PLAN.md §6)", () => {
 
   it("a BRN in neither the file nor the dashboard", () => {
     expect(problemsOf([{ "Company BRN *": t("C0099999"), ID: t("T1") }])[0]!.line).toBe(
-      "C0099999: BRN C0099999 is not on the Companies sheet and is not one of your companies in the dashboard.",
+      "BRN C0099999 is not on the Companies sheet and is not one of your companies in the dashboard.",
     );
   });
 
