@@ -526,7 +526,7 @@ On the branch `migration-phase-1` in `payroll_hub` and `PDF Editor`; not merged,
 
 **PDF form filler.** Inside the dashboard the templates of the selected company are loaded from it, with their PDFs; a change is saved a moment after it is made, one save at a time per template; a bar says "Saved", "Saving..." or "NOT saved" with the reason. "Copy to another company" and "Import to the dashboard" are on the template list. Opened on its own, or inside a dashboard that does not keep templates yet, it uses the browser exactly as before.
 
-**Decided while building, to confirm:**
+**Decided while building (confirmed by the owner on 9 November 2026):**
 - Inside the dashboard, the values last typed and the People list are kept in the browser under their own key (`pdf-editor:dashboard-values`), by dashboard template id, so the browser's own copy of the templates stays untouched (D4). The import copies them there once. The backup file includes that key and the note of what was imported.
 - The import offers each browser template once, for the company selected at that moment. A template that is already in the dashboard under the same name is left alone unless "replace it with this browser's" is chosen.
 - Someone who is not an admin can open and fill in; a change they make is refused and shown as NOT saved.
@@ -579,7 +579,7 @@ On the branch `migration-phase-2` in `payroll_hub` and `Payroll_sys`; not merged
 
 **Payroll app.** Inside the dashboard the setup of the company selected there is loaded from it; a change is saved a moment after it is made, one save at a time; a bar says "Saved", "Saving..." or "NOT saved" with the reason, and offers "Save mine over it" / "Use the dashboard's version" when someone else saved meanwhile. The Global columns are read-only, with the reason, for someone who is not an admin of every company using them; a company's columns and details are read-only for someone who is not its admin. "Import to the dashboard" needs a backup file first, shows what it will do without writing anything (BRN matches, differences in name and address, conflicts, "Link this company to..."), then imports the shared setup and each company one at a time and checks each by reading it back. This browser's own copy is never written; opened on its own after an import, it is labelled "This browser only. Not the dashboard's copy." The months stay in the browser under the same keys, so an imported company keeps its months; a test shows every calculated figure is the same before and after the import. Opened on its own, or inside a dashboard that does not know `payroll-setup`, the app uses the browser exactly as before.
 
-**Decided while building, to confirm:**
+**Decided while building (confirmed by the owner on 9 November 2026):**
 - Inside the dashboard the company's name, address and BRN are the dashboard's own: the app shows them read-only (Company details says where to change them) and its exports use them. Only the custom company details are saved with the company's setup.
 - Inside the dashboard the company list shows only the company selected there, without add, rename, delete or Restore. "Back up" stays (the import needs it).
 - A dashboard company with no setup yet offers, to its admin: "Import to the dashboard" when this browser has something to import, "Use the shared columns of ..." when the user's other companies already use a shared setup, otherwise "Start with new, empty Global columns". Nothing is made by itself.
@@ -611,7 +611,7 @@ On the branch `migration-phase-3` in `payroll_hub` and `Payroll_sys`; not merged
 
 **Known issue 7** (a key changed inside the dashboard moved the values in the browser's months but not in the browser's copy of the setup) no longer happens inside a dashboard that keeps months: the change moves the values in the dashboard, with the setup, and this browser's copy is not touched. Proven through the real screens: before and after, the app opened on its own shows the same figures and its stored text is unchanged. It can still happen inside a dashboard that does not keep months yet (Phase 2 deployed alone).
 
-**Decided while building, to confirm:**
+**Decided while building (confirmed by the owner on 9 November 2026):**
 - Month history keeps the content as described above, not of every save.
 - A saved month shows no toast in the dashboard (a refused one does); each save is still a transfer-log row, so a long session of typing adds many rows.
 - While the gate is locked, the Global and Company Columns tabs stay usable (no employee in them); a change of a column's key needs the gate and waits, NOT saved, until it opens.
@@ -642,11 +642,11 @@ On the branch `phase-3-followups` in `payroll_hub`, `Payroll_sys` and `payslip` 
 - **Offline copy (payroll app).** Each time the column setup is loaded from the dashboard, the browser keeps that copy per company (`payroll_dashboard_offline_v1`: shared and company columns, formulas and custom details only; never a month, salary or national ID). When the dashboard cannot be reached it is offered by company and date, and opens as "Offline: read-only copy from [date/time]. Changes can't be saved." Nothing in it can be changed; the Employee Table and Totals say the months are not in it; "Try the dashboard again" goes back.
 - **Docs.** The live address and repository are `payroll_hub` in the docs and READMEs of `payroll_hub` and `payslip` (and the untracked `hub_docs` copies in the two other apps). Left as they are because they are right: the local dev path `/payroll-hub/` (Vite's default and `.env`), and code (package name, log prefix, `bridge.js`'s comment, which the apps copy byte for byte, and the browser tests' stand-in paths).
 
-**Decided while building, to confirm:**
+**Decided while building (confirmed by the owner on 9 November 2026):**
 - History can be looked at by anyone who may read it (members, for the setups); only Restore is limited as above, as in the PDF form filler.
 - A setup restore does not move values between keys: if a key changes, values typed under the newer key stay there. The dialog names the key and the months that would be worked out differently.
 - A month restore is saved with the column setup revisions in use now, as every month save is.
-- The offline copy is the setup as last LOADED (as asked): a save or restore made after the load is in it only from the next load.
+- ~~The offline copy is the setup as last LOADED (as asked): a save or restore made after the load is in it only from the next load.~~ Closed 9 November 2026: no longer applies. Since the cleanup (payroll TODO C1), the offline copy is refreshed after every save.
 
 **Tested against the real database (15 October 2026), in "TEST Co Ltd" (C1234577) and "TEST Co 2 Ltd" (C1136524) only,** the same way as Phase 3: the branch builds served at the live sites' address in one Chromium window with a throwaway profile, the owner signing in and typing the password at each unlock. The two companies still held Phase 3's test data (shared revision 2, months of September and October). 11 of 11 checks passed:
 - the Global columns' History listed revisions 2 and 1 with date, time and "saved by you"; looking at revision 1 changed nothing;
