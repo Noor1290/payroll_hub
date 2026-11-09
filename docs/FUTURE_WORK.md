@@ -5,11 +5,13 @@ Rule for everything below: use FAKE data only (the repos are public), never put 
 
 Brought up to date on 17 Oct 2026: everything merged and live on `main` in the four repos (up to the backlog fixes and the safety checks) is ticked; migrations 0001 to 0016 have been run on the live project.
 
+Checked again on 9 Nov 2026 (the big cleanup, Stage 4): migrations 0001 to 0023 have been run. Items done since are ticked; "branch `cleanup`" means done but not deployed yet. The full open list is now `Payroll\OPEN_ITEMS.md`; this file keeps the background.
+
 ## Before real data
 
 Done:
 - [x] Sign-ups switched off, and anonymous sign-ins too (checked by `scripts/check-signup.mjs`, 17 Oct 2026).
-- [x] Non-member security check: every table, function and the `pdf-forms` bucket, as anon and as a user of no company: 228 PASS, 0 FAIL (`scripts/check-nonmember.mjs`, 17 Oct 2026). Rerun after every migration.
+- [x] Non-member security check: every table, function and the `pdf-forms` bucket, as anon and as a user of no company: 228 PASS, 0 FAIL (`scripts/check-nonmember.mjs`, 17 Oct 2026); 322 PASS after 0022 (6 Nov 2026). Rerun after every migration.
 - [x] Shared-setup gap closed: a new shared column setup needs an admin of at least one company (migration 0016).
 - [x] Keep-awake job every second day (`.github/workflows/keep-awake.yml`, function `keep_awake()` from migration 0015); first run green on 17 Oct 2026.
 - [x] Backup routine written down: README, "Backups on the free plan" (Back up in both apps, export the tables, a copy off this computer, after every payroll month).
@@ -34,7 +36,7 @@ Decided:
 - [x] pdf-form-filler: bridge installed (`PayrollHubBridge.init`, "Get from dashboard", waiting-data notice and import preview)
 - [x] Full flow tested with fake data: Send to dashboard -> "results received" -> Save to database -> send to PDF Form Filler (TEST_REPORT, 11 to 16 Oct 2026)
 - [x] Hub features built and checked: Database page (with password gate), Add company, Delete company, Company profile, Links
-- [x] Migrations 0002 onward all run on the live Supabase project, in order (0001 to 0016)
+- [x] Migrations 0002 onward all run on the live Supabase project, in order (0001 to 0023, 9 Nov 2026)
 - [x] Sign-ups still switched off in Supabase (checked by script on 17 Oct 2026)
 - [ ] payroll_sys Column Setup: employee NSF fixed (see section 9a): in my own setup; moved to "Before real data"
 - [ ] payroll_sys Column Setup: employee NSF = 0 when Age 60+ ticked (check the COMPANY setup too): same
@@ -43,7 +45,7 @@ Decided:
 
 ## 1. pdf-form-filler redesign (done)
 
-Done and merged into `main` (PDF Editor, merge `e866687`). The prompt used was `docs/Redesign prompt pdf form filler v2.md` in the PDF Editor folder (kept there, not committed). The lessons it carried (safety net first, encoding check, visible-text comparison, keyboard helper, an untouched PDF preview) are now the working rules of every repo.
+Done and merged into `main` (PDF Editor, merge `e866687`). The prompt used was `docs/Redesign prompt pdf form filler v2.md` in the PDF Editor folder (never committed; deleted on 9 Nov 2026 with the owner's OK). The lessons it carried (safety net first, encoding check, visible-text comparison, keyboard helper, an untouched PDF preview) are now the working rules of every repo.
 
 ## 2. Known issues to fix (each on its OWN branch from main)
 
@@ -54,12 +56,12 @@ Before real payroll:
 - [ ] One-cent rounding difference: columns are rounded for display, Total deductions sums unrounded values (fake employee F001: 502.88 vs 502.87). Confirm the correct statutory rounding rule for Mauritius payroll BEFORE choosing the fix. This now also affects the payslip app: it adds the lines shown, the payroll adds unrounded values, so totals can differ by 0.01. The payslip labels exact 0.01 differences "rounding" and lets you accept them in bulk; fixing the rule here removes the need.
 
 When convenient:
-- [ ] Slow typing: immediate up to about 50 employees, about 0.2 s per keystroke at 100, 0.7-0.8 s at 400 (production build). Only matters if companies are large.
+- [x] Slow typing: immediate up to about 50 employees, about 0.2 s per keystroke at 100, 0.7-0.8 s at 400 (production build). Fixed 5 Nov 2026 (payroll_sys known issue 2): 0.05 s at 200 employees.
 - [x] Import accepts a renamed non-Excel file without an error: fixed 16 Oct 2026 (backlog batch B).
 - [x] Narrow width: double-click rename of a company: fixed 16 Oct 2026 (backlog batch E).
 - [x] Export preview: company name and date off-screen on a wide sheet: fixed 16 Oct 2026 (backlog batch E).
-- [ ] Possible feature: on-screen grand total on Totals, reusing the Excel export's TOTAL row calculation so both always match.
-- [ ] "Equal to" tier shadowed by a "Below" tier with a higher threshold (payroll_sys known issue 9), recorded as a marked failing test.
+- [x] Possible feature: on-screen grand total on Totals, reusing the Excel export's TOTAL row calculation so both always match. Done 1 Nov 2026.
+- [x] "Equal to" tier shadowed by a "Below" tier with a higher threshold (payroll_sys known issue 9). Fixed 7 Nov 2026, branch `cleanup`: "Equal to" always wins; columns saved before are flagged until saved again.
 
 Prompt for the first two (the exemption-formula part is done; part 2, rounding, still applies):
 
@@ -122,7 +124,7 @@ Order of work (each step stops for review; each migration is run by hand before 
 Still not built from those phases (MIGRATION_PLAN.md 5.12 to 5.15): the mock app in demo mode for these data types, "Download what is on screen" when offline, dropping the PDF text from the browser's copy after an import, grouping one person's saves within 30 minutes in a history list, and opening the browser's months read-only when the dashboard cannot be reached.
 
 Later, not part of this migration:
-- [ ] pdf-form-filler: an option to clear the People list after a download.
+- [x] pdf-form-filler: an option to clear the People list after a download. Done 8 Nov 2026, branch `cleanup`: offered after a download of several people, never automatic.
 - [ ] Move the values last typed and the People list out of browser storage altogether.
 - [ ] One shared PDF template for several companies, with company details kept apart.
 - [ ] Remove the browser copy after an import.
@@ -157,9 +159,9 @@ The hub side for it: the registry entry `payroll` must also accept `statutory-ra
 - [ ] Multi-factor authentication for admins (Authentication -> Multi-Factor). Much stronger than the password gate. Check the free-plan limits first.
 - [ ] Same-origin risk: the dashboard and the apps share https://noor1290.github.io, so an embedded app can reach the dashboard's page and in-memory data. Acceptable while it is a personal tool on fake data. Before real employee data or other users: move the dashboard to its own origin (custom domain or a second GitHub account/org). The origin is one constant in the dashboard and one line in bridge.js; follow the README section "Moving the dashboard to its own origin".
 - [x] Payslip app: built in its own repo (see its CLAUDE.md). Hub side (payslip/docs/HUB_CHANGES.md) done in stages A, B and C; `payslip-issue` merged (pull request #4) and migration 0011 run. The registry entry is active.
-- [ ] Sync the theme (light/dark) between the hub and the apps. Needs a new bridge message in all three projects.
+- [ ] Sync the theme (light/dark) between the hub and the apps. Needs a new bridge message in all three projects. (Part done, 9 Nov 2026, branch `cleanup`: the payslip app now remembers its own theme, as the payroll app does. Keeping them in step is still later.)
 - [x] Store PDF files themselves in Supabase Storage: done in section 3 (bucket `pdf-forms`, migration 0012). The free plan has limited space; check it before real forms go in.
-- [ ] Update the GitHub Actions versions: `actions/checkout@v4` and `actions/setup-node@v4` run on Node 20, which GitHub has deprecated (it already forces them onto Node 24, with a warning on every run). Move to the current major versions in all four repos' deploy workflows and in `keep-awake.yml`.
+- [x] Update the GitHub Actions versions: `actions/checkout@v4` and `actions/setup-node@v4` run on Node 20, which GitHub has deprecated (it already forces them onto Node 24, with a warning on every run). Move to the current major versions in all four repos' deploy workflows and in `keep-awake.yml`. Done 9 Nov 2026, branch `cleanup`, in all five repos: checkout v7, setup-node v7, upload-pages-artifact v5, configure-pages v6, deploy-pages v5, and Node 24 for every build.
 
 ## 6. Before real payroll data goes in
 
@@ -203,9 +205,9 @@ Open questions: whether templates are per company or shared, naming of the files
 ### Time-based tasks (optional, my earlier suggestions)
 
 Only if wanted later. A scheduled job needs somewhere that is always on, because the apps are static pages. Options: a scheduled GitHub Actions workflow (minimum interval 5 minutes, can be delayed, and in a public repo it is disabled automatically after 60 days with no repository activity) or Supabase Cron (pg_cron; guides say it is on all plans, but a paused free project silently stops every schedule). Repos are public: jobs must never print payroll data in logs, never save data as public artifacts, and keep keys in repository secrets.
-- [ ] Keep the free Supabase project from pausing (must run outside Supabase; check their terms; Pro removes the need)
+- [x] Keep the free Supabase project from pausing (must run outside Supabase; check their terms; Pro removes the need). Done: `keep-awake.yml` (17 Oct 2026).
 - [ ] Weekly check of one MRA page that only NOTIFIES me (see section 4)
-- [ ] Scheduled backup export (needs a private place to store it; consider relying on Pro backups instead)
+- [ ] ~~Scheduled backup export (needs a private place to store it; consider relying on Pro backups instead)~~ Decided 8 Nov 2026: no scheduled backup; a calendar reminder instead.
 - [ ] Payroll and filing reminders (a recurring calendar reminder is simpler)
 
 ## 8. Working tips
@@ -242,7 +244,7 @@ Only if wanted later. A scheduled job needs somewhere that is always on, because
 - [x] Hub Database page: show `statutory_rates`, `payslip_templates` and `payslip_template_versions` as read-only tabs. Done 8 Oct 2026 (branch `database-new-tables`, merged).
 - [x] Hub Database page: a read-only tab for `issued_payslips`. Done 8 Oct 2026, as described here: Admin only and behind the gate like the rest of that page; mask the national ID, `lines`, `rates_snapshot` and `accepted_differences`, and shorten `issued_by`.
 - [ ] Display names in answers (not now). Answers say only "was it you" (`created_by_you`, `updated_by_you`, `published_by_you`, `issued_by_you`), never who. Showing a name needs a profiles table the hub does not have, and a decision on what a member may see about other members.
-- [ ] Default template per company (not now): which published template the payslip app opens with. A row per company set by an admin through a function, returned with the template list.
+- [x] Default template per company: which published template the payslip app opens with. Done 24 Oct 2026 (migration 0018, payslip known issue 14).
 - [ ] Revision history in a `payslip-issue` load (later). A load returns only the latest revision of each employee; earlier ones stay in the database. Add an optional way to ask for every revision of one employee and month, with its own size limit.
 - [ ] Payslip lookup (VLOOKUP/INDEX-MATCH) template: "coming soon" (payslip Phase 6).
 - [x] Month-to-month comparison and bulk-approve (payslip Phase 5): done and merged.
