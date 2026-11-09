@@ -158,9 +158,10 @@ const BREAKS = [
   },
   {
     what: 'The answer to "Get from dashboard" changes (the period it reports)',
-    file: "src/features/workspace/BridgeDialogs.tsx",
-    find: "meta: { period: run.period.slice(0, 7), label: current.company.name },",
-    replace: "meta: { period: run.period, label: current.company.name },",
+    // Since TODO C11 (cleanup, 7 Nov 2026) the answer's meta is built by runMeta.
+    file: "src/config/apps.config.ts",
+    find: "    period: period.slice(0, 7),\n",
+    replace: "    period,\n",
     test: "src/features/workspace/baseline.test.tsx",
     mustFail: "asks the user, then answers with the run's rows",
   },
