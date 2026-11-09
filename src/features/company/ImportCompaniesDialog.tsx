@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -41,6 +41,22 @@ import {
 import { changesText, fetchAdminCompanies } from "./companyUpdate";
 import { employeeCounts } from "./employeeSheet";
 import {
+  isEmployeeTickable,
+  previewEmployees,
+  type EmployeeFileRow,
+  type EmployeePreview,
+  type ExistingCompany,
+} from "./employeeImport";
+import {
+  loadExistingCompanies,
+  needsUnlock,
+  newCompaniesOf,
+  notAdminCompanies,
+  startMonths,
+  thisMonth,
+} from "./employeeImportData";
+import { EmployeesPreview } from "./EmployeesPreview";
+import {
   fetchBlankTemplateSetup,
   fetchTemplateEmployees,
   TemplateLocked,
@@ -54,9 +70,17 @@ const CHECKBOX_CLASS =
   "size-4 cursor-pointer rounded accent-(--accent) disabled:cursor-not-allowed";
 const NO_SETUP = "";
 
+/** The Employees sheet of the file, with what the dashboard holds of the companies it names. */
+interface EmployeesStep {
+  rows: EmployeeFileRow[];
+  headings: string[];
+  existing: Map<string, ExistingCompany>;
+  notAdmin: Map<string, string>;
+}
+
 type Step =
-  | { kind: "choose"; why: string | null; reading: boolean }
-  | { kind: "preview"; fileName: string; rows: PreviewRow[] }
+  | { kind: "choose"; why: string | null; reading: boolean; locked?: boolean }
+  | { kind: "preview"; fileName: string; rows: PreviewRow[]; employees: EmployeesStep | null }
   | { kind: "running"; done: number; total: number; next: "create" | "update" | null }
   | { kind: "report"; lines: ReportLine[]; updates: boolean };
 
@@ -357,6 +381,15 @@ function ChooseStep({
           </Button>
         </li>
       </ol>
+      {step.locked && !unlocked && (
+        <div className="space-y-2">
+          <p className="text-sm text-fg">
+            Confirm your password first: the file has employees of your companies, and they are
+            compared with your saved months. Then choose the file again.
+          </p>
+          <UnlockForm />
+        </div>
+      )}
       {step.why && <Problem title="This file can't be imported" message={step.why} />}
     </div>
   );
@@ -626,8 +659,31 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
   const [attempt, setAttempt] = useState(0);
   const [setupId, setSetupId] = useState<string | null>(null);
   const [useTemplates, setUseTemplates] = useState(true);
+  const [startPeriod, setStartPeriod] = useState(() => thisMonth());
+  const months = useMemo(() => startMonths(), []);
+  const [employeeTicks, setEmployeeTicks] = useState<Map<number, boolean>>(new Map());
   const viewer = user ? { id: user.id, isDemo: user.isDemo } : null;
   const running = step.kind === "running";
+
+  // What each employee row will do: worked out again when a company is ticked or a choice changes.
+  const previewStep = step.kind === "preview" ? step : null;
+  const newSetupFields =
+    choices.status === "ready"
+      ? (choices.value.setups.find((setup) => setup.id === setupId)?.fields ?? null)
+      : null;
+  const employeesPreview = useMemo(() => {
+    if (!previewStep?.employees) return null;
+    const people = previewStep.employees;
+    return previewEmployees(people.rows, people.headings, {
+      existing: people.existing,
+      notAdmin: people.notAdmin,
+      newCompanies: newCompaniesOf(previewStep.rows),
+      newSetup: newSetupFields,
+      startPeriod,
+    });
+  }, [previewStep, newSetupFields, startPeriod]);
+  const employeeTicked = (item: EmployeePreview) =>
+    isEmployeeTickable(item) && (employeeTicks.get(item.row.line) ?? item.ticked);
 
   useEffect(() => {
     onBusy(running);
@@ -686,10 +742,36 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
         reading: false,
       });
     }
+    // The employees: compared with the saved months of the companies they name.
+    let employees: EmployeesStep | null = null;
+    const people = result.employees;
+    if (people && people.rows.length > 0) {
+      if (needsUnlock(people.rows, admin) && !isUnlocked()) {
+        return setStep({ kind: "choose", why: null, reading: false, locked: true });
+      }
+      try {
+        employees = {
+          ...people,
+          existing: await loadExistingCompanies(viewer, people.rows, admin),
+          notAdmin: notAdminCompanies(memberships),
+        };
+      } catch (error) {
+        if (error instanceof TemplateLocked) {
+          return setStep({ kind: "choose", why: null, reading: false, locked: true });
+        }
+        return setStep({
+          kind: "choose",
+          why: `Your employees couldn't be read, so the file can't be compared with them. ${classifyDataError(error).message}`,
+          reading: false,
+        });
+      }
+    }
+    setEmployeeTicks(new Map());
     setStep({
       kind: "preview",
       fileName: file.name,
       rows: previewRows(result.rows, memberships, admin),
+      employees,
     });
   };
 
@@ -770,11 +852,13 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
         <FileSpreadsheet className="size-4 text-accent" aria-hidden="true" />
         <span className="font-medium text-fg">{step.fileName}</span>
-        <span>
-          {plural(step.rows.length, "row")}: {counts("new")} new, {counts("update")} to update,{" "}
-          {counts("same")} with no changes, {counts("existing")} already in the dashboard,{" "}
-          {counts("twice")} twice in the file, {plural(counts("problem"), "problem")}.
-        </span>
+        {step.rows.length > 0 && (
+          <span>
+            {plural(step.rows.length, "row")}: {counts("new")} new, {counts("update")} to update,{" "}
+            {counts("same")} with no changes, {counts("existing")} already in the dashboard,{" "}
+            {counts("twice")} twice in the file, {plural(counts("problem"), "problem")}.
+          </span>
+        )}
       </p>
       <Options
         choices={choices}
@@ -788,23 +872,36 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
         }}
         disabled={false}
       />
-      <PreviewTable
-        rows={step.rows}
-        disabled={false}
-        onTick={(line, value) =>
-          setStep({
-            ...step,
-            rows: step.rows.map((item) =>
-              item.row.line === line ? { ...item, ticked: value } : item,
-            ),
-          })
-        }
-      />
+      {step.rows.length > 0 && (
+        <PreviewTable
+          rows={step.rows}
+          disabled={false}
+          onTick={(line, value) =>
+            setStep({
+              ...step,
+              rows: step.rows.map((item) =>
+                item.row.line === line ? { ...item, ticked: value } : item,
+              ),
+            })
+          }
+        />
+      )}
       {step.rows.some((item) => item.status === "new" && item.row.warning) && (
         <p className="flex items-start gap-2 text-xs text-warn">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />A BRN that
           doesn't look like one is not ticked. Tick it if it is right.
         </p>
+      )}
+      {employeesPreview && (
+        <EmployeesPreview
+          preview={employeesPreview}
+          ticked={employeeTicked}
+          onTick={(line, value) => setEmployeeTicks((ticks) => new Map(ticks).set(line, value))}
+          startPeriod={startPeriod}
+          startMonths={months}
+          onStart={setStartPeriod}
+          disabled={false}
+        />
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Button

@@ -9,6 +9,7 @@ import {
 import { decideEmploymentDate } from "@/features/import/employmentDateRule";
 import { toRpcRow, type ExistingEmployee, type ExistingRun } from "@/features/import/importPlan";
 import {
+  demoFetchApprovedPeriods,
   demoFetchImportContext,
   demoFetchRunEntries,
   demoFetchRuns,
@@ -38,6 +39,47 @@ import {
 function client() {
   if (!supabase) throw new NotConfiguredError();
   return supabase;
+}
+
+const approvedRowSchema = z.object({ company_id: z.uuid(), period: z.string() });
+
+/**
+ * The months whose live run is approved, of these companies, as "company id|YYYY-MM-01". An
+ * approved month is never changed by an import.
+ */
+export async function fetchApprovedPeriods(
+  viewer: Viewer,
+  companyIds: readonly string[],
+): Promise<Set<string>> {
+  if (companyIds.length === 0) return new Set();
+  const rows =
+    import.meta.env.DEV && viewer.isDemo
+      ? await demoFetchApprovedPeriods(companyIds)
+      : await approvedRows(companyIds);
+  return new Set(rows.map((row) => `${row.company_id}|${row.period}`));
+}
+
+async function approvedRows(companyIds: readonly string[]) {
+  const out: z.infer<typeof approvedRowSchema>[] = [];
+  for (let at = 0; at < companyIds.length; at += 100) {
+    const part = companyIds.slice(at, at + 100);
+    out.push(
+      ...(await fetchAllRows(async (from, to) => {
+        const { data, error } = await client()
+          .from("payroll_runs")
+          .select("company_id, period")
+          .in("company_id", part)
+          .eq("status", "approved")
+          .is("deleted_at", null)
+          .order("company_id", { ascending: true })
+          .order("period", { ascending: true })
+          .range(from, to);
+        if (error) throw error;
+        return z.array(approvedRowSchema).parse(data);
+      })),
+    );
+  }
+  return out;
 }
 
 /** Every live run of a company, newest period first. */
@@ -358,7 +400,6 @@ export async function storeEmploymentDates(
   }
   return counts;
 }
-
 
 /** Explains a failed change to a date of employment. In every case nothing was changed. */
 export function classifyEmployeeDateError(error: unknown): DataFailure {

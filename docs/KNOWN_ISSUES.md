@@ -43,3 +43,10 @@ Status is one of: **open** (to fix), **watch** (not a fault today; look again if
 - **Where:** `scripts/prove.mjs`, breaks 107 ("A save of the shared setup with an old revision overwrites") and 108 ("A company setup saved with the shared setup skips its revision check").
 - **What:** both edited `save_payroll_shared_setup` in `0013_payroll_setups.sql`. Migration 0016 replaces that function, so the edited copy was no longer the one the tests ran, and the run ended "134 of 136 breaks caught". The rules they guard were still tested; only the proof that those tests can fail was missing. Same cause as item 3.
 - **Fixed (17 Oct 2026, branch `safety-checks`):** both point at the newest definition, in `0016_shared_setup_needs_admin.sql`, which holds the same text once. A later migration that replaces the function again must move them again.
+
+## 6. The dashboard holds a copy of Payroll System's rules for reading Excel cells (watch; both must change together)
+
+- **Where:** `src/features/company/employeeCells.ts`, used by the Employees sheet of "Import companies from Excel". It is a copy, made on 9 November 2026, of Payroll System's `parseNumberCell` and `parseCheckboxValue` (`Payroll_sys/src/lib/excelImport.js`) and `readDate`, `excelSerialToIso` and `readExcelDateCell` (`Payroll_sys/src/lib/dates.js`).
+- **Why a copy:** the dashboard reads the Employees sheet itself, so that one upload makes the companies and their employees with one preview; a file must read the same there as in Payroll System's own "Import from Excel" ("Rs 18,115.00" is 18115, "05/03/2024" is 5 March, "Yes" ticks a box).
+- **Rule:** a change to one of these rules in Payroll System must be made here too, in the same piece of work, and the other way round. `employeeCells.test.ts` pins every rule with examples, so a change here is seen; Payroll System's `docs/KNOWN_ISSUES.md` (item 10) says the same from its side.
+- **Checked:** on 9 November 2026 the two copies gave the same answer for 68 inputs and 5 rules.

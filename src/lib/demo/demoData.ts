@@ -265,6 +265,18 @@ export async function demoFetchOverview(companyId: string) {
   };
 }
 
+/** The approved periods of these companies (fetchApprovedPeriods). */
+export async function demoFetchApprovedPeriods(
+  companyIds: readonly string[],
+): Promise<{ company_id: string; period: string }[]> {
+  await pause(150);
+  return companyIds.flatMap((id) =>
+    liveRuns(id)
+      .filter((run) => run.status === "approved")
+      .map((run) => ({ company_id: id, period: run.period })),
+  );
+}
+
 export async function demoFetchRuns(companyId: string): Promise<RunSummary[]> {
   await pause(350);
   return liveRuns(companyId).map(summarise);
@@ -307,7 +319,8 @@ export async function demoSetEmployeeDate(employeeId: string, value: string | nu
   requireAdmin(employee.companyId);
   employee.date_of_employment = value;
   // Typed: against the company's newest saved month now (setEmployeeDate).
-  employee.date_of_employment_month = value === null ? null : (liveRuns(employee.companyId)[0]?.period ?? null);
+  employee.date_of_employment_month =
+    value === null ? null : (liveRuns(employee.companyId)[0]?.period ?? null);
   employee.date_of_employment_typed = value === null ? null : true;
 }
 

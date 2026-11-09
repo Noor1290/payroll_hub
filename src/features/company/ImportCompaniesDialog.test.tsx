@@ -382,6 +382,107 @@ describe("<ImportCompaniesDialog>", () => {
     }
   });
 
+  it("compares a file's employees with the newest saved month, after asking for the password", async () => {
+    const before = fake.state.answer;
+    fake.reset((calls) => {
+      const from = fake.arg(calls, "from");
+      if (from === "payroll_shared_setups") {
+        return {
+          data: {
+            id: SETUP,
+            name: "Main setup",
+            body: {
+              identityFields: [
+                { name: "ID", key: "id" },
+                { name: "Surname", key: "surname" },
+              ],
+              idFieldKey: "id",
+              globalColumns: [],
+            },
+            revision: 1,
+            updated_by: null,
+            updated_at: "2026-11-01T00:00:00Z",
+          },
+        };
+      }
+      if (from === "payroll_months" && fake.arg(calls, "select") === "company_id, period")
+        return { data: [{ company_id: ABC.company.id, period: "2026-10-01" }] };
+      if (from === "payroll_months") {
+        return {
+          data: [
+            {
+              company_id: ABC.company.id,
+              period: "2026-10-01",
+              revision: 2,
+              shared_revision: 1,
+              company_revision: 1,
+              employee_count: 2,
+              employees: [
+                { id: "oct-1", values: { id: "T0101", surname: "Testone" } },
+                { id: "oct-2", values: { id: "T0202", surname: "Testtwo" } },
+              ],
+              updated_by: null,
+              updated_at: "2026-11-01T00:00:00Z",
+            },
+          ],
+        };
+      }
+      return before(calls);
+    });
+    const withEmployees = () => {
+      const bytes = writeXlsx([
+        { name: "Companies", columns: [], rows: [["Company name *", "BRN *"]] },
+        {
+          name: "Employees",
+          columns: [],
+          rows: [
+            ["Company BRN *", "ID", "Surname"],
+            ["C1234567", "T0101", "Testonee"],
+            ["C1234567", "T0909", "Testnew"],
+          ],
+        },
+      ]);
+      const file = new File([bytes as BlobPart], "employees.xlsx");
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+      fireEvent.change(input, { target: { files: [file] } });
+    };
+    renderAll();
+    act(() => importCompaniesOpen.set(true));
+    await screen.findByRole("button", { name: "Download the blank template" });
+    try {
+      withEmployees();
+      expect(
+        await screen.findByText(
+          "Confirm your password first: the file has employees of your companies, and they are compared with your saved months. Then choose the file again.",
+        ),
+      ).toBeTruthy();
+      expect(fake.state.queries.some((q) => fake.arg(q, "from") === "payroll_months")).toBe(false);
+
+      act(() => grantUnlock(5));
+      withEmployees();
+      expect(
+        await screen.findByText(
+          "C1234567 ABC Co Ltd: into October 2026: 1 new, 1 to update, 0 no changes, 0 problems",
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByText("1 employee of October 2026 is not in the file: it stays as it is."),
+      ).toBeTruthy();
+      const update = screen.getByRole("checkbox", { name: "Update row 2, Testone" });
+      const added = screen.getByRole("checkbox", { name: "Add row 3, Testnew" });
+      // An update starts unticked, a new employee ticked.
+      expect((update as HTMLInputElement).checked).toBe(false);
+      expect((added as HTMLInputElement).checked).toBe(true);
+      expect(screen.getByText("Changes: Surname: Testone → Testonee")).toBeTruthy();
+      fireEvent.click(update);
+      expect((update as HTMLInputElement).checked).toBe(true);
+      // No company rows: no companies table.
+      expect(screen.queryByText(/^0 rows/)).toBeNull();
+    } finally {
+      lock();
+    }
+  });
+
   it("updates a company only when its row is ticked and the button pressed", async () => {
     renderAll();
     act(() => importCompaniesOpen.set(true));

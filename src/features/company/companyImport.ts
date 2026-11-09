@@ -18,8 +18,11 @@ import type { Membership } from "@/lib/supabase/schemas";
 import { NotAnExcelFile, readXlsxSheet, type XlsxCell } from "@/lib/xlsx/readXlsx";
 import { writeXlsx, type XlsxSheet } from "@/lib/xlsx/writeXlsx";
 import { createStore } from "@/lib/store";
+import { readEmployeesSheet, type EmployeeFileRow } from "./employeeImport";
 import {
+  EMPLOYEES_SHEET,
   employeesSheet,
+  setupFields,
   type EmployeesPart,
   type SetupFields,
   type TemplateCompany,
@@ -400,7 +403,14 @@ export interface FileRow {
   notices: string[];
 }
 
-export type ReadResult = { ok: true; rows: FileRow[] } | { ok: false; why: string };
+export type ReadResult =
+  | {
+      ok: true;
+      rows: FileRow[];
+      /** The Employees sheet's rows and headings (employeeImport.ts); none when it is empty. */
+      employees?: { rows: EmployeeFileRow[]; headings: string[] };
+    }
+  | { ok: false; why: string };
 
 const cellText = (cell: XlsxCell | null | undefined) => (cell ? cell.text.trim() : "");
 // eslint-disable-next-line no-control-regex
@@ -416,8 +426,11 @@ export async function readCompaniesFile(file: {
     return { ok: false, why: "The file is larger than 5 MB. Use the companies template." };
   }
   let sheet: (XlsxCell | null)[][] | null;
+  let people: (XlsxCell | null)[][] | null;
   try {
-    sheet = await readXlsxSheet(new Uint8Array(await file.arrayBuffer()), COMPANIES_SHEET);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    sheet = await readXlsxSheet(bytes, COMPANIES_SHEET);
+    people = sheet ? await readXlsxSheet(bytes, EMPLOYEES_SHEET) : null;
   } catch (error) {
     if (error instanceof NotAnExcelFile) return { ok: false, why: error.message };
     throw error;
@@ -428,11 +441,16 @@ export async function readCompaniesFile(file: {
       why: `The file has no sheet named "${COMPANIES_SHEET}". Use the companies template.`,
     };
   }
-  return readCompaniesSheet(sheet);
+  const employees = readEmployeesSheet(people);
+  if (!employees.ok) return employees;
+  // An empty Companies sheet is fine when there are employees: for companies already there.
+  const companies = readCompaniesSheet(sheet, employees.rows.length > 0);
+  if (!companies.ok) return companies;
+  return { ...companies, employees: { rows: employees.rows, headings: employees.headings } };
 }
 
 /** The rules of the "Companies" sheet, on its cells. */
-export function readCompaniesSheet(sheet: (XlsxCell | null)[][]): ReadResult {
+export function readCompaniesSheet(sheet: (XlsxCell | null)[][], allowEmpty = false): ReadResult {
   const headings = (sheet[0] ?? []).map(cellText);
   const fields = new Map<FieldId, number>();
   const details: { label: string; column: number }[] = [];
@@ -488,7 +506,7 @@ export function readCompaniesSheet(sheet: (XlsxCell | null)[][]): ReadResult {
     if (cells.every((cell) => cellText(cell) === "")) continue;
     rows.push(readRow(index + 1, cells, fields, details, headings));
   }
-  if (rows.length === 0) {
+  if (rows.length === 0 && !allowEmpty) {
     return { ok: false, why: `The ${COMPANIES_SHEET} sheet has no companies in it.` };
   }
   if (rows.length > MAX_COMPANIES) {
@@ -696,6 +714,8 @@ export interface SetupChoice {
   companies: number;
   /** The user may attach a company to it (an admin of every company using it). */
   canUse: boolean;
+  /** Its identity fields and Input columns: what a new company's employees can be given. */
+  fields: SetupFields;
 }
 
 export interface ImportChoices {
@@ -742,7 +762,13 @@ export async function loadSetupChoices(
       fetchSharedSetupAccess(viewer, id),
     ]);
     if (setup) {
-      setups.push({ id, name: setup.name, companies, canUse: access.can_change });
+      setups.push({
+        id,
+        name: setup.name,
+        companies,
+        canUse: access.can_change,
+        fields: setupFields(setup.body, null),
+      });
       bodies.set(id, setup);
     }
   }
