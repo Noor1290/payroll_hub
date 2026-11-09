@@ -22,6 +22,7 @@ import {
   buildFilledTemplate,
   buildReport,
   buildTemplate,
+  companiesForTemplate,
   filledTemplateFileName,
   importCompaniesOpen,
   isTickable,
@@ -38,6 +39,14 @@ import {
   type ReportLine,
 } from "./companyImport";
 import { changesText, fetchAdminCompanies } from "./companyUpdate";
+import { employeeCounts } from "./employeeSheet";
+import {
+  fetchBlankTemplateSetup,
+  fetchTemplateEmployees,
+  TemplateLocked,
+} from "./employeeTemplateData";
+import { UnlockForm } from "@/features/unlock/PasswordGate";
+import { isUnlocked, unlockState } from "@/lib/unlock";
 
 const SELECT_CLASS =
   "h-10 w-full rounded-lg border border-line bg-surface px-2.5 text-sm text-fg shadow-inner-glow hover:border-line-strong disabled:opacity-50";
@@ -182,21 +191,57 @@ function ChooseStep({
   const { user } = useAuth();
   const { memberships } = useCompany();
   const [filled, setFilled] = useState<
+    | { status: "idle" }
+    | { status: "preparing" }
+    | { status: "unlock" }
+    | { status: "done"; employees: number; companies: number }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
+  const [blank, setBlank] = useState<
     { status: "idle" } | { status: "preparing" } | { status: "error"; message: string }
   >({ status: "idle" });
+  const unlocked = useStore(unlockState).unlocked;
   const counts = filledCounts(memberships);
 
-  const downloadFilled = async () => {
+  const downloadBlank = async () => {
     if (!user) return;
-    setFilled({ status: "preparing" });
+    setBlank({ status: "preparing" });
     try {
-      const companies = await fetchAdminCompanies(
+      const setup = await fetchBlankTemplateSetup(
         { id: user.id, isDemo: user.isDemo },
         memberships,
       );
-      downloadBytes(buildFilledTemplate(companies), filledTemplateFileName(), XLSX_TYPE);
-      setFilled({ status: "idle" });
+      downloadBytes(buildTemplate(new Date(), setup), TEMPLATE_FILE_NAME, XLSX_TYPE);
+      setBlank({ status: "idle" });
     } catch (error) {
+      setBlank({ status: "error", message: classifyDataError(error).message });
+    }
+  };
+
+  const downloadFilled = async () => {
+    if (!user) return;
+    // The employees come from the saved months: behind the password gate.
+    if (!isUnlocked()) return setFilled({ status: "unlock" });
+    setFilled({ status: "preparing" });
+    try {
+      const viewer = { id: user.id, isDemo: user.isDemo };
+      const companies = await fetchAdminCompanies(viewer, memberships);
+      const inFile = companiesForTemplate(companies).inFile;
+      const employees = await fetchTemplateEmployees(viewer, inFile);
+      downloadBytes(
+        buildFilledTemplate(companies, new Date(), employees),
+        filledTemplateFileName(),
+        XLSX_TYPE,
+      );
+      const counted = employeeCounts(
+        inFile.flatMap((company) => {
+          const found = employees.get(company.id);
+          return found ? [{ name: company.name, brn: company.brn ?? "", ...found }] : [];
+        }),
+      );
+      setFilled({ status: "done", ...counted });
+    } catch (error) {
+      if (error instanceof TemplateLocked) return setFilled({ status: "unlock" });
       setFilled({ status: "error", message: classifyDataError(error).message });
     }
   };
@@ -206,14 +251,21 @@ function ChooseStep({
       <ol className="list-decimal space-y-3 pl-5 text-sm text-muted">
         <li>
           <p>
-            Download a template and fill in its Companies sheet, one row per company. Company name
-            and BRN are required; the Read me sheet explains every column.
+            Download a template and fill in its Companies sheet, one row per company, and, if you
+            like, its Employees sheet, one row per employee. Company name and BRN are required; the
+            Read me sheet explains every column.
           </p>
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Button onClick={() => downloadBytes(buildTemplate(), TEMPLATE_FILE_NAME, XLSX_TYPE)}>
-                <Download aria-hidden="true" />
-                Download the blank template
+              <Button disabled={blank.status === "preparing"} onClick={() => void downloadBlank()}>
+                {blank.status === "preparing" ? (
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download aria-hidden="true" />
+                )}
+                {blank.status === "preparing"
+                  ? "Preparing the file"
+                  : "Download the blank template"}
               </Button>
               <p className="text-xs">No companies in it, for adding new ones.</p>
             </div>
@@ -240,11 +292,33 @@ function ChooseStep({
                 {counts.overLimit > 0 &&
                   ` Only the first ${MAX_COMPANIES} by name are in it: an import takes at most ${MAX_COMPANIES} companies.`}
               </p>
+              {filled.status === "done" && (
+                <p className="text-xs text-fg">
+                  {filled.employees === 0
+                    ? "Employees: none, because none of these companies has a saved month."
+                    : `Employees: ${filled.employees} from ${filled.companies === 1 ? "1 company" : `${filled.companies} companies`}, each from its newest saved month. ID and figures are left out because they are sensitive.`}
+                </p>
+              )}
             </div>
           </div>
           <p className="mt-2 text-xs">
-            The filled-in template holds your companies' details. Keep it on your computer.
+            The filled-in template holds your companies' details and your employees' names. Keep it
+            on your computer.
           </p>
+          {filled.status === "unlock" && !unlocked && (
+            <div className="mt-2 space-y-2">
+              <p className="text-xs text-fg">
+                Confirm your password first: the template with your companies also holds their
+                employees.
+              </p>
+              <UnlockForm />
+            </div>
+          )}
+          {blank.status === "error" && (
+            <div className="mt-2">
+              <Problem title="Your column setup couldn't be read" message={blank.message} />
+            </div>
+          )}
           {filled.status === "error" && (
             <div className="mt-2">
               <Problem title="Your companies couldn't be read" message={filled.message} />
@@ -794,8 +868,8 @@ export function ImportCompaniesDialog() {
                 Import companies from Excel
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-muted">
-                Creates many companies with their details at once. You become the admin of every
-                company created.
+                One file with your companies and, if you like, their employees. You become the admin
+                of every company created.
               </Dialog.Description>
             </div>
           </div>

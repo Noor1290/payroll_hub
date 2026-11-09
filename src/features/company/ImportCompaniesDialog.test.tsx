@@ -17,6 +17,7 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), dismiss: vi.
 vi.mock("sonner", () => ({ toast }));
 const { ImportCompaniesDialog } = await import("./ImportCompaniesDialog");
 const { importCompaniesOpen } = await import("./companyImport");
+const { grantUnlock, lock } = await import("@/lib/unlock");
 
 const auth: AuthContextValue = {
   status: "signed-in",
@@ -97,8 +98,20 @@ beforeEach(() => {
   fake.reset((calls) => {
     const from = fake.arg(calls, "from");
     const rpc = fake.arg(calls, "rpc");
-    if (from === "payroll_company_setups")
-      return { data: [{ company_id: ABC.company.id, shared_setup_id: SETUP }] };
+    if (from === "payroll_company_setups") {
+      return {
+        data: [
+          {
+            company_id: ABC.company.id,
+            shared_setup_id: SETUP,
+            body: {},
+            revision: 1,
+            updated_by: null,
+            updated_at: "2026-11-01T00:00:00Z",
+          },
+        ],
+      };
+    }
     if (from === "payroll_shared_setups") {
       return {
         data: {
@@ -287,7 +300,7 @@ describe("<ImportCompaniesDialog>", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "The filled-in template holds your companies' details. Keep it on your computer.",
+        "The filled-in template holds your companies' details and your employees' names. Keep it on your computer.",
       ),
     ).toBeTruthy();
 
@@ -297,6 +310,8 @@ describe("<ImportCompaniesDialog>", () => {
       return "blob:test";
     });
     const revoked = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    // The employees come from the saved months: only while the password gate is open.
+    grantUnlock(5);
     try {
       fireEvent.click(
         screen.getByRole("button", { name: "Download the template with my companies" }),
@@ -305,14 +320,66 @@ describe("<ImportCompaniesDialog>", () => {
     } finally {
       created.mockRestore();
       revoked.mockRestore();
+      lock();
     }
-    // Only the companies you are admin of are asked for; the viewer company never is.
+    // Only the companies you are admin of are asked for; the viewer company never is. Their
+    // employees: only those of the company in the file (the one with a BRN).
     for (const query of fake.state.queries.filter((q) => fake.arg(q, "in"))) {
-      expect(fake.arg(query, "in", 1)).toEqual([ABC.company.id, noBrn.company.id]);
+      const asked = fake.arg(query, "in", 1);
+      const from = String(fake.arg(query, "from"));
+      const employeeRead =
+        from === "payroll_months" ||
+        (from === "payroll_company_setups" && String(fake.arg(query, "select")).includes("body"));
+      expect(asked, from).toEqual(
+        employeeRead ? [ABC.company.id] : [ABC.company.id, noBrn.company.id],
+      );
     }
+    expect(
+      screen.getByText("Employees: none, because none of these companies has a saved month."),
+    ).toBeTruthy();
     const bytes = new Uint8Array(await saved[0]!.arrayBuffer());
     const rows = (await readXlsxSheet(bytes, "Companies"))!.map((r) => r.map((c) => c?.text ?? ""));
     expect(rows.slice(1)).toEqual([["ABC Co Ltd", "C1234567"]]);
+  });
+
+  it("asks for the password before the template with my companies, and reads no month until then", async () => {
+    renderAll();
+    act(() => importCompaniesOpen.set(true));
+    const saved: Blob[] = [];
+    const created = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      saved.push(blob as Blob);
+      return "blob:test";
+    });
+    try {
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Download the template with my companies" }),
+      );
+      expect(
+        await screen.findByText(
+          "Confirm your password first: the template with your companies also holds their employees.",
+        ),
+      ).toBeTruthy();
+      expect(saved).toHaveLength(0);
+      // Nothing for the file is read until then: not the months, not even the companies.
+      const read = fake.state.queries.map((q) => fake.arg(q, "from"));
+      for (const table of ["payroll_months", "companies", "company_details"]) {
+        expect(read, table).not.toContain(table);
+      }
+      // Once it is confirmed, the prompt goes and the button downloads.
+      act(() => grantUnlock(5));
+      expect(
+        screen.queryByText(
+          "Confirm your password first: the template with your companies also holds their employees.",
+        ),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Download the template with my companies" }),
+      );
+      await waitFor(() => expect(saved).toHaveLength(1));
+    } finally {
+      created.mockRestore();
+      lock();
+    }
   });
 
   it("updates a company only when its row is ticked and the button pressed", async () => {

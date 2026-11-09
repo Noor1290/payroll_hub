@@ -152,9 +152,11 @@ describe("the companies template", () => {
 
   it("has a Read me sheet, then a Companies sheet with one heading per company detail, required ones marked", async () => {
     const workbook = partsOf(template).get("xl/workbook.xml")!;
+    // Then the Employees sheet (employeeTemplate.test.ts).
     expect([...workbook.matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1])).toEqual([
       "Read me",
       "Companies",
+      "Employees",
     ]);
     const companies = await readXlsxSheet(template, "Companies");
     expect(companies!.map((cells) => cells.map((cell) => cell?.text ?? ""))).toEqual([

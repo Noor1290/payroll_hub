@@ -11,12 +11,19 @@ import {
   fetchCompanySetupLinks,
   fetchSharedSetup,
   fetchSharedSetupAccess,
+  type SharedSetup,
 } from "@/lib/supabase/payrollSetups";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import { NotAnExcelFile, readXlsxSheet, type XlsxCell } from "@/lib/xlsx/readXlsx";
 import { writeXlsx, type XlsxSheet } from "@/lib/xlsx/writeXlsx";
 import { createStore } from "@/lib/store";
+import {
+  employeesSheet,
+  type EmployeesPart,
+  type SetupFields,
+  type TemplateCompany,
+} from "./employeeSheet";
 import {
   changesText,
   compareRow,
@@ -167,10 +174,24 @@ const headingText = (column: TemplateColumn) =>
 
 // ---------- the template ----------
 
-/** The companies template: a "Read me" sheet, then the "Companies" sheet with its headings only. */
-export function buildTemplate(at: Date = new Date()): Uint8Array {
-  return writeTemplate(at, null);
+/**
+ * The companies template: a "Read me" sheet, the "Companies" sheet with its headings only, and
+ * the "Employees" sheet with the headings of the user's most-used column setup (`setup`; null
+ * when they have none).
+ */
+export function buildTemplate(
+  at: Date = new Date(),
+  setup: { name: string; fields: SetupFields } | null = null,
+): Uint8Array {
+  return writeTemplate(at, null, {
+    kind: "blank",
+    setupName: setup?.name ?? null,
+    fields: setup?.fields ?? null,
+  });
 }
+
+/** What the template with my companies holds of one company's employees (employeeTemplateData.ts). */
+export type CompanyEmployees = Pick<TemplateCompany, "fields" | "period" | "employees">;
 
 /** The companies that go in the filled-in template: with a BRN, the first 200 by name. */
 export function companiesForTemplate(companies: readonly CurrentCompany[]): {
@@ -193,20 +214,34 @@ export function companiesForTemplate(companies: readonly CurrentCompany[]): {
 /**
  * The same template, its Companies sheet filled in with these companies (those the user is admin
  * of): one row each, with a BRN, at most 200, by name. Sensitive details are never in it: their
- * values are not even read.
+ * values are not even read. Its Employees sheet holds the employees of each one's newest saved
+ * month (`employees`, by company id), without their ID or any figure.
  */
 export function buildFilledTemplate(
   companies: readonly CurrentCompany[],
   at: Date = new Date(),
+  employees: ReadonlyMap<string, CompanyEmployees> = new Map(),
 ): Uint8Array {
-  return writeTemplate(at, companiesForTemplate(companies).inFile);
+  const inFile = companiesForTemplate(companies).inFile;
+  return writeTemplate(at, inFile, {
+    kind: "filled",
+    companies: inFile.map((company) => ({
+      name: company.name,
+      brn: company.brn ?? "",
+      ...(employees.get(company.id) ?? { fields: null, period: null, employees: [] }),
+    })),
+  });
 }
 
 const TAN = "tan";
 const longDate = (at: Date) =>
   at.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
-function writeTemplate(at: Date, companies: CurrentCompany[] | null): Uint8Array {
+function writeTemplate(
+  at: Date,
+  companies: CurrentCompany[] | null,
+  employees: EmployeesPart,
+): Uint8Array {
   // The details that get a column of their own, after the template's: every label not sensitive
   // in the companies, in the order first met, capitals ignored.
   const extra: string[] = [];
@@ -229,7 +264,7 @@ function writeTemplate(at: Date, companies: CurrentCompany[] | null): Uint8Array
   const intro: string[][] = [
     [companies ? "Companies template with my companies" : "Companies template"],
     [
-      'Fill in the Companies sheet, one row per company, then upload this file in the dashboard with "Import companies from Excel". Nothing is saved before you confirm the preview.',
+      'Fill in the Companies sheet, one row per company, and, if you like, the Employees sheet, one row per employee. Then upload this file in the dashboard with "Import companies from Excel". Nothing is saved before you confirm the preview.',
     ],
   ];
   if (companies) {
@@ -249,6 +284,10 @@ function writeTemplate(at: Date, companies: CurrentCompany[] | null): Uint8Array
   }
   const headingRow = intro.length + 1;
   const moreRow = headingRow + TEMPLATE_COLUMNS.length + 2;
+  // The Read me rows before the Employees section: More details, its text, an empty row and
+  // three lines.
+  const readMeEnd = moreRow + 6;
+  const people = employeesSheet(employees);
   const readMe: XlsxSheet = {
     name: READ_ME_SHEET,
     columns: [
@@ -258,7 +297,7 @@ function writeTemplate(at: Date, companies: CurrentCompany[] | null): Uint8Array
       { width: 60, wrap: true },
       { width: 26, text: true },
     ],
-    boldRows: [0, headingRow, moreRow],
+    boldRows: [0, headingRow, moreRow, ...people.readMeBold.map((at) => readMeEnd + at)],
     rows: [
       ...intro,
       [],
@@ -285,6 +324,7 @@ function writeTemplate(at: Date, companies: CurrentCompany[] | null): Uint8Array
       [
         "A company whose BRN is already in the dashboard but that you are not admin of is skipped, with capitals and spaces ignored. A BRN on two rows: the first row is used, the second skipped.",
       ],
+      ...people.readMe,
     ],
   };
 
@@ -325,7 +365,7 @@ function writeTemplate(at: Date, companies: CurrentCompany[] | null): Uint8Array
       ]),
     ],
   };
-  return writeXlsx([readMe, companiesSheet], at);
+  return writeXlsx([readMe, companiesSheet, people.sheet], at);
 }
 
 // ---------- reading a filled-in file ----------
@@ -673,26 +713,42 @@ export async function loadImportChoices(
   memberships: readonly Membership[],
 ): Promise<ImportChoices> {
   const adminIds = memberships.filter((m) => m.role === "admin").map((m) => m.company.id);
+  const { setups, defaultSetup } = await loadSetupChoices(viewer, adminIds);
+  return {
+    setups,
+    defaultSetupId: defaultSetup?.id ?? null,
+    templates: await readyMadeTemplates(viewer, adminIds),
+  };
+}
 
+/**
+ * The shared column setups the user's admin companies use, most used first, and the default one
+ * for new companies: the most used of those they may use (also the columns of the blank
+ * template's Employees sheet).
+ */
+export async function loadSetupChoices(
+  viewer: Viewer,
+  adminIds: string[],
+): Promise<{ setups: SetupChoice[]; defaultSetup: SharedSetup | null }> {
   const links = await fetchCompanySetupLinks(viewer, adminIds);
   const counts = new Map<string, number>();
   for (const link of links)
     counts.set(link.shared_setup_id, (counts.get(link.shared_setup_id) ?? 0) + 1);
   const setups: SetupChoice[] = [];
+  const bodies = new Map<string, SharedSetup>();
   for (const [id, companies] of counts) {
     const [setup, access] = await Promise.all([
       fetchSharedSetup(viewer, id),
       fetchSharedSetupAccess(viewer, id),
     ]);
-    if (setup) setups.push({ id, name: setup.name, companies, canUse: access.can_change });
+    if (setup) {
+      setups.push({ id, name: setup.name, companies, canUse: access.can_change });
+      bodies.set(id, setup);
+    }
   }
   setups.sort((a, b) => b.companies - a.companies || a.name.localeCompare(b.name));
-
-  return {
-    setups,
-    defaultSetupId: setups.find((setup) => setup.canUse)?.id ?? null,
-    templates: await readyMadeTemplates(viewer, adminIds),
-  };
+  const chosen = setups.find((setup) => setup.canUse);
+  return { setups, defaultSetup: chosen ? (bodies.get(chosen.id) ?? null) : null };
 }
 
 /**

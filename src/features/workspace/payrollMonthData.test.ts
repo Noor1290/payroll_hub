@@ -565,7 +565,7 @@ describe("the production build", () => {
     const source = (await import("@/lib/supabase/payrollMonths.ts?raw")).default as string;
     const guarded = source.split("import.meta.env.DEV && viewer.isDemo").length - 1;
     const demoCalls = [...source.matchAll(/\bdemo[A-Z]\w+\(/g)].length;
-    expect(demoCalls).toBe(6);
+    expect(demoCalls).toBe(7);
     expect(guarded).toBe(demoCalls);
     expect(source).not.toMatch(/=>\s*import\.meta\.env\.DEV/);
   });

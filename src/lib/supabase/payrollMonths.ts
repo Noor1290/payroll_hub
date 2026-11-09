@@ -4,11 +4,13 @@ import {
   demoFetchMonthList,
   demoFetchMonthRevision,
   demoFetchMonths,
+  demoFetchNewestMonths,
   demoSaveKeyChange,
   demoSaveMonth,
 } from "@/lib/demo/demoPayrollMonths";
 import { supabase } from "./client";
 import { NotConfiguredError } from "./errors";
+import { fetchAllRows } from "./paginate";
 import type { Viewer } from "./queries";
 
 /**
@@ -159,6 +161,63 @@ export async function fetchMonths(
     .order("period", { ascending: true });
   if (error) throw error;
   return z.array(monthSchema).parse(data);
+}
+
+/** Ids per request for the month list; companies per request for their employees. */
+const ID_CHUNK = 100;
+const CONTENT_CHUNK = 20;
+
+const periodRowSchema = z.object({ company_id: z.uuid(), period: periodSchema });
+const companyMonthSchema = monthSchema.extend({ company_id: z.uuid() });
+export type CompanyMonth = z.infer<typeof companyMonthSchema>;
+
+/**
+ * The newest saved month of each of these companies, with its employees, by company id; a
+ * company with no saved month is not in it. Admins only (RLS), and the dashboard reads it only
+ * while the password gate is open. Grouped, so 200 companies take a few requests: their saved
+ * periods first, then the months of each period 20 companies at a time.
+ */
+export async function fetchNewestMonths(
+  viewer: Viewer,
+  companyIds: readonly string[],
+): Promise<Map<string, CompanyMonth>> {
+  const out = new Map<string, CompanyMonth>();
+  if (companyIds.length === 0) return out;
+  if (import.meta.env.DEV && viewer.isDemo) return demoFetchNewestMonths(companyIds);
+
+  const newest = new Map<string, string>();
+  for (let at = 0; at < companyIds.length; at += ID_CHUNK) {
+    const part = companyIds.slice(at, at + ID_CHUNK);
+    const rows = await fetchAllRows(async (from, to) => {
+      const { data, error } = await client()
+        .from("payroll_months")
+        .select("company_id, period")
+        .in("company_id", part)
+        .order("company_id", { ascending: true })
+        .order("period", { ascending: true })
+        .range(from, to);
+      if (error) throw error;
+      return z.array(periodRowSchema).parse(data);
+    });
+    for (const row of rows) {
+      if ((newest.get(row.company_id) ?? "") < row.period) newest.set(row.company_id, row.period);
+    }
+  }
+
+  const byPeriod = new Map<string, string[]>();
+  for (const [id, period] of newest) byPeriod.set(period, [...(byPeriod.get(period) ?? []), id]);
+  for (const [period, ids] of byPeriod) {
+    for (let at = 0; at < ids.length; at += CONTENT_CHUNK) {
+      const { data, error } = await client()
+        .from("payroll_months")
+        .select(`company_id, ${MONTH_COLUMNS}`)
+        .eq("period", period)
+        .in("company_id", ids.slice(at, at + CONTENT_CHUNK));
+      if (error) throw error;
+      for (const month of z.array(companyMonthSchema).parse(data)) out.set(month.company_id, month);
+    }
+  }
+  return out;
 }
 
 /** The record of a month's saves, newest first, and whether each one's content was kept. */

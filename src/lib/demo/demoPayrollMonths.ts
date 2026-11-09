@@ -1,4 +1,5 @@
 import type {
+  CompanyMonth,
   KeptMonthRevision,
   KeyChangeInput,
   MonthInfo,
@@ -169,6 +170,20 @@ export async function demoFetchMonths(
         employees: copy(m.employees),
       };
     });
+}
+
+/** The newest saved month of each of these companies, by company id (fetchNewestMonths). */
+export async function demoFetchNewestMonths(
+  companyIds: readonly string[],
+): Promise<Map<string, CompanyMonth>> {
+  const out = new Map<string, CompanyMonth>();
+  for (const id of companyIds) {
+    const newest = (await demoFetchMonthList(id)).at(-1);
+    if (!newest) continue;
+    const [month] = await demoFetchMonths(id, [newest.period]);
+    if (month) out.set(id, { ...month, company_id: id });
+  }
+  return out;
 }
 
 export async function demoFetchMonthHistory(

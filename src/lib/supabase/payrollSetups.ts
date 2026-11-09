@@ -137,6 +137,34 @@ export async function fetchCompanySetup(
   return companySetupSchema.nullable().parse(data);
 }
 
+/** Ids per request, so the address of a read stays short. */
+const ID_CHUNK = 100;
+
+/**
+ * The own setups of these companies, for those that have one, in requests of 100 companies
+ * (the template with my companies: up to 200).
+ */
+export async function fetchCompanySetups(
+  viewer: Viewer,
+  companyIds: readonly string[],
+): Promise<CompanySetup[]> {
+  if (companyIds.length === 0) return [];
+  if (import.meta.env.DEV && viewer.isDemo) {
+    const found = await Promise.all(companyIds.map((id) => demoFetchCompanySetup(id)));
+    return found.filter((setup): setup is CompanySetup => setup !== null);
+  }
+  const out: CompanySetup[] = [];
+  for (let at = 0; at < companyIds.length; at += ID_CHUNK) {
+    const { data, error } = await client()
+      .from("payroll_company_setups")
+      .select(COMPANY_COLUMNS)
+      .in("company_id", companyIds.slice(at, at + ID_CHUNK));
+    if (error) throw error;
+    out.push(...z.array(companySetupSchema).parse(data));
+  }
+  return out;
+}
+
 /** Which shared setup each of these companies is attached to, for those that are. */
 export async function fetchCompanySetupLinks(
   viewer: Viewer,

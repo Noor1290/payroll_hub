@@ -2078,6 +2078,63 @@ const BREAKS = [
     test: "src/features/company/ImportCompaniesDialog.test.tsx",
     mustFail: "is not there at all for a viewer",
   },
+  // ---------- The Employees sheet of the templates (EMPLOYEES_IMPORT_PLAN.md, Stage 1) ----------
+  {
+    what: "Employees template: the ID (the NIC) is written in the file",
+    file: "src/features/company/employeeSheet.ts",
+    find: '            if (!field || field.kind !== "identity" || isIdField(field)) return null;',
+    replace: '            if (!field || field.kind !== "identity") return null;',
+    test: "src/features/company/employeeTemplate.test.ts",
+    mustFail: "holds no NIC and no figure anywhere in the file",
+  },
+  {
+    what: "Employees template: the figures are written in the file",
+    file: "src/features/company/employeeSheet.ts",
+    find: '            if (!field || field.kind !== "identity" || isIdField(field)) return null;',
+    replace: "            if (!field || isIdField(field)) return null;",
+    test: "src/features/company/employeeTemplate.test.ts",
+    mustFail: "holds no NIC and no figure anywhere in the file",
+  },
+  {
+    what: "Employees template: formula columns are offered",
+    file: "src/features/company/employeeSheet.ts",
+    find: '  const inputs = columns.filter((column) => column.type === "input");',
+    replace: "  const inputs = columns;",
+    test: "src/features/company/employeeTemplate.test.ts",
+    mustFail: "never offers a formula column",
+  },
+  {
+    what: "Employees template: the months are read while the dashboard is locked",
+    file: "src/features/company/employeeTemplateData.ts",
+    find: "  if (!isUnlocked()) throw new TemplateLocked();\n  const ids",
+    replace: "  const ids",
+    test: "src/features/company/employeeTemplate.test.ts",
+    mustFail: "reads nothing while the dashboard is locked",
+  },
+  {
+    what: "Employees template: a lock while reading is not noticed",
+    file: "src/features/company/employeeTemplateData.ts",
+    find: "then nothing leaves.\n  if (!isUnlocked()) throw new TemplateLocked();",
+    replace: "then nothing leaves.",
+    test: "src/features/company/employeeTemplate.test.ts",
+    mustFail: "returns nothing if the dashboard locks while the months are being read",
+  },
+  {
+    what: "Employees template: an older month is taken instead of the newest",
+    file: "src/lib/supabase/payrollMonths.ts",
+    find: '      if ((newest.get(row.company_id) ?? "") < row.period) newest.set(row.company_id, row.period);',
+    replace: "      if (!newest.has(row.company_id)) newest.set(row.company_id, row.period);",
+    test: "src/features/company/employeeTemplate.test.ts",
+    mustFail: "takes each company's newest saved month",
+  },
+  {
+    what: "Employees template: the dialog downloads without asking for the password",
+    file: "src/features/company/ImportCompaniesDialog.tsx",
+    find: '    if (!isUnlocked()) return setFilled({ status: "unlock" });',
+    replace: "",
+    test: "src/features/company/ImportCompaniesDialog.test.tsx",
+    mustFail: "asks for the password before the template with my companies",
+  },
 ];
 
 const gitStatus = () =>
