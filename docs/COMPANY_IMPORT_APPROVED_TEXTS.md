@@ -159,3 +159,55 @@ Approved by the owner on 5 Nov 2026 (branch `companies-template`): the texts of 
 - Title: Companies template with my companies
 - Filled in on {5 November 2026} with the {n} companies you are admin of. Sensitive details are not included.
 - When needed: Not in this file: the details labelled {labels}, because a column of the template already has that heading. / Not in this file: the details labelled {labels}, because a file holds at most 50 details.
+
+## Employees sheet, Stage 1: the two templates (approved 9 November 2026)
+
+Approved by the owner: T1–T7, R1–R8 and C1–C9 (EMPLOYEES_IMPORT_PLAN.md). Hub commit ab4d956.
+
+### In the dialog ("Import companies from Excel")
+
+| # | Where | Text | New or changed |
+|---|---|---|---|
+| T1 | Under the title | One file with your companies and, if you like, their employees. You become the admin of every company created. | Changed (was "Creates many companies with their details at once. …") |
+| T2 | Step 1 | Download a template and fill in its Companies sheet, one row per company, and, if you like, its Employees sheet, one row per employee. Company name and BRN are required; the Read me sheet explains every column. | Changed |
+| T3 | Under the two buttons | The filled-in template holds your companies' details and your employees' names. Keep it on your computer. | Changed |
+| T4 | Locked dashboard, after "Download the template with my companies" (shot 02) | Confirm your password first: the template with your companies also holds their employees. | New |
+| T5 | After the download (shot 03) | Employees: 3 from 1 company, each from its newest saved month. ID and figures are left out because they are sensitive. | New (approved in §5) |
+| T6 | After the download, when no company has a saved month | Employees: none, because none of these companies has a saved month. | New |
+| T7 | Problem title if the setup can't be read for the blank template | Your column setup couldn't be read | New |
+| — | Blank template button while it works | Preparing the file | Existing text, now also on this button |
+
+### In the Excel files
+
+**Read me, first line (both templates), changed:**
+Fill in the Companies sheet, one row per company, and, if you like, the Employees sheet, one row per employee. Then upload this file in the dashboard with "Import companies from Excel". Nothing is saved before you confirm the preview.
+
+**Read me, new section "Employees sheet"** (shots 06 and 07):
+
+| # | Text |
+|---|---|
+| R1 | Employees sheet |
+| R2 | Optional. One row per employee, linked to their company by its BRN: a company on the Companies sheet or one already in the dashboard. Leave it empty to import companies only. |
+| R3 | Blank template: Its columns are those of your column setup "TEST Main setup" in Payroll System: the identity fields, then the Input columns. For a company with other columns, add their headings. |
+| R3b | Blank template, when you have no column setup: Its columns are the identity fields ID, Surname and Other names. For a company with a column setup in Payroll System, add the headings of its identity fields and Input columns. |
+| R4 | Template with my companies: Filled in with the employees of each company's newest saved month. ID and the columns after the identity fields are left empty because they are sensitive: an empty cell changes nothing. |
+| R5 | Employees are added to their company's newest saved month in Payroll System. A company with no saved month starts in the month you choose in the preview. |
+| R6 | A row is matched to an employee of that month by its Reference or, without one, by its ID. A new employee is added. For an employee already there, the preview shows the changes, and they are made only if you tick them. |
+| R7 | An empty cell changes nothing; nobody is ever deleted. Employees of the month who are not in the file stay as they are. |
+| R8 | Formula columns are not in this sheet: Payroll System works them out. A column of a company's setup can be added by its heading; capitals and spaces don't matter. |
+
+**Read me, column table of the Employees sheet** (Column / Required / What it is / Format / Example):
+
+| # | Column | Required | What it is | Format | Example |
+|---|---|---|---|---|---|
+| C1 | Company BRN * | Yes | The BRN of the employee's company, as on the Companies sheet or in the dashboard. | Text. Capitals and spaces don't matter. | C07012345 |
+| C2 | Company name | No | Only to help you read the file: it is not read. The BRN links the employee to their company. | Text. | Example Trading Ltd |
+| C3 | ID | For a new employee | The employee's ID (their NIC). An employee is recognised by it. | Text. Leading zeros are kept. | A0101801234567 |
+| C4 | Surname | For a new employee | An identity field of the column setup in Payroll System. | Text. | Example |
+| C5 | other identity fields | No | An identity field of the column setup in Payroll System. | Text. / A date: DD/MM/YYYY, for example 05/03/2024. | Jane / 05/03/2024 |
+| C6 | a number column | No | An Input column of the column setup (General): a figure for the month. | A number, for example 18115.00 or 18,115.00. | 18115.00 |
+| C7 | a Text, Date or Yes/No column | No | An Input column of the column setup (General): a value for the month. | Text. / A date: … / Yes or No. Y, X and 1 also tick it. | — / 05/03/2024 / Yes |
+| C8 | (added when only some companies have the column) | | … Only for: TEST Alpha Ltd. | | |
+| C9 | Reference (leave as is) | No | Which employee of the dashboard the row is. Leave it as it is. For a new employee, leave it empty. | Filled in by the dashboard. | |
+
+**Sheet headings:** "Employees" (sheet name), "Company BRN *", "Company name", "Reference (leave as is)"; the other headings are the names in your column setup.
