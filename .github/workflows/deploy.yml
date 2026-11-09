@@ -63,7 +63,7 @@ jobs:
 
       - name: Make sure no demo code or sample data reached the build
         run: |
-          if grep -rIlE "Enter demo workspace|mock-app\.html|Big Sample Ltd" dist; then
+          if grep -rIlE "Enter demo workspace|mock-app\.html|Big Sample Ltd|no payroll column setup" dist; then
             echo "::error::Demo-only code was found in the production build."
             exit 1
           fi

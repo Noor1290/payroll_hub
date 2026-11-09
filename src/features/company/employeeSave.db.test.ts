@@ -310,6 +310,20 @@ describe("saving the ticked employees", () => {
     ]);
   });
 
+  it("the report's Before and After never show an ID or a figure, only the other identity fields", async () => {
+    const preview = previewOf(FILE);
+    const lines = await runEmployeeImport(VIEWER, preview, context(), new Map(), tickAll);
+    expect(lines.map((l) => [l.before, l.after])).toEqual([
+      ["Basic Salary: (not shown)", "Basic Salary: (not shown)"],
+      ["", "ID: (not shown)\nSurname: Testfour\nOther names: New Hire\nBasic Salary: (not shown)"],
+      ["", "ID: (not shown)\nSurname: Testfive\nBasic Salary: (not shown)"],
+    ]);
+    const all = lines.map((l) => `${l.before}\n${l.after}`).join("\n");
+    for (const secret of ["T0101", "T0404", "T0505", "31234", "21500", "19000", "30000"]) {
+      expect(all).not.toContain(secret);
+    }
+  });
+
   it("an unticked change is not made; the report says so", async () => {
     const preview = previewOf(FILE.slice(0, 2));
     const lines = await runEmployeeImport(

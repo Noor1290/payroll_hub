@@ -83,3 +83,16 @@ describe("demo import_payroll_company", () => {
     ).rejects.toBeInstanceOf(NotConfiguredError);
   });
 });
+
+describe("the production build", () => {
+  it("can drop this stand-in: its one use is behind `import.meta.env.DEV`, written out in place", async () => {
+    const source = (await import("@/lib/supabase/payrollImport.ts?raw")).default as string;
+    const guarded =
+      source.split("import.meta.env.DEV && viewer.isDemo) return demoImportPayrollCompany(")
+        .length - 1;
+    const demoCalls = [...source.matchAll(/\bdemo[A-Z]\w+\(/g)].length;
+    expect(demoCalls).toBe(1);
+    expect(guarded).toBe(1);
+    expect(source).not.toMatch(/=>\s*import\.meta\.env\.DEV/);
+  });
+});

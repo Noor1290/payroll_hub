@@ -208,6 +208,18 @@ describe("matching a row to an employee of the newest saved month", () => {
     ]);
     expect(row.status).toBe("same");
     expect(row.values).toEqual({});
+    // A cell that is there but blank (spaces, or a formula giving "") is empty too.
+    const blank = only([
+      {
+        "Company BRN *": t("C0000101"),
+        ID: t("T0303"),
+        Surname: t("Testthree"),
+        "Other names": t("   "),
+        "Date of Employment": t(""),
+      },
+    ]).row;
+    expect(blank.status).toBe("same");
+    expect(blank.values).toEqual({});
   });
 
   it("matches by Reference, where an ID typed in is a change of ID", () => {
