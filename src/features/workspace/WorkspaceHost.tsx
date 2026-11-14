@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Columns2, ExternalLink, Maximize2, RotateCw, TriangleAlert, X } from "lucide-react";
+import {
+  Columns2,
+  ExternalLink,
+  Maximize2,
+  Minimize2,
+  RotateCw,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Button } from "@/components/ui/button";
@@ -11,6 +19,7 @@ import { useCompany } from "@/features/company/company-context";
 import { bridge, useAppHealth } from "@/lib/bridge/bridge";
 import type { AppHealth } from "@/lib/bridge/hub";
 import { cn } from "@/lib/utils";
+import { useFullScreen, useLeaveFullScreenForDialogs } from "./fullScreen";
 import { healthView } from "./health";
 
 /** Exactly the permissions the apps need. With a shared origin this is NOT a security boundary. */
@@ -34,6 +43,7 @@ function AppPane({ app, health, shown, inView, companyId }: AppPaneProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const pane = useRef<HTMLDivElement>(null);
   const [dismissed, setDismissed] = useState<AppHealth | null>(null);
+  const fullScreen = useFullScreen(pane);
   const view = healthView(health);
   const url = appUrl(app);
 
@@ -95,14 +105,18 @@ function AppPane({ app, health, shown, inView, companyId }: AppPaneProps) {
               <RotateCw aria-hidden="true" />
             </Button>
           </Tooltip>
-          <Tooltip label="Full screen">
+          <Tooltip label={fullScreen.active ? "Exit full screen (Esc)" : "Full screen"}>
             <Button
               size="icon"
               variant="ghost"
-              aria-label={`Show ${app.name} full screen`}
-              onClick={() => void pane.current?.requestFullscreen?.().catch(() => {})}
+              aria-label={fullScreen.active ? "Leave full screen" : `Show ${app.name} full screen`}
+              onClick={fullScreen.toggle}
             >
-              <Maximize2 aria-hidden="true" />
+              {fullScreen.active ? (
+                <Minimize2 aria-hidden="true" />
+              ) : (
+                <Maximize2 aria-hidden="true" />
+              )}
             </Button>
           </Tooltip>
           <Tooltip label="Open in a new tab (standalone)">
@@ -202,6 +216,7 @@ export function WorkspaceHost({ visible }: { visible: boolean }) {
     bridge.start();
     return () => bridge.stop();
   }, []);
+  useLeaveFullScreenForDialogs();
 
   const requested = visible ? params.get("app") : null;
   const activeId = ACTIVE_APPS.some((app) => app.id === requested) ? requested! : lastActive;
