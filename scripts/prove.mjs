@@ -2306,6 +2306,39 @@ const BREAKS = [
     test: "src/lib/demo/demoPayrollImport.test.ts",
     mustFail: "refuses a setup saved since, an approved month",
   },
+  // ---------- Four changes, Stage 1: the Full screen button ----------
+  {
+    what: "Full screen: pressing the button again does not leave full screen (the old fault)",
+    file: "src/features/workspace/fullScreen.ts",
+    find: "    if (document.fullscreenElement === target) {",
+    replace: "    if (false) {",
+    test: "src/features/workspace/fullScreen.test.tsx",
+    mustFail: "each one enters and leaves full screen",
+  },
+  {
+    what: "Full screen: the button stops following Esc",
+    file: "src/features/workspace/fullScreen.ts",
+    find: '    document.addEventListener("fullscreenchange", follow);',
+    replace: "",
+    test: "src/features/workspace/fullScreen.test.tsx",
+    mustFail: "follows Esc",
+  },
+  {
+    what: "Full screen: a dashboard pop-up opens while the app stays full screen",
+    file: "src/features/workspace/fullScreen.ts",
+    find: "          if (dialog && !full.contains(dialog)) {",
+    replace: "          if (dialog && false) {",
+    test: "src/features/workspace/fullScreen.test.tsx",
+    mustFail: "ends full screen when a dashboard pop-up opens",
+  },
+  {
+    what: "Full screen: a pop-up inside the app's own pane ends full screen",
+    file: "src/features/workspace/fullScreen.ts",
+    find: "          if (dialog && !full.contains(dialog)) {",
+    replace: "          if (dialog) {",
+    test: "src/features/workspace/fullScreen.test.tsx",
+    mustFail: "stays full screen for something added inside",
+  },
 ];
 
 const gitStatus = () =>
