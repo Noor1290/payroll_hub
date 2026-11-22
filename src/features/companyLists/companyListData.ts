@@ -34,7 +34,8 @@ import { answerRequest } from "@/features/workspace/deliver";
  *    starts again with the new list.
  *  - `open-company`: selects that company in the dashboard the usual way (asking first when an
  *    app holds unsaved changes); the apps then reload. Answers `switched: false` when it is
- *    already the selected company, and the app opens it itself.
+ *    already the selected company, and the app opens it itself. The month the app names
+ *    (`period`) comes back with `open` as `open_period`.
  *
  * A convenience only: a company that is switched off still opens; nobody's access changes.
  */
@@ -59,6 +60,11 @@ const paramsSchema = z.discriminatedUnion("action", [
     action: z.literal("open-company"),
     brn: brnSchema.optional(),
     company_id: z.uuid(),
+    /** The month the app showed, "YYYY-MM": given back with `open` after the reload. */
+    period: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+      .optional(),
   }),
 ]);
 
@@ -94,7 +100,7 @@ export function setCompanyOpener(next: Opener): () => void {
 }
 
 /** The company an app asked to open, until that app asks for its companies again. */
-let pendingOpen: { appId: string; companyId: string; until: number } | null = null;
+let pendingOpen: { appId: string; companyId: string; period?: string; until: number } | null = null;
 
 /** Forgets what is pending and closes the picker. For tests, and on sign-out. */
 export function forgetCompanyListState(): void {
@@ -136,7 +142,12 @@ export async function answerCompanyListRequest(
       if (!opener) {
         return refuse("unavailable", "The dashboard cannot change company right now.");
       }
-      pendingOpen = { appId, companyId: wanted, until: Date.now() + OPEN_WAIT_MS };
+      pendingOpen = {
+        appId,
+        companyId: wanted,
+        ...(params.data.period ? { period: params.data.period } : {}),
+        until: Date.now() + OPEN_WAIT_MS,
+      };
       const open = opener;
       // After the answer has left: selecting another company reloads the app's frame.
       setTimeout(() => open(wanted), 0);
@@ -166,7 +177,9 @@ export async function answerCompanyListRequest(
         lists: lists.filter((list) =>
           on.some((row) => row.company_id === company.id && row.list === list),
         ),
-        ...(opening && company.id === membership.company.id ? { open: true } : {}),
+        ...(opening && company.id === membership.company.id
+          ? { open: true, ...(pending.period ? { open_period: pending.period } : {}) }
+          : {}),
       })),
       meta,
     };

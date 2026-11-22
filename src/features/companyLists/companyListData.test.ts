@@ -134,6 +134,9 @@ describe("companies", () => {
       code: "invalid",
     });
     expect(await ask({ action: "save" })).toMatchObject({ ok: false, code: "invalid" });
+    expect(await ask({ action: "open-company", company_id: XYZ, period: "2026-13" })).toMatchObject(
+      { ok: false, code: "invalid" },
+    );
   });
 
   it("goes through the usual request log (answerRequest)", async () => {
@@ -164,7 +167,7 @@ describe("open-company", () => {
   it("selects another company of the user, and marks it once for that app", async () => {
     const opened: string[] = [];
     const stop = setCompanyOpener((id) => opened.push(id));
-    const answer = await ask({ action: "open-company", company_id: XYZ });
+    const answer = await ask({ action: "open-company", company_id: XYZ, period: "2026-10" });
     expect(answer).toMatchObject({ ok: true, rows: [{ switched: true }] });
     await vi.waitFor(() => expect(opened).toEqual([XYZ]));
 
@@ -175,7 +178,10 @@ describe("open-company", () => {
     });
     const first = await ask({ action: "companies" });
     if (!first.ok) throw new Error("refused");
-    expect(first.rows.find((row) => row.company_id === XYZ)).toMatchObject({ open: true });
+    expect(first.rows.find((row) => row.company_id === XYZ)).toMatchObject({
+      open: true,
+      open_period: "2026-10",
+    });
     const again = await ask({ action: "companies" });
     if (!again.ok) throw new Error("refused");
     expect(again.rows.some((row) => "open" in row)).toBe(false);

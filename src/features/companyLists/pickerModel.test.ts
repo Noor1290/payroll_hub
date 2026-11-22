@@ -81,7 +81,8 @@ describe("the company circle", () => {
   });
 
   it("keeps the same colour for the same company", () => {
-    expect(hueOf("C1234567")).toBe(hueOf("C1234567"));
+    // The apps' cards (payslip, mra_returns src/lib/companyLook.ts) use the same rule.
+    expect([hueOf("C1234567"), hueOf("C0000101"), hueOf("C3333333")]).toEqual([200, 75, 162]);
     expect(new Set(companies.map((one) => hueOf(one.brn))).size).toBeGreaterThan(1);
   });
 });
