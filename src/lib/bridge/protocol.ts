@@ -102,6 +102,9 @@ export const DATA_RULES: Readonly<Record<string, DataRules>> = {
   // company's own values (64 KB, MRA_VALUES_BYTES). An answer lists a company's templates (20 at
   // most), a template's kept revisions (200 at most) or the user's admin companies.
   "mra-template": { sendRows: 1, sendBytes: 270_000, answerRows: [0, 5_000] },
+  // Read only: nothing is ever sent (the picker saves in the dashboard itself). An answer lists
+  // the user's companies (500 at most), or is empty.
+  "company-list": { sendRows: 0, sendBytes: 0, answerRows: [0, 500] },
 };
 export const rulesFor = (dataType: string): DataRules => DATA_RULES[dataType] ?? DEFAULT_RULES;
 

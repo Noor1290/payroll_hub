@@ -15,9 +15,11 @@ import { Badge, StatusDot } from "@/components/ui/misc";
 import { EmptyState } from "@/components/ui/states";
 import { Tooltip } from "@/components/ui/tooltip";
 import { APPS, appUrl, type AppConfig } from "@/config/apps.config";
+import { appReloads } from "@/features/companyLists/companyListData";
 import { useCompany } from "@/features/company/company-context";
 import { bridge, useAppHealth } from "@/lib/bridge/bridge";
 import type { AppHealth } from "@/lib/bridge/hub";
+import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useFullScreen, useLeaveFullScreenForDialogs } from "./fullScreen";
 import { healthView } from "./health";
@@ -76,6 +78,15 @@ function AppPane({ app, health, shown, inView, companyId }: AppPaneProps) {
     companyAt.current = companyId;
     if (before !== null && before !== companyId) reload();
   }, [companyId, reload]);
+
+  // The company picker saved a change for this app: it starts again with the new list.
+  const reloads = useStore(appReloads)[app.id] ?? 0;
+  const reloadsAt = useRef(reloads);
+  useEffect(() => {
+    if (reloadsAt.current === reloads) return;
+    reloadsAt.current = reloads;
+    reload();
+  }, [reloads, reload]);
 
   const showBanner = (health === "no-bridge" || health === "unresponsive") && dismissed !== health;
 

@@ -5,6 +5,7 @@ import { AuroraBackground } from "@/components/brand";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AddCompanyDialog } from "@/features/company/AddCompanyDialog";
 import { ImportCompaniesDialog } from "@/features/company/ImportCompaniesDialog";
+import { CompanyOpener, CompanyPickerHost } from "@/features/companyLists/CompanyPickerHost";
 import { BridgeDialogs } from "@/features/workspace/BridgeDialogs";
 import { ProfileOpener } from "@/features/workspace/ProfileOpener";
 import { WorkspaceHost } from "@/features/workspace/WorkspaceHost";
@@ -99,6 +100,8 @@ export function AppShell() {
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <BridgeDialogs />
       <ProfileOpener />
+      <CompanyOpener />
+      <CompanyPickerHost />
       <AddCompanyDialog />
       <ImportCompaniesDialog />
     </div>

@@ -669,8 +669,13 @@ describe("0020: the non-member check's attempts, in a real database", () => {
   }, SETUP_TIMEOUT);
   afterAll(() => db?.close());
 
-  const mraFunctions = Object.entries(FUNCTIONS).filter(([name]) => name.includes("mra"));
-  const mraTables = Object.entries(TABLES).filter(([name]) => name.startsWith("mra_"));
+  // 0020's own: the record of MRA files (0024) is checked in companyLists.db.test.ts.
+  const mraFunctions = Object.entries(FUNCTIONS).filter(
+    ([name]) => name.includes("mra") && name !== "record_mra_file",
+  );
+  const mraTables = Object.entries(TABLES).filter(
+    ([name]) => name.startsWith("mra_") && name !== "mra_file_records",
+  );
 
   /** Calls a function by its parameter names, as the Data API does, as the role and user given. */
   async function call(

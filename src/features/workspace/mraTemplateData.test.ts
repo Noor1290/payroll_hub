@@ -76,7 +76,7 @@ afterEach(() => {
 describe("the data type", () => {
   it("is the MRA Returns app's only, to ask for and to send, one command per message", () => {
     expect(getApp("mra-returns")).toMatchObject({
-      accepts: ["mra-batch", "mra-template"],
+      accepts: ["mra-batch", "mra-template", "company-list"],
       produces: ["mra-template"],
     });
     expect(DATA_RULES["mra-template"]).toMatchObject({ sendRows: 1, sendBytes: 270_000 });

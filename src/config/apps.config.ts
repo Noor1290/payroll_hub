@@ -84,6 +84,12 @@ export const MRA_BATCH = "mra-batch";
  * each company's own values for them (migration 0020). Admins only; no prompt and no gate.
  */
 export const MRA_TEMPLATE = "mra-template";
+/**
+ * Which companies an app is used for (migration 0024): the user's companies with the lists
+ * each is switched on in, the full-page company picker, and opening one company in the app.
+ * No employee and no figure. A convenience only: access is unchanged.
+ */
+export const COMPANY_LIST = "company-list";
 
 /**
  * Apps that consume payroll results want the payroll app's own export format, key for key,
@@ -119,7 +125,7 @@ export const APPS: readonly AppConfig[] = [
     icon: Calculator,
     accentColor: "var(--accent)",
     status: "active",
-    accepts: [PAYROLL_SETUP, PAYROLL_MONTH, PAYROLL_BATCH, PAYROLL_IMPORT],
+    accepts: [PAYROLL_SETUP, PAYROLL_MONTH, PAYROLL_BATCH, PAYROLL_IMPORT, COMPANY_LIST],
     produces: [PAYROLL_RESULT, PAYROLL_SETUP, PAYROLL_MONTH, PAYROLL_IMPORT],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: [],
@@ -145,7 +151,14 @@ export const APPS: readonly AppConfig[] = [
     icon: ReceiptText,
     accentColor: "var(--warn)",
     status: "active",
-    accepts: [PAYROLL_RESULT, STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE, PAYSLIP_BATCH],
+    accepts: [
+      PAYROLL_RESULT,
+      STATUTORY_RATES,
+      PAYSLIP_TEMPLATE,
+      PAYSLIP_ISSUE,
+      PAYSLIP_BATCH,
+      COMPANY_LIST,
+    ],
     produces: [STATUTORY_RATES, PAYSLIP_TEMPLATE, PAYSLIP_ISSUE],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,
@@ -158,8 +171,9 @@ export const APPS: readonly AppConfig[] = [
     icon: FileSpreadsheet,
     accentColor: "var(--sky)",
     status: "active",
-    // Only what it needs: saved runs of its user's admin companies, and its own templates.
-    accepts: [MRA_BATCH, MRA_TEMPLATE],
+    // Only what it needs: saved runs of its user's admin companies, its own templates, and
+    // its list of companies.
+    accepts: [MRA_BATCH, MRA_TEMPLATE, COMPANY_LIST],
     produces: [MRA_TEMPLATE],
     protocolVersion: PROTOCOL_VERSION,
     expectedFields: payrollExportFields,

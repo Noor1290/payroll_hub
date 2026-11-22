@@ -330,20 +330,49 @@ describe("0017: where the date of employment came from", () => {
     expect((await setSource(O, "2026-10-01", true)).result).toBeUndefined();
   });
 
-  it.each(["2026-10-15", "1899-12-01", "2101-01-01"])("refuses a month written as %s", async (month) => {
-    expect((await setSource(A, month, false)).error).toMatch(/23514/);
-  });
+  it.each(["2026-10-15", "1899-12-01", "2101-01-01"])(
+    "refuses a month written as %s",
+    async (month) => {
+      expect((await setSource(A, month, false)).error).toMatch(/23514/);
+    },
+  );
 
   it("an import leaves them as they are", async () => {
     await setSource(A, "2026-10-01", true);
     const numbers = Object.fromEntries(
-      ["basic_salary", "govt_increment", "new_basic_salary", "allowances", "emoluments", "travelling", "gross_pay", "csg", "nsf", "paye", "total_deductions", "net_pay", "levy", "prgf", "total_mra_contributions", "edf", "edf_monthly", "total"].map((column) => [column, 100]),
+      [
+        "basic_salary",
+        "govt_increment",
+        "new_basic_salary",
+        "allowances",
+        "emoluments",
+        "travelling",
+        "gross_pay",
+        "csg",
+        "nsf",
+        "paye",
+        "total_deductions",
+        "net_pay",
+        "levy",
+        "prgf",
+        "total_mra_contributions",
+        "edf",
+        "edf_monthly",
+        "total",
+      ].map((column) => [column, 100]),
     );
     const imported = await one(
       db,
       A,
       "select public.import_payroll_run($1::uuid, $2::date, $3::jsonb, $4) as result",
-      [ABC, "2026-12-01", JSON.stringify([{ national_id: "X1", surname: "DOE", age_60_plus: false, extra: {}, ...numbers }]), false],
+      [
+        ABC,
+        "2026-12-01",
+        JSON.stringify([
+          { national_id: "X1", surname: "DOE", age_60_plus: false, extra: {}, ...numbers },
+        ]),
+        false,
+      ],
     );
     expect(imported.error).toBeNull();
     expect(
@@ -1011,6 +1040,10 @@ describe("delete_company after 0011", () => {
       mra_templates: 0,
       mra_template_history: 0,
       mra_company_details: 0,
+      // Migration 0024: no lists or records here.
+      mra_file_records: 0,
+      app_lists: 0,
+      run_approvals: 0,
       members: 2,
     });
 

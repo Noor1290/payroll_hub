@@ -171,7 +171,7 @@ describe("the MRA Returns app in the registry", () => {
       name: "MRA Returns",
       url: "https://noor1290.github.io/mra_returns/",
       status: "active",
-      accepts: ["mra-batch", "mra-template"],
+      accepts: ["mra-batch", "mra-template", "company-list"],
       produces: ["mra-template"],
     });
     expect(DATA_RULES["mra-batch"]).toMatchObject({ sendRows: 0, sendBytes: 0 });

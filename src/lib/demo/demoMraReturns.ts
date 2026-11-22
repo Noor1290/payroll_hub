@@ -334,6 +334,9 @@ export function demoMraCounts(companyId: string) {
     mraTemplates: links.filter((l) => l.company_id === companyId).length,
     mraDetails: details.filter((d) => d.company_id === companyId).length,
     memberChanges: 0,
+    appLists: 0,
+    mraFiles: 0,
+    runApprovals: 0,
   };
 }
 

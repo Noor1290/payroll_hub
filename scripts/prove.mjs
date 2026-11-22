@@ -741,8 +741,8 @@ const BREAKS = [
   },
   {
     what: "delete_company forgets the issued payslips",
-    // The newest definition is the one that counts (0020 since MRA Returns).
-    file: "supabase/migrations/0021_company_members.sql",
+    // The newest definition is the one that counts (0024 since the company lists).
+    file: "supabase/migrations/0024_company_lists_and_status.sql",
     find: "  delete from public.issued_payslips p where p.company_id = p_company_id;\n",
     replace: "",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -761,10 +761,10 @@ const BREAKS = [
   {
     what: "The dashboard names an old migration when delete_company is missing",
     file: "src/features/company/deleteCompany.ts",
-    find: 'const MIGRATION = "0021_company_members.sql";',
+    find: 'const MIGRATION = "0024_company_lists_and_status.sql";',
     replace: 'const MIGRATION = "0014_payroll_months.sql";',
     test: "src/features/company/deleteCompanyMigration.test.ts",
-    mustFail: "is defined last in 0021, the file the dashboard names",
+    mustFail: "is defined last in 0024, the file the dashboard names",
   },
   {
     what: "The delete dialog hides the issued payslips that will go",
@@ -1007,8 +1007,8 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the company's payroll setup behind",
-    // The newest definition is the one that counts (0020 since MRA Returns).
-    file: "supabase/migrations/0021_company_members.sql",
+    // The newest definition is the one that counts (0024 since the company lists).
+    file: "supabase/migrations/0024_company_lists_and_status.sql",
     find: "  delete from public.payroll_company_setups cs where cs.company_id = p_company_id;\n  get diagnostics v_setups = row_count;\n",
     replace: "  v_setups := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1076,8 +1076,8 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the company's months behind",
-    // The newest definition is the one that counts (0020 since MRA Returns).
-    file: "supabase/migrations/0021_company_members.sql",
+    // The newest definition is the one that counts (0024 since the company lists).
+    file: "supabase/migrations/0024_company_lists_and_status.sql",
     find: "  delete from public.payroll_months pm where pm.company_id = p_company_id;\n  get diagnostics v_months = row_count;\n",
     replace: "  v_months := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1319,7 +1319,7 @@ const BREAKS = [
   },
   {
     what: "delete_company leaves the template used for the payslips behind",
-    file: "supabase/migrations/0021_company_members.sql",
+    file: "supabase/migrations/0024_company_lists_and_status.sql",
     find: "  delete from public.payslip_template_in_use u where u.company_id = p_company_id;\n  get diagnostics v_in_use = row_count;\n",
     replace: "  v_in_use := 0;\n",
     test: "src/features/company/deleteCompanyMigration.test.ts",
@@ -1509,8 +1509,8 @@ const BREAKS = [
   {
     what: "MRA returns: the app is allowed more than mra-batch and mra-template",
     file: "src/config/apps.config.ts",
-    find: "    accepts: [MRA_BATCH, MRA_TEMPLATE],",
-    replace: "    accepts: [PAYROLL_RESULT, MRA_BATCH, MRA_TEMPLATE],",
+    find: "    accepts: [MRA_BATCH, MRA_TEMPLATE, COMPANY_LIST],",
+    replace: "    accepts: [PAYROLL_RESULT, MRA_BATCH, MRA_TEMPLATE, COMPANY_LIST],",
     test: "src/features/workspace/mraBatch.test.tsx",
     mustFail: "may ask for mra-batch and its templates, and send only templates",
   },
@@ -1840,7 +1840,7 @@ const BREAKS = [
   },
   {
     what: "0020: delete_company leaves templates nobody uses behind",
-    file: "supabase/migrations/0021_company_members.sql",
+    file: "supabase/migrations/0024_company_lists_and_status.sql",
     find: "  delete from public.mra_templates t\n  where t.id = any(v_mra_ids)",
     replace: "  delete from public.mra_templates t\n  where false and t.id = any(v_mra_ids)",
     test: "src/features/workspace/mraReturns.db.test.ts",
@@ -2338,6 +2338,55 @@ const BREAKS = [
     replace: "          if (dialog) {",
     test: "src/features/workspace/fullScreen.test.tsx",
     mustFail: "stays full screen for something added inside",
+  },
+  // ---------- Company lists (0024) ----------
+  {
+    what: "0024: a list save goes through for a company the caller is not an admin of",
+    file: "supabase/migrations/0024_company_lists_and_status.sql",
+    find: "      where m.company_id = c.company_id and m.user_id = v_user and m.role = 'admin'",
+    replace: "      where m.company_id = c.company_id and m.user_id = v_user",
+    test: "src/features/companyLists/companyLists.db.test.ts",
+    mustFail: "refuses the whole save when one company is not the caller's to change",
+  },
+  {
+    what: "0024: delete_company leaves the app lists behind",
+    file: "supabase/migrations/0024_company_lists_and_status.sql",
+    find: "  delete from public.company_app_lists l where l.company_id = p_company_id;\n",
+    replace: "",
+    test: "src/features/company/deleteCompanyMigration.test.ts",
+    mustFail: "deletes from every table that belongs to a company",
+  },
+  {
+    what: "company-list: an app learns about another app's lists",
+    file: "src/features/companyLists/companyListData.ts",
+    find: "        lists: lists.filter((list) =>\n          on.some((row) => row.company_id === company.id && row.list === list),\n        ),",
+    replace: "        lists: on.filter((row) => row.company_id === company.id).map((row) => row.list),",
+    test: "src/features/companyLists/companyListData.test.ts",
+    mustFail: "lists every company of the user with only the asking app's lists",
+  },
+  {
+    what: "company-list: the company opened stays marked for good",
+    file: "src/features/companyLists/companyListData.ts",
+    find: "    if (pending?.appId === appId) pendingOpen = null;",
+    replace: "",
+    test: "src/features/companyLists/companyListData.test.ts",
+    mustFail: "selects another company of the user, and marks it once for that app",
+  },
+  {
+    what: "Picker: a company the user is not an admin of is saved too",
+    file: "src/features/companyLists/pickerModel.ts",
+    find: "    if (!company.admin) continue;\n",
+    replace: "",
+    test: "src/features/companyLists/pickerModel.test.ts",
+    mustFail: "saves only what changed, and never for a company the user is not an admin of",
+  },
+  {
+    what: "Picker: Done with nothing changed still saves and reloads the app",
+    file: "src/features/companyLists/CompanyPicker.tsx",
+    find: "    if (changes.length === 0) onClose();\n    else onSave(changes, choice);",
+    replace: "    onSave(changes, choice);",
+    test: "src/features/companyLists/CompanyPicker.test.tsx",
+    mustFail: "Done with nothing changed saves nothing and reloads nothing",
   },
 ];
 

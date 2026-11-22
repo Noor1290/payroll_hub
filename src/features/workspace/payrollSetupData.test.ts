@@ -104,7 +104,13 @@ describe("the data type", () => {
     );
     expect(users.map((app) => app.id)).toEqual(["payroll"]);
     expect(getApp("payroll")).toMatchObject({
-      accepts: ["payroll-setup", "payroll-month", "payroll-batch", "payroll-import"],
+      accepts: [
+        "payroll-setup",
+        "payroll-month",
+        "payroll-batch",
+        "payroll-import",
+        "company-list",
+      ],
       produces: ["payroll-result", "payroll-setup", "payroll-month", "payroll-import"],
     });
     expect(DATA_RULES["payroll-setup"]).toMatchObject({ sendRows: 1, answerRows: [0, 500] });
@@ -453,7 +459,10 @@ describe("payroll-setup: copying another company's columns", () => {
 
   it("stores nothing", async () => {
     await copy("C1234567");
-    expect(await request({ action: "load", brn: "C0000001" })).toMatchObject({ ok: true, rows: [] });
+    expect(await request({ action: "load", brn: "C0000001" })).toMatchObject({
+      ok: true,
+      rows: [],
+    });
   });
 });
 

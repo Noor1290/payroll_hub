@@ -212,6 +212,24 @@ export const TABLES: Record<string, TableSpec> = {
     // Not an email address, refused by its check even without the grant.
     insert: (_company, self) => ({ user_id: self ?? ZERO_ID, email: MARKER, revision: 0 }),
   },
+  // 0024: the app lists. Not a list, refused by its check even without the grant.
+  company_app_lists: {
+    companyColumn: "company_id",
+    rlsWrites: false,
+    insert: (company) => ({ company_id: company, list: MARKER }),
+  },
+  // 0024: the record of MRA files. Not a kind of file, refused by its check.
+  mra_file_records: {
+    companyColumn: "company_id",
+    rlsWrites: false,
+    insert: (company) => ({ company_id: company, period: "2000-01-01", kind: MARKER, employee_count: 0, totals: {}, warnings: false }),
+  },
+  // 0024: the record of approvals, filled by a trigger. Not a status, refused by its check.
+  payroll_run_approvals: {
+    companyColumn: "company_id",
+    rlsWrites: false,
+    insert: (company) => ({ run_id: ZERO_ID, company_id: company, period: "2000-01-01", status: MARKER }),
+  },
 };
 
 /** For a table with no company column: a filter that names one row that does not exist. */
@@ -299,6 +317,11 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
   // The keep-awake job's function (0015): open to anon on purpose, reads nothing, answers true.
   keep_awake: { args: () => ({}), expect: { kind: "read", ok: (data) => data === true, expected: "true, or refused" } },
   set_updated_at: {
+    args: () => ({}),
+    expect: { kind: "read", ok: () => false, expected: "refused (trigger only)" },
+  },
+  // 0024: fills the record of approvals; a trigger only, nobody may call it.
+  record_payroll_run_approval: {
     args: () => ({}),
     expect: { kind: "read", ok: () => false, expected: "refused (trigger only)" },
   },
@@ -518,6 +541,13 @@ export const FUNCTIONS: Record<string, FunctionSpec> = {
   },
   // Guard: not an email address. (It is the caller's own row, so it names no company.)
   save_mra_settings: { args: () => ({ p_email: MARKER, p_expected_revision: 0 }), expect: NOT_ADMIN },
+  // 0024. Guard: not a list.
+  set_company_app_lists: { args: (t) => ({ p_changes: [{ company_id: t.a, list: MARKER, on: true }] }), expect: NOT_ADMIN },
+  // 0024. Guard: the 15th is not the first day of a month, and not a kind of file.
+  record_mra_file: {
+    args: (t) => ({ p_company_id: t.a, p_period: "2026-09-15", p_kind: MARKER, p_employee_count: 0, p_totals: {}, p_warnings: false }),
+    expect: NOT_ADMIN,
+  },
 };
 
 /** Further calls of a function already in FUNCTIONS, for a second rule it must keep. */

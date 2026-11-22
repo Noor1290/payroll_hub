@@ -780,6 +780,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
       "payroll-month",
       "payroll-batch",
       "payroll-import",
+      "company-list",
     ],
     "expectedFields": [],
     "id": "payroll",
@@ -849,6 +850,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
       "payslip-template",
       "payslip-issue",
       "payslip-batch",
+      "company-list",
     ],
     "expectedFields": [
       "ID | string | required | sensitive",
@@ -897,6 +899,7 @@ exports[`baseline: the app registry > lists these apps, with these data types an
     "accepts": [
       "mra-batch",
       "mra-template",
+      "company-list",
     ],
     "expectedFields": [
       "ID | string | required | sensitive",

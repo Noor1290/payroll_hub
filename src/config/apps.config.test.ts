@@ -35,12 +35,20 @@ describe("app registry", () => {
       "payslip-issue",
       // Several companies at once: it may ask, never send.
       "payslip-batch",
+      // Its list of companies (0024): it may ask, never send.
+      "company-list",
     ]);
     expect(payslip.produces).toEqual(["statutory-rates", "payslip-template", "payslip-issue"]);
     expect(payslip.expectedFields).toEqual(getApp("pdf-editor")!.expectedFields);
     // Nothing changes for the other apps, and payroll results still go to the same two.
     expect(getApp("payroll")).toMatchObject({
-      accepts: ["payroll-setup", "payroll-month", "payroll-batch", "payroll-import"],
+      accepts: [
+        "payroll-setup",
+        "payroll-month",
+        "payroll-batch",
+        "payroll-import",
+        "company-list",
+      ],
       produces: ["payroll-result", "payroll-setup", "payroll-month", "payroll-import"],
     });
     expect(getApp("pdf-editor")).toMatchObject({

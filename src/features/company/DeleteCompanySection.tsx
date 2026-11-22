@@ -77,6 +77,9 @@ function WhatGoes({ preview }: { preview: DeletePreview }) {
       )}
       {preview.memberChanges > 0 && <li>the record of changes to its members</li>}
       {preview.mraDetails > 0 && <li>its MRA details (ERN, phone numbers, declarant)</li>}
+      {preview.mraFiles + preview.runApprovals > 0 && (
+        <li>the record of its MRA files and approvals</li>
+      )}
       <li>
         {preview.otherMembers === 0
           ? "your own access (nobody else has access)"

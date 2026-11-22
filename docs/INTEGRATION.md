@@ -616,6 +616,21 @@ A template is shared the way the payroll app's Global columns are: it is used by
 - **`detach`** takes it out of the selected company; `expected_revision` is the TEMPLATE's revision. From the last company using it, the template and its whole history are **deleted for good** (`deleted: true`): the app asks first and says so.
 - Limits: a name is 1 to 80 characters, unique in each company using it whatever the capitals (`invalid`); a company uses at most 20 templates (`too-large`).
 
+## Company lists (`company-list`): Payroll System, Payslip, MRA Returns
+
+Added with migration `supabase/migrations/0024_company_lists_and_status.sql` (branch `company-lists`, Stage 1, 22 Nov 2026). Which companies each app is used for. Accepted by `payroll`, `payslip` and `mra-returns`; never by `pdf-editor`. Read only: nothing is ever sent (the picker saves in the dashboard itself). No employee and no figure, so **no prompt and no password gate**. Every request is a row in the Transfer log.
+
+Each app has its own lists, and only ever learns about those: `payroll` has `["payroll"]`, `payslip` has `["payslips"]`, `mra-returns` has `["csg", "prgf"]`. A company with no row is switched off: every company starts off. **A convenience only:** a company that is switched off still opens; nobody's access changes. `brn` is optional on every action; when given, it must be the selected company's (`wrong-company` otherwise).
+
+| `params` | Answer rows |
+| --- | --- |
+| `{ action: "companies", brn? }` | One per company the user belongs to (any role), by name, 500 at most: `{ company_id, brn, name, admin, selected, lists, open? }`. `brn` is `""` for a company without one. `lists` are the lists of THIS app the company is switched on in, e.g. `["csg"]`. `selected` marks the company selected in the dashboard. `open: true` appears on the selected company once, right after this app asked to open it (below): the app then goes straight to that company's screen. |
+| `{ action: "open-picker", brn? }` | No rows, at once. The dashboard shows its full-page company picker over the app, for this app's lists. When the user saves a change with Done, **the app's frame is reloaded**, so it starts again with the new list; Cancel reloads nothing. |
+| `{ action: "open-company", brn?, company_id }` | One row, `{ switched }`. `false`: it is the selected company already, and the app opens it itself. `true`: once the answer has left, the dashboard selects that company the usual way (asking first if an app holds unsaved changes); the app frames then reload, and the next `companies` marks it `open`. A company the user is not a member of is `forbidden`; `unavailable` when the dashboard's shell is not there to do it. |
+
+- Until 0024 is run, `companies` is refused as `unavailable`, naming that file.
+- Only an admin of a company can switch it on or off (in the picker; the database checks it again, all or nothing). The app need not check: `admin` is there so it can say who to ask.
+
 ## How to check it works
 
 The bridge only trusts the **deployed** dashboard at `https://noor1290.github.io`. It will not connect to a dashboard running on `localhost`; there the app shows as "Not connected (local run)". So:

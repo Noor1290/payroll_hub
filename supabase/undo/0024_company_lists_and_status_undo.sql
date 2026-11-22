@@ -1,0 +1,25 @@
+-- =====================================================================
+-- UNDO of migration 0024_company_lists_and_status.sql. NOT a migration: kept outside
+-- supabase/migrations on purpose, and every line is commented out, so running this file as it
+-- is does nothing.
+--
+-- What it would do, in this order:
+--   1. Put back delete_company as it was in 0021: run supabase/migrations/0021_company_members.sql
+--      again FIRST (it is safe to re-run), so delete_company no longer names the tables below.
+--   2. Drop the trigger and the three functions 0024 added.
+--   3. Drop the three tables. Lost: which companies are switched on in each app's list, the
+--      record of MRA files made, and the dates of approvals made since 0024. No payroll month,
+--      run, payslip, template or company is touched.
+-- No other function, table, policy or grant is touched.
+--
+-- To use it, only when the owner decides: run 0021 again (step 1), then remove the "-- " at
+-- the start of every line below this header, then run it in Supabase dashboard -> SQL Editor.
+-- =====================================================================
+
+-- drop trigger if exists payroll_runs_record_approval on public.payroll_runs;
+-- drop function if exists public.record_payroll_run_approval();
+-- drop function if exists public.set_company_app_lists(jsonb);
+-- drop function if exists public.record_mra_file(uuid, date, text, integer, jsonb, boolean);
+-- drop table if exists public.payroll_run_approvals;
+-- drop table if exists public.mra_file_records;
+-- drop table if exists public.company_app_lists;

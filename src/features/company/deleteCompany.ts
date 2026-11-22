@@ -68,6 +68,13 @@ export interface DeletePreview {
   mraDetails: number;
   /** The record of changes to its members (migration 0021). Zero if that table doesn't exist yet. */
   memberChanges: number;
+  /**
+   * The lists it is switched on in, the record of its MRA files and of its approvals
+   * (migration 0024). Zero if those tables don't exist yet.
+   */
+  appLists: number;
+  mraFiles: number;
+  runApprovals: number;
   /** How many of the runs are approved, soft-deleted ones included. They are deleted like the rest. */
   approvedRuns: number;
 }
@@ -137,6 +144,9 @@ export async function fetchDeletePreview(
     mraTemplates,
     mraDetails,
     memberChanges,
+    appLists,
+    mraFiles,
+    runApprovals,
   ] = await Promise.all([
     db.from("employees").select("id", head).eq("company_id", companyId),
     db.from("payroll_runs").select("id", head).eq("company_id", companyId),
@@ -162,11 +172,14 @@ export async function fetchDeletePreview(
     db.from("mra_template_companies").select("template_id", head).eq("company_id", companyId),
     db.from("mra_company_details").select("company_id", head).eq("company_id", companyId),
     db.from("company_member_history").select("id", head).eq("company_id", companyId),
+    db.from("company_app_lists").select("list", head).eq("company_id", companyId),
+    db.from("mra_file_records").select("id", head).eq("company_id", companyId),
+    db.from("payroll_run_approvals").select("id", head).eq("company_id", companyId),
   ]);
   for (const result of [employees, runs, entries, members, approved]) {
     if (result.error) throw result.error;
   }
-  // These tables come from later migrations (0005, 0006, 0009 to 0014, 0018, 0020). Until they are run
+  // These tables come from later migrations (0005, 0006, 0009 to 0014, 0018, 0020, 0021, 0024). Until they are run
   // there is nothing in them to delete, and deleting a company must keep working.
   const optional = (result: { error: unknown; count: number | null }) => {
     if (result.error) {
@@ -197,6 +210,9 @@ export async function fetchDeletePreview(
     mraTemplates: optional(mraTemplates),
     mraDetails: optional(mraDetails),
     memberChanges: optional(memberChanges),
+    appLists: optional(appLists),
+    mraFiles: optional(mraFiles),
+    runApprovals: optional(runApprovals),
     approvedRuns: count.parse(approved.count),
   };
 }
@@ -257,7 +273,7 @@ export interface DeleteCompanyFailure extends DataFailure {
  * to a company replaces the function, so an older file must never be named here: run after
  * the newer ones, it would put back a function that does not know their tables.
  */
-const MIGRATION = "0021_company_members.sql";
+const MIGRATION = "0024_company_lists_and_status.sql";
 const RUN_MIGRATIONS = `The owner needs to run the files in supabase/migrations that the database has not had yet, in order, up to ${MIGRATION}, in the Supabase SQL editor.`;
 
 const failure = (

@@ -40,6 +40,7 @@ import "./payrollBatchData";
 import "./mraBatchData";
 import "./mraTemplateData";
 import "./payrollImportData";
+import "@/features/companyLists/companyListData";
 import { deliver } from "./deliver";
 import { healthView } from "./health";
 
