@@ -19,3 +19,13 @@
 | P13 | Toast after Done | **Payslip list saved: 8 companies.** / **MRA Returns lists saved: CSG 8, PRGF 5.** |
 | P14 | Toast when the save is refused | **The list wasn't saved: you're not an admin of every company you changed.** Any other failure: **The list wasn't saved.** followed by the usual reason (for example **The database can't be reached.**) |
 | P15 | Delete company, in the list of what goes (only when there is any) | **the record of its MRA files and approvals** |
+
+## Stages 2 and 3: each app's main page (approved by the owner, 22 November 2026, with Stage 2)
+
+| # | Where | Text |
+|---|---|---|
+| M1 | Page title | **Your companies** with **November 2026** beside it (the month chooser) |
+| M2 | Button, with a grid icon | **Choose companies** |
+| M3 | Empty list | **No companies yet** and the button **Choose companies**. When you're not an admin of any company, one line instead of the button: **An admin can choose them.** |
+| M4 | The selected company isn't on this app's list (a small label on its screen) | **Not on the list**, and for admins a small button **Add** |
+| M5 | Back from a company to the cards | **Your companies** (with ←) |
