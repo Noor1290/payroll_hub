@@ -1,26 +1,8 @@
 # On-screen texts waiting for the owner's approval
 
-Company lists (`COMPANY_LISTS_AND_STATUS_PLAN.md`), Stage 1, 22 November 2026. This is the section 6 wording, trimmed as asked: short labels, icons, and no helper sentences. Explanations appear only as a tooltip or one short line. **P** texts are built in Stage 1 (the dashboard). **M** and **S** texts are for the later stages, so you can approve them all at once.
+Company lists (`COMPANY_LISTS_AND_STATUS_PLAN.md`). The picker texts (P1 to P15) were approved on 22 November 2026 and are in `docs/COMPANY_LISTS_APPROVED_TEXTS.md`.
 
-## P: the company picker (built, dashboard)
-
-| # | Where | Text |
-|---|---|---|
-| P1 | Small line above the title, with the app's icon | **Payslip** / **MRA Returns** / **Payroll System** |
-| P2 | Title | **Choose companies** |
-| P3 | ⓘ next to the title (tooltip) | **Everyone on a company sees the same list.** |
-| P4 | Search box (placeholder) | **Search by name or BRN** |
-| P5 | Filter chips | **All** · **Selected** · **Not selected** |
-| P6 | Counter (bottom bar) | **8 of 13 companies selected**. MRA Returns: **CSG 8 · PRGF 5 of 13** |
-| P7 | Bottom bar buttons | **Select all** · **Clear** · **Cancel** · **Done** |
-| P8 | ✕ at the top right (screen readers only) | **Close** |
-| P9 | The two switches on each MRA Returns card | **CSG** · **PRGF** |
-| P10 | 🔒 card of a company where you're not an admin (tooltip) | **Only an admin can change this** |
-| P11 | Nothing to show | **No company matches "xyz".** / **None selected.** / **All selected.** |
-| P12 | Leaving with unsaved changes | Title **Leave without saving?**, line **Your changes won't be kept.**, buttons **Keep choosing** · **Leave** |
-| P13 | Toast after Done | **Payslip list saved: 8 companies.** / **MRA Returns lists saved: CSG 8, PRGF 5.** |
-| P14 | Toast when the save is refused | **The list wasn't saved: you're not an admin of every company you changed.** Any other failure: **The list wasn't saved.** followed by the usual reason (for example **The database can't be reached.**) |
-| P15 | Delete company, in the list of what goes (only when there is any) | **the record of its MRA files and approvals** |
+The M and S texts below were **approved in principle** on 22 November 2026. Each is shown again, in context, in the stage that builds it.
 
 ## M: each app's main page (Stages 2 and 3)
 
