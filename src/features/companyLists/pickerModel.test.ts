@@ -58,6 +58,15 @@ describe("the picker's choice", () => {
       { companyId: A, list: "payslips", on: false },
     ]);
     expect(changesBetween(loaded, loaded, companies, ["payslips"])).toEqual([]);
+    // Even when the choice differs for a company the user is not an admin of (C), it is left out.
+    const withC = choiceFrom(
+      [
+        { company_id: A, list: "payslips" },
+        { company_id: C, list: "payslips" },
+      ],
+      ["payslips"],
+    );
+    expect(changesBetween(loaded, withC, companies, ["payslips"])).toEqual([]);
   });
 
   it("filters by name or BRN, and by the chips", () => {
