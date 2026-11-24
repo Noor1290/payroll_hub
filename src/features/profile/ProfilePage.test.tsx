@@ -207,6 +207,11 @@ describe("sensitive details", () => {
     expect(isUnlocked()).toBe(false);
     expect(screen.queryByText(SECRET)).toBeNull();
     expect(queryClient.getQueryData(["company-details-sensitive", ABC, USER])).toBeUndefined();
+    // Masked again, not only emptied: once the list is read again, the detail offers Reveal and
+    // its value is not fetched back.
+    await screen.findByText("Bank reference");
+    expect(reveal()).toBeTruthy();
+    expect(screen.queryByText(SECRET)).toBeNull();
   });
 
   it("never reach browser storage", async () => {
