@@ -51,7 +51,6 @@ import {
 } from "./employeeImport";
 import {
   loadExistingCompanies,
-  needsUnlock,
   newCompaniesOf,
   notAdminCompanies,
   startMonths,
@@ -59,13 +58,7 @@ import {
 } from "./employeeImportData";
 import { EmployeesPreview } from "./EmployeesPreview";
 import { employeesDone, runEmployeeImport, type EmployeeReportLine } from "./employeeSave";
-import {
-  fetchBlankTemplateSetup,
-  fetchTemplateEmployees,
-  TemplateLocked,
-} from "./employeeTemplateData";
-import { UnlockForm } from "@/features/unlock/PasswordGate";
-import { isUnlocked, unlockState } from "@/lib/unlock";
+import { fetchBlankTemplateSetup, fetchTemplateEmployees } from "./employeeTemplateData";
 
 const SELECT_CLASS =
   "h-10 w-full rounded-lg border border-line bg-surface px-2.5 text-sm text-fg shadow-inner-glow hover:border-line-strong disabled:opacity-50";
@@ -82,7 +75,7 @@ interface EmployeesStep {
 }
 
 type Step =
-  | { kind: "choose"; why: string | null; reading: boolean; locked?: boolean }
+  | { kind: "choose"; why: string | null; reading: boolean }
   | { kind: "preview"; fileName: string; rows: PreviewRow[]; employees: EmployeesStep | null }
   | {
       kind: "running";
@@ -225,14 +218,12 @@ function ChooseStep({
   const [filled, setFilled] = useState<
     | { status: "idle" }
     | { status: "preparing" }
-    | { status: "unlock" }
     | { status: "done"; employees: number; companies: number }
     | { status: "error"; message: string }
   >({ status: "idle" });
   const [blank, setBlank] = useState<
     { status: "idle" } | { status: "preparing" } | { status: "error"; message: string }
   >({ status: "idle" });
-  const unlocked = useStore(unlockState).unlocked;
   const counts = filledCounts(memberships);
 
   const downloadBlank = async () => {
@@ -252,8 +243,6 @@ function ChooseStep({
 
   const downloadFilled = async () => {
     if (!user) return;
-    // The employees come from the saved months: behind the password gate.
-    if (!isUnlocked()) return setFilled({ status: "unlock" });
     setFilled({ status: "preparing" });
     try {
       const viewer = { id: user.id, isDemo: user.isDemo };
@@ -273,7 +262,6 @@ function ChooseStep({
       );
       setFilled({ status: "done", ...counted });
     } catch (error) {
-      if (error instanceof TemplateLocked) return setFilled({ status: "unlock" });
       setFilled({ status: "error", message: classifyDataError(error).message });
     }
   };
@@ -337,15 +325,6 @@ function ChooseStep({
             The filled-in template holds your companies' details and your employees' names. Keep it
             on your computer.
           </p>
-          {filled.status === "unlock" && !unlocked && (
-            <div className="mt-2 space-y-2">
-              <p className="text-xs text-fg">
-                Confirm your password first: the template with your companies also holds their
-                employees.
-              </p>
-              <UnlockForm />
-            </div>
-          )}
           {blank.status === "error" && (
             <div className="mt-2">
               <Problem title="Your column setup couldn't be read" message={blank.message} />
@@ -389,15 +368,6 @@ function ChooseStep({
           </Button>
         </li>
       </ol>
-      {step.locked && !unlocked && (
-        <div className="space-y-2">
-          <p className="text-sm text-fg">
-            Confirm your password first: the file has employees of your companies, and they are
-            compared with your saved months. Then choose the file again.
-          </p>
-          <UnlockForm />
-        </div>
-      )}
       {step.why && <Problem title="This file can't be imported" message={step.why} />}
     </div>
   );
@@ -711,7 +681,7 @@ function ReportStep({
         </div>
       )}
       {employees.length > 0 && <EmployeesReport lines={employees} />}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="dialog-actions">
         <Button
           onClick={() =>
             downloadBytes(buildReport(lines, new Date(), employees), reportFileName(), XLSX_TYPE)
@@ -829,9 +799,6 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
     let employees: EmployeesStep | null = null;
     const people = result.employees;
     if (people && people.rows.length > 0) {
-      if (needsUnlock(people.rows, admin) && !isUnlocked()) {
-        return setStep({ kind: "choose", why: null, reading: false, locked: true });
-      }
       try {
         employees = {
           ...people,
@@ -839,9 +806,6 @@ function ImportFlow({ onDone, onBusy }: { onDone: () => void; onBusy: (busy: boo
           notAdmin: notAdminCompanies(memberships),
         };
       } catch (error) {
-        if (error instanceof TemplateLocked) {
-          return setStep({ kind: "choose", why: null, reading: false, locked: true });
-        }
         return setStep({
           kind: "choose",
           why: `Your employees couldn't be read, so the file can't be compared with them. ${classifyDataError(error).message}`,

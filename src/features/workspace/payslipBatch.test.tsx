@@ -482,14 +482,10 @@ describe("load: one company at a time, only as allowed", () => {
     });
   });
 
-  it("is refused while the gate is locked, and locking forgets what was allowed", async () => {
+  it("loads with the password gate locked, and locking does not forget what was allowed (hotfix 2)", async () => {
     await askAndAllow({ companies: ["C3333333"] });
     lock();
-    fake.state.queries.length = 0;
-    expect(await request(LOAD)).toMatchObject({ ok: false, code: "denied" });
-    grantUnlock(10);
-    expect(await request(LOAD)).toMatchObject({ ok: false, code: "denied" });
-    expect(fake.state.queries).toHaveLength(0);
+    expect(await request(LOAD)).toMatchObject({ ok: true });
   });
 
   it("stops being allowed after 15 minutes", async () => {

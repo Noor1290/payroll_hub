@@ -6,7 +6,6 @@ import {
 } from "@/lib/supabase/payrollSetups";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
-import { isUnlocked } from "@/lib/unlock";
 import { loadSetupChoices, type CompanyEmployees } from "./companyImport";
 import type { CurrentCompany } from "./companyUpdate";
 import { setupFields, type SetupFields } from "./employeeSheet";
@@ -16,18 +15,8 @@ import { setupFields, type SetupFields } from "./employeeSheet";
 //  - The blank template: the identity fields and Input columns of the user's most-used column
 //    setup (names only, no employee).
 //  - The template with my companies: each company's setup and the employees of its newest saved
-//    month. Months hold national IDs and salaries, so they are read only while the password gate
-//    is open, as every other read of them (payrollMonthData.ts); if it locks while reading,
-//    nothing is returned. The file is then made from the identity fields other than the ID, and
+//    month. Months hold national IDs and salaries: admins only (row-level security). The file is then made from the identity fields other than the ID, and
 //    nothing read is kept.
-
-/** The password gate is locked: the template with my companies needs it open. */
-export class TemplateLocked extends Error {
-  constructor() {
-    super("The dashboard is locked.");
-    this.name = "TemplateLocked";
-  }
-}
 
 /** The blank template's columns: the default setup for new companies; null when there is none. */
 export async function fetchBlankTemplateSetup(
@@ -47,7 +36,6 @@ export async function fetchTemplateEmployees(
   viewer: Viewer,
   companies: readonly CurrentCompany[],
 ): Promise<Map<string, CompanyEmployees>> {
-  if (!isUnlocked()) throw new TemplateLocked();
   const ids = companies.map((company) => company.id);
   const setups = await fetchCompanySetups(viewer, ids);
   const sharedIds = [...new Set(setups.map((setup) => setup.shared_setup_id))];
@@ -60,8 +48,6 @@ export async function fetchTemplateEmployees(
     viewer,
     setups.map((setup) => setup.company_id),
   );
-  // The gate may have locked while the database was answering: then nothing leaves.
-  if (!isUnlocked()) throw new TemplateLocked();
 
   const out = new Map<string, CompanyEmployees>();
   for (const setup of setups) {

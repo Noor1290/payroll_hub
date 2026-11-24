@@ -14,7 +14,6 @@ import type { SendFailure, SendOutcome } from "@/lib/bridge/hub";
 import type { ReceivedPayload, ResponseDataPayload, SendDataPayload } from "@/lib/bridge/protocol";
 import { formatCount, formatPeriod } from "@/lib/format";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
-import { isUnlocked } from "@/lib/unlock";
 import { whenSignedIn } from "./exchangeContext";
 
 const WHY: Record<SendFailure, string> = {
@@ -23,8 +22,6 @@ const WHY: Record<SendFailure, string> = {
   timeout: "The app didn't confirm it received the data (timeout).",
   rejected: "The app refused the data.",
 };
-
-const LOCKED = "The dashboard is locked. Confirm your password, then send again.";
 
 export function failureText(outcome: Extract<SendOutcome, { ok: false }>): string {
   if (outcome.reason === "rejected" && outcome.error) {
@@ -78,15 +75,9 @@ export async function deliver(
   beginTransfer(id, appId, name, payload, source);
   const toastId = notify ? toast.loading(`Sending ${count} to ${name}`) : undefined;
 
-  let outcome: SendOutcome;
-  if (source.gated && !isUnlocked()) {
-    // Rows from a saved run never leave while the password gate is locked.
-    outcome = { ok: false, id, reason: "unavailable", error: LOCKED };
-    finishTransfer(id, outcome, kept, "dashboard locked");
-  } else {
-    outcome = await bridge.send(appId, payload, { id });
-    finishTransfer(id, outcome, kept);
-  }
+  // No password for saved runs any more (hotfix 2): sign-in and row-level security protect them.
+  const outcome: SendOutcome = await bridge.send(appId, payload, { id });
+  finishTransfer(id, outcome, kept);
 
   if (!notify) return outcome;
   if (outcome.ok) {

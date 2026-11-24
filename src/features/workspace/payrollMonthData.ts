@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { APPS, PAYROLL_MONTH } from "@/config/apps.config";
-import { bridge, handleDataRequest, registerDataType } from "@/lib/bridge/bridge";
+import { PAYROLL_MONTH } from "@/config/apps.config";
+import { registerDataType } from "@/lib/bridge/bridge";
 import {
   jsonBytes,
   MONTH_BYTES,
@@ -26,7 +26,6 @@ import {
 } from "@/lib/supabase/payrollMonths";
 import { fetchMemberships, type Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
-import { isUnlocked, unlockState } from "@/lib/unlock";
 import {
   answerMeta,
   brnSchema,
@@ -44,14 +43,10 @@ import { answerRequest, recordSave } from "./deliver";
  *
  * National IDs and salaries, so (decision D5 of docs/MIGRATION_PLAN.md):
  *  - admins only. The database lets nobody else read a month or count them;
- *  - the password gate must be open, to read and to save, with NO dialog on each read: the app
- *    saves by itself a moment after typing stops, and reads whenever a month is opened. While
- *    the gate is locked, everything is refused at once as `locked` and nothing is read or
- *    stored. The app keeps what was typed in its memory, shows it as NOT saved, covers the
- *    month's table, and saves it once the gate opens again;
- *  - the app is told when the gate opens or locks (a `gate` row sent to it), so it can cover
- *    its table without waiting for a refusal, and it may ask the user to unlock (`unlock`),
- *    which opens the password prompt here and nothing else.
+ *  - no password (hotfix 2, 24 November 2026): read and saved with NO dialog, the app saves by
+ *    itself a moment after typing stops and reads whenever a month is opened. Sign-in and the
+ *    database's row-level security protect them. An app from before the hotfix may still ask
+ *    `gate` or `unlock`: it is told the months are open, and nothing else happens.
  *
  * Every exchange is a row in the transfer log, with counts and the month, never a value. A
  * saved month has no toast (the app saves by itself every few seconds and shows "Saved"); a
@@ -166,14 +161,6 @@ const saveSchema = z.discriminatedUnion("action", [
     }),
 ]);
 
-const READ_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked. Unlock it there to see the employees' figures.",
-);
-const SAVE_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked, so this was NOT saved. Unlock it there, and it is saved then.",
-);
 const NO_SUCH_COMPANY = refuse("not-found", "You have no company with that BRN in the dashboard.");
 const REVISION_NOT_KEPT = refuse(
   "not-found",
@@ -222,11 +209,7 @@ export async function gatedRead<T>(key: unknown[], read: () => Promise<T>): Prom
       gcTime: 0,
       retry: false,
     });
-    // The gate may have locked while the database was answering: then nothing leaves.
-    return isUnlocked() ? value : READ_LOCKED;
-  } catch (error) {
-    if (!isUnlocked()) return READ_LOCKED;
-    throw error;
+    return value;
   } finally {
     queryClient.removeQueries({ queryKey });
   }
@@ -234,7 +217,7 @@ export async function gatedRead<T>(key: unknown[], read: () => Promise<T>): Prom
 
 /** Answers the payroll app's questions about its months. */
 export async function answerPayrollMonthRequest(
-  appId: string,
+  _appId: string,
   payload: RequestDataPayload,
 ): Promise<ResponseDataPayload> {
   const params = paramsSchema.safeParse(payload.params ?? {});
@@ -251,18 +234,11 @@ export async function answerPayrollMonthRequest(
   });
   const command = params.data;
 
-  if (command.action === "gate") return answer([{ unlocked: isUnlocked() }]);
+  // No password for the apps any more (hotfix 2): the months are always open to an admin, and
+  // an app from before the hotfix that asks is told so.
+  if (command.action === "gate") return answer([{ unlocked: true }]);
   if (membership.role !== "admin") return notAdmin(membership.company.name);
-  if (command.action === "unlock") {
-    if (isUnlocked()) return answer([{ unlocked: true }]);
-    return handleDataRequest(appId, payload, {
-      what: "the employees' figures",
-      warning: "Unlocking sends nothing by itself.",
-      unlockOnly: true,
-      answer: async () => (isUnlocked() ? answer([{ unlocked: true }]) : READ_LOCKED),
-    });
-  }
-  if (!isUnlocked()) return READ_LOCKED;
+  if (command.action === "unlock") return answer([{ unlocked: true }]);
 
   try {
     const company = await companyFor(viewer, membership, command.company_brn);
@@ -325,7 +301,6 @@ export async function answerPayrollMonthRequest(
       }
     }
   } catch (error) {
-    if (!isUnlocked()) return READ_LOCKED;
     return refusalFor(error, PAYROLL_MONTHS_MIGRATION);
   }
 }
@@ -343,7 +318,6 @@ export async function savePayrollMonthFromApp(payload: SendDataPayload): Promise
   const { viewer, membership } = current;
   const command = row.data;
   if (membership.role !== "admin") return notAdmin(membership.company.name);
-  if (!isUnlocked()) return SAVE_LOCKED;
 
   try {
     if (command.action === "save") {
@@ -503,23 +477,6 @@ const savedCount = (result: Record<string, unknown>) =>
   result.action === "key-change"
     ? 1 + (Array.isArray(result.months) ? result.months.length : 0)
     : 1;
-
-// ---------- telling the app when the gate opens or locks ----------
-
-/** The apps that work with months, and so are told. */
-const MONTH_APPS = APPS.filter((app) => app.accepts.includes(PAYROLL_MONTH)).map((app) => app.id);
-
-let toldUnlocked = unlockState.get().unlocked;
-unlockState.subscribe(() => {
-  const { unlocked } = unlockState.get();
-  if (unlocked === toldUnlocked) return;
-  toldUnlocked = unlocked;
-  // Whether it is open: nothing else. An app that is not open, or does not listen, is not
-  // waited for; an app that opens later asks (`gate`).
-  for (const appId of MONTH_APPS) {
-    void bridge.send(appId, { dataType: PAYROLL_MONTH, rows: [{ action: "gate", unlocked }] });
-  }
-});
 
 registerDataType(PAYROLL_MONTH, {
   request: (appId, payload) =>

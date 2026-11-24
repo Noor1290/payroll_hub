@@ -2,7 +2,6 @@ import type { SendOutcome } from "@/lib/bridge/hub";
 import type { RefusalCode, SendDataPayload } from "@/lib/bridge/protocol";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { createStore } from "@/lib/store";
-import { registerLockCleanup } from "@/lib/unlock";
 
 /**
  * A record of what was sent where during this session.
@@ -227,9 +226,3 @@ export function clearTransferLog(): void {
 
 // The session ended: nothing about it stays.
 registerSessionCleanup(clearTransferLog);
-
-// The password gate locked: data that came from behind it can no longer be retried.
-registerLockCleanup(() => {
-  for (const [id, entry] of retained) if (entry.source.gated) retained.delete(id);
-  syncRetryFlags();
-});

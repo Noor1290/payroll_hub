@@ -7,17 +7,14 @@ import {
 } from "@/lib/supabase/payrollSetups";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
-import { isUnlocked } from "@/lib/unlock";
 import type { PreviewRow } from "./companyImport";
 import type { CurrentCompany } from "./companyUpdate";
 import type { EmployeeFileRow, ExistingCompany, NewCompany } from "./employeeImport";
 import { setupFields } from "./employeeSheet";
-import { TemplateLocked } from "./employeeTemplateData";
 
 // What the preview of the Employees sheet compares the file with (employeeImport.ts). Reads only,
 // and only for the user's admin companies the file names. Their saved months hold national IDs
-// and salaries, so they are read only while the password gate is open; if it locks while
-// reading, nothing is returned (TemplateLocked).
+// and salaries: admins only (row-level security).
 
 const normaliseBrn = (brn: string) => brn.replace(/\s/g, "").toUpperCase();
 
@@ -29,10 +26,6 @@ export function namedAdminCompanies(
   const wanted = new Set(rows.map((row) => row.brn).filter(Boolean));
   return admin.filter((company) => company.brn && wanted.has(normaliseBrn(company.brn)));
 }
-
-/** Whether reading the file's employees needs the password gate open: it names a company of yours. */
-export const needsUnlock = (rows: readonly EmployeeFileRow[], admin: readonly CurrentCompany[]) =>
-  namedAdminCompanies(rows, admin).length > 0;
 
 /**
  * For each of the user's admin companies the file names: its setup, its newest saved month,
@@ -46,7 +39,6 @@ export async function loadExistingCompanies(
   const named = namedAdminCompanies(rows, admin);
   const out = new Map<string, ExistingCompany>();
   if (named.length === 0) return out;
-  if (!isUnlocked()) throw new TemplateLocked();
 
   const ids = named.map((company) => company.id);
   const [setups, months, approved] = await Promise.all([
@@ -82,8 +74,6 @@ export async function loadExistingCompanies(
       referenced.set(company.id, new Map(found.map((month) => [month.period, month.employees])));
     }),
   );
-  // The gate may have locked while the database was answering: then nothing leaves.
-  if (!isUnlocked()) throw new TemplateLocked();
 
   for (const company of named) {
     const setup = setups.find((s) => s.company_id === company.id);

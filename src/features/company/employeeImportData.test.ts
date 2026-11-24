@@ -5,16 +5,15 @@ vi.mock("@/lib/supabase/client", async () => ({
   supabase: (await import("@/test/fakeClient")).fake.client,
 }));
 const { fake } = await import("@/test/fakeClient");
-const { loadExistingCompanies, needsUnlock } = await import("./employeeImportData");
+const { loadExistingCompanies } = await import("./employeeImportData");
 const { readCompaniesFile } = await import("./companyImport");
-const { TemplateLocked } = await import("./employeeTemplateData");
 const { grantUnlock, lock } = await import("@/lib/unlock");
 type CurrentCompany = import("./companyUpdate").CurrentCompany;
 type EmployeeFileRow = import("./employeeImport").EmployeeFileRow;
 type Call = import("@/test/fakeClient").Call;
 
 // What the Employees preview reads from the dashboard: only the user's admin companies the file
-// names, only while the password gate is open. TEST companies and fake employees only.
+// names (no password since hotfix 2). TEST companies and fake employees only.
 
 const VIEWER = { id: "00000000-0000-4000-8000-0000000000a1", isDemo: false };
 const SHARED = "20000000-0000-4000-8000-000000000001";
@@ -93,27 +92,11 @@ beforeEach(() => fake.reset(answer));
 afterEach(() => lock());
 
 describe("what the Employees preview reads", () => {
-  it("needs the password only when the file names a company of yours", () => {
-    expect(needsUnlock([row("C0000101")], [ALPHA, BETA])).toBe(true);
-    expect(needsUnlock([row("C0000999")], [ALPHA, BETA])).toBe(false);
-  });
-
-  it("reads nothing while the dashboard is locked", async () => {
-    await expect(loadExistingCompanies(VIEWER, [row("C0000101")], [ALPHA])).rejects.toBeInstanceOf(
-      TemplateLocked,
-    );
-    expect(fake.state.queries).toEqual([]);
-  });
-
-  it("returns nothing if the dashboard locks while reading", async () => {
-    grantUnlock(5);
-    fake.reset((calls) => {
-      if (fake.arg(calls, "from") === "payroll_runs") lock();
-      return answer(calls);
-    });
-    await expect(loadExistingCompanies(VIEWER, [row("C0000101")], [ALPHA])).rejects.toBeInstanceOf(
-      TemplateLocked,
-    );
+  it("reads with the password gate locked: no password for this any more (hotfix 2)", async () => {
+    lock();
+    const found = await loadExistingCompanies(VIEWER, [row("C0000101")], [ALPHA]);
+    expect(found.size).toBe(1);
+    expect(fake.state.queries.length).toBeGreaterThan(0);
   });
 
   it("reads only the companies the file names: setup, newest month, approval, and the older months its References point to", async () => {

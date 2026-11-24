@@ -19,18 +19,14 @@ describe("an app asking the dashboard for a saved run", () => {
     expect(dataRequests.get()[0]).toMatchObject({ appId: "pdf-editor", payload: REQUEST });
   });
 
-  it('answers "locked" if the dashboard is still locked at the deadline, instead of hanging', async () => {
+  it('answers "timeout" at the deadline, instead of hanging, even with the gate locked (hotfix 2)', async () => {
     const reply = handleDataRequest("pdf-editor", REQUEST);
 
     vi.advanceTimersByTime(REQUEST_DEADLINE_MS - 1);
     expect(dataRequests.get()).toHaveLength(1);
 
     vi.advanceTimersByTime(1);
-    await expect(reply).resolves.toMatchObject({
-      ok: false,
-      code: "locked",
-      error: expect.stringMatching(/locked/i),
-    });
+    await expect(reply).resolves.toMatchObject({ ok: false, code: "timeout" });
     expect(dataRequests.get()).toHaveLength(0);
   });
 
@@ -43,13 +39,6 @@ describe("an app asking the dashboard for a saved run", () => {
     const reply = handleDataRequest("pdf-editor", REQUEST);
     vi.advanceTimersByTime(REQUEST_DEADLINE_MS);
     await expect(reply).resolves.toMatchObject({ ok: false, code: "timeout" });
-  });
-
-  it('answers "locked" when the gate locked again while the request was waiting', async () => {
-    grantUnlock(1);
-    const reply = handleDataRequest("pdf-editor", REQUEST);
-    vi.advanceTimersByTime(REQUEST_DEADLINE_MS);
-    await expect(reply).resolves.toMatchObject({ ok: false, code: "locked" });
   });
 
   it("uses the user's answer when they give one, and cancels the deadline", async () => {

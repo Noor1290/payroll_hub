@@ -142,13 +142,11 @@ afterEach(() => {
 });
 
 describe("payslip-issue: issuing a month", () => {
-  it("refuses at once while the password gate is locked: nothing reaches the database", async () => {
-    expect(await issue()).toEqual({
-      ok: false,
-      code: "locked",
-      error: expect.stringMatching(/locked, so nothing was issued/),
-    });
-    expect(fake.state.queries).toHaveLength(0);
+  it("issues with the password gate locked: no password for the apps (hotfix 2)", async () => {
+    lock();
+    fake.reset(() => ({ data: ISSUED }));
+    expect(await issue()).toMatchObject({ ok: true, result: { period: "2026-09", issued: 3 } });
+    expect(fake.state.queries).toHaveLength(1);
   });
 
   it("issues the whole month in one call, exactly as sent, and answers with each revision", async () => {
@@ -431,32 +429,18 @@ describe("payslip-issue: loading a month", () => {
     expect(await askAndAgree()).toMatchObject({ ok: true, rows: [], meta: { period: "2026-09" } });
   });
 
-  it("keeps nothing in memory once the app has its answer, under a key that locking wipes", async () => {
-    expect(GATED_QUERY_KEYS).toContainEqual(["issued-payslips"]);
+  it("keeps nothing in memory once the app has its answer", async () => {
+    expect(GATED_QUERY_KEYS).not.toContainEqual(["issued-payslips"]);
     grantUnlock(10);
     fake.reset(() => ({ data: [stored()] }));
     await askAndAgree();
     expect(cached()).toHaveLength(0);
   });
 
-  it("sends nothing when the gate is locked at the moment the user's answer is acted on", async () => {
-    const answer = ask();
-    const waiting = dataRequests.get()[0]!;
-    waiting.respond(await waiting.question!.answer());
-    expect(await answer).toMatchObject({ ok: false, code: "locked" });
-    expect(fake.state.queries).toHaveLength(0);
-  });
-
-  it("sends nothing when the gate locks while the database is answering", async () => {
-    grantUnlock(10);
-    fake.reset(() => {
-      lock();
-      return { data: [stored()] };
-    });
-    const answer = await askAndAgree();
-    expect(answer).toMatchObject({ ok: false, code: "locked" });
-    expect(JSON.stringify(answer)).not.toMatch(/X00000/);
-    expect(cached()).toHaveLength(0);
+  it("answers with the password gate locked: the user's say-so is enough (hotfix 2)", async () => {
+    lock();
+    fake.reset(() => ({ data: [stored()] }));
+    expect(await askAndAgree()).toMatchObject({ ok: true, rows: [expect.anything()] });
   });
 
   it("checks the company and the role again when the user agrees: they may have changed meanwhile", async () => {
@@ -587,16 +571,16 @@ describe("payslip-issue over the bridge: a prompt for a read, the gate for both"
     expect(seen()).not.toMatch(/X00000|26747|25000|502\.8|Net pay|rounding/);
   });
 
-  it("refuses a save while locked over the bridge too, says so in the dashboard, and stores nothing", async () => {
+  it("issues a month sent over the bridge with the password gate locked, with no dialog (hotfix 2)", async () => {
+    lock();
+    fake.reset(() => ({ data: ISSUED }));
     const app = connect();
     app.say("send-data", "save-00000002", { dataType: "payslip-issue", rows: [ISSUE] });
     await vi.waitFor(() => expect(app.sent("received")).toHaveLength(1));
 
-    expect(app.sent("received")[0]!.payload).toMatchObject({ ok: false, code: "locked" });
+    expect(app.sent("received")[0]!.payload).toMatchObject({ ok: true });
     expect(dataRequests.get()).toHaveLength(0); // no dialog for a save
-    expect(fake.state.queries).toHaveLength(0);
-    expect(transferLog.get()[0]).toMatchObject({ status: "failed", reason: "dashboard locked" });
-    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(fake.state.queries).toHaveLength(1);
   });
 
   it("passes the position of the refused payslip on to the app, and keeps it out of the log", async () => {
@@ -615,23 +599,24 @@ describe("payslip-issue over the bridge: a prompt for a read, the gate for both"
     expect(seen()).not.toMatch(/X00000/);
   });
 
-  it("asks the user for a read, shows the unlock form while locked, and sends only on their say-so", async () => {
+  it("asks the user for a read, with no password, and sends only on their say-so", async () => {
     fake.reset(() => ({ data: [stored(), stored({ national_id: NIC_2 })] }));
     const app = connect();
     showDialogs();
     app.say("request-data", "request-000001", { dataType: "payslip-issue", params: LOAD });
 
-    // Locked: the dialog explains and offers the password form, and there is nothing to send yet.
+    // The gate is locked: the dialog asks no password (hotfix 2), and nothing is read yet.
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog.textContent).toContain("the payslips issued for September 2026");
     expect(dialog.textContent).toContain("ABC Co Ltd");
-    expect(dialog.textContent).toMatch(/locked/i);
-    expect(screen.queryByRole("button", { name: /^Send / })).toBeNull();
+    expect(screen.queryByLabelText(/password/i)).toBeNull();
     expect(app.sent("response-data")).toHaveLength(0);
     expect(fake.state.queries).toHaveLength(0);
 
-    grantUnlock(10);
     const send = await screen.findByRole("button", { name: /Send the payslips issued for/ });
+    // Hotfix 4: the buttons sit in the shared footer that wraps and stacks, so Deny stays inside.
+    expect(send.parentElement!.classList.contains("dialog-actions")).toBe(true);
+    expect(screen.getByRole("button", { name: "Deny" }).parentElement).toBe(send.parentElement);
     expect(dialog.textContent).toMatch(/national IDs and pay/);
     expect(fake.state.queries).toHaveLength(0);
     fireEvent.click(send);

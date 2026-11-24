@@ -22,7 +22,6 @@ import {
 import { fetchMonthList } from "@/lib/supabase/payrollMonths";
 import { fetchCompanySetup, fetchSharedSetup } from "@/lib/supabase/payrollSetups";
 import { fetchMemberships } from "@/lib/supabase/queries";
-import { isUnlocked } from "@/lib/unlock";
 import {
   answerMeta,
   brnSchema,
@@ -133,14 +132,6 @@ const saveSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-const READ_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked. Unlock it there to see the employees' figures.",
-);
-const SAVE_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked, so this was NOT saved. Unlock it there, and it is saved then.",
-);
 const NOT_ADMIN = refuse("forbidden", "Only an admin of that company can import its months.");
 
 /** For each BRN of the file: what the dashboard has, for the preview. */
@@ -152,7 +143,6 @@ export async function answerPayrollImportRequest(
   const current = exchangeContextFor(params.data.brn);
   if ("ok" in current) return current;
   const { viewer, membership } = current;
-  if (!isUnlocked()) return READ_LOCKED;
   const { from, to } = params.data;
   const wanted = new Set(monthsInRange(from, to));
 
@@ -210,11 +200,8 @@ export async function answerPayrollImportRequest(
           .map((run) => run.period.slice(0, 7)),
       });
     }
-    // The gate may have locked while the database was answering: then nothing leaves.
-    if (!isUnlocked()) return READ_LOCKED;
     return { ok: true, dataType: PAYROLL_IMPORT, rows, meta: answerMeta(membership) };
   } catch (error) {
-    if (!isUnlocked()) return READ_LOCKED;
     return refusalFor(error, PAYROLL_IMPORT_MIGRATION);
   }
 }
@@ -228,7 +215,6 @@ export async function savePayrollImportFromApp(payload: SendDataPayload): Promis
   const command = row.data;
   if (command.action === "summary") return { ok: true, result: command };
   const { viewer } = current;
-  if (!isUnlocked()) return SAVE_LOCKED;
 
   if (command.months.some((m) => jsonBytes(m.employees) > MONTH_BYTES)) {
     return refuse("too-large", "A month is larger than the dashboard accepts (1 MB).");

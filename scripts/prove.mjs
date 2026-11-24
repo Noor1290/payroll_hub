@@ -528,20 +528,22 @@ const BREAKS = [
     mustFail: "never sends a user id with issued payslips",
   },
   {
-    what: "A month is issued while the password gate is locked",
+    what: "Hotfix 2: issuing is refused again while the password gate is locked",
     file: "src/features/workspace/appData.ts",
-    find: "  if (!isUnlocked()) return SAVE_LOCKED;\n",
-    replace: "",
+    find: "  const { period, payslips } = row.data;\n  const seen = new Set<string>();",
+    replace:
+      '  const { period, payslips } = row.data;\n  if (!(await import("@/lib/unlock")).isUnlocked()) return refuse("locked", "Locked.");\n  const seen = new Set<string>();',
     test: "src/features/workspace/appDataIssue.test.tsx",
-    mustFail: "refuses at once while the password gate is locked",
+    mustFail: "issues with the password gate locked",
   },
   {
-    what: "Issued payslips are read while the password gate is locked",
+    what: "Hotfix 2: issued payslips are not read again while the password gate is locked",
     file: "src/features/workspace/appData.ts",
-    find: '  if ("ok" in current) return current;\n  if (!isUnlocked()) return READ_LOCKED;\n\n  const { viewer, membership } = current;',
-    replace: '  if ("ok" in current) return current;\n\n  const { viewer, membership } = current;',
+    find: "  const { company } = membership;\n  // Read through the query cache, and dropped from it once the app has its answer.",
+    replace:
+      '  const { company } = membership;\n  if (!(await import("@/lib/unlock")).isUnlocked()) return refuse("locked", "Locked.");\n  // Read through the query cache, and dropped from it once the app has its answer.',
     test: "src/features/workspace/appDataIssue.test.tsx",
-    mustFail: "sends nothing when the gate is locked at the moment the user's answer is acted on",
+    mustFail: "answers with the password gate locked",
   },
   {
     what: "Issued payslips are sent without asking the user, once the gate is open",
@@ -555,9 +557,9 @@ const BREAKS = [
   {
     what: "The company and the role are not checked again when the user agrees",
     file: "src/features/workspace/appData.ts",
-    find: '  const current = adminContext(brn);\n  if ("ok" in current) return current;\n  if (!isUnlocked()) return READ_LOCKED;',
+    find: 'async function loadIssued(brn: string, period: string): Promise<ResponseDataPayload> {\n  const current = adminContext(brn);\n  if ("ok" in current) return current;',
     replace:
-      "  const current = exchangeContext.get();\n  if (!current) return READ_LOCKED;\n  if (!isUnlocked()) return READ_LOCKED;",
+      'async function loadIssued(brn: string, period: string): Promise<ResponseDataPayload> {\n  const current = exchangeContext.get();\n  if (!current) return refuse("unavailable", "Signed out.");',
     test: "src/features/workspace/appDataIssue.test.tsx",
     mustFail: "checks the company and the role again when the user agrees",
   },
@@ -622,10 +624,11 @@ const BREAKS = [
       "issues a month sent by the app, answers with the result, and logs a count without values",
   },
   {
-    what: "Locking no longer wipes issued payslips (the query key is not gated)",
+    what: "Hotfix 2: locking the Data explorer wipes issued payslips again",
     file: "src/lib/queryClient.ts",
-    find: "  [ISSUED_PAYSLIPS_KEY],\n",
-    replace: "",
+    find: 'export const GATED_QUERY_KEYS = [["run-entries"], ["db"]] as const;',
+    replace:
+      'export const GATED_QUERY_KEYS = [["run-entries"], ["db"], [ISSUED_PAYSLIPS_KEY]] as const;',
     test: "src/features/workspace/appDataIssue.test.tsx",
     mustFail: "keeps nothing in memory once the app has its answer",
   },
@@ -1084,18 +1087,19 @@ const BREAKS = [
     mustFail: "deletes from every table that belongs to a company",
   },
   {
-    what: "The dashboard reads months while its password gate is locked",
+    what: "Hotfix 2: months are refused again while the password gate is locked",
     file: "src/features/workspace/payrollMonthData.ts",
-    find: "  if (!isUnlocked()) return READ_LOCKED;\n\n  try {",
-    replace: "  try {",
+    find: '  if (command.action === "unlock") return answer([{ unlocked: true }]);\n',
+    replace:
+      '  if (command.action === "unlock") return answer([{ unlocked: true }]);\n  if (!(await import("@/lib/unlock")).isUnlocked()) return refuse("locked", "Locked.");\n',
     test: "src/features/workspace/payrollMonthData.test.ts",
-    mustFail: "refuses every read and every save at once as locked",
+    mustFail: "reads and saves every month without the password",
   },
   {
     what: "A viewer is answered months",
     file: "src/features/workspace/payrollMonthData.ts",
-    find: '  if (command.action === "gate") return answer([{ unlocked: isUnlocked() }]);\n  if (membership.role !== "admin") return notAdmin(membership.company.name);',
-    replace: '  if (command.action === "gate") return answer([{ unlocked: isUnlocked() }]);',
+    find: '  if (command.action === "gate") return answer([{ unlocked: true }]);\n  if (membership.role !== "admin") return notAdmin(membership.company.name);',
+    replace: '  if (command.action === "gate") return answer([{ unlocked: true }]);',
     test: "src/features/workspace/payrollMonthData.test.ts",
     mustFail: "a viewer is refused everything but 'gate'",
   },
@@ -1108,20 +1112,22 @@ const BREAKS = [
     mustFail: "no toast for a saved month",
   },
   {
-    what: "The app is told about the gate on every tick, not only when it opens or locks",
+    what: "Hotfix 2: the payroll app is told the months are locked when the gate is",
     file: "src/features/workspace/payrollMonthData.ts",
-    find: "  if (unlocked === toldUnlocked) return;\n",
-    replace: "",
+    find: '  if (command.action === "gate") return answer([{ unlocked: true }]);',
+    replace:
+      '  if (command.action === "gate") return answer([{ unlocked: (await import("@/lib/unlock")).isUnlocked() }]);',
     test: "src/features/workspace/payrollMonthData.test.ts",
-    mustFail: "only when that changes",
+    mustFail: "says it is open, to any member",
   },
   {
-    what: "The unlock prompt waits for a Send instead of answering once unlocked",
-    file: "src/features/workspace/BridgeDialogs.tsx",
-    find: "    if (!unlockOnly || !unlocked || answered.current || !user || !current) return;\n",
-    replace: "    return;\n",
-    test: "src/features/workspace/payrollMonthUnlock.test.tsx",
-    mustFail: "asks only for the password",
+    what: "Hotfix 2: 'unlock' from an older app waits for the password again",
+    file: "src/features/workspace/payrollMonthData.ts",
+    find: '  if (command.action === "unlock") return answer([{ unlocked: true }]);',
+    replace:
+      '  if (command.action === "unlock") return answer([{ unlocked: (await import("@/lib/unlock")).isUnlocked() }]);',
+    test: "src/features/workspace/payrollMonthData.test.ts",
+    mustFail: "'unlock', from an app of before the hotfix",
   },
   {
     what: "An app that asks before the dashboard knows who is signed in is refused at once (known issue 4)",
@@ -1278,7 +1284,7 @@ const BREAKS = [
     what: "Batch: another template's own values are sent",
     file: "src/features/workspace/payslipBatchData.ts",
     find: "fetchTemplateValues(viewer, company.id, chosen.template.template_id)",
-    replace: "fetchTemplateValues(viewer, company.id, \"00000000-0000-4000-8000-000000000000\")",
+    replace: 'fetchTemplateValues(viewer, company.id, "00000000-0000-4000-8000-000000000000")',
     test: "src/features/workspace/payslipBatch.test.tsx",
     mustFail: "gives the company's own values for its template",
   },
@@ -1399,12 +1405,13 @@ const BREAKS = [
     mustFail: "is refused for a company or a month that was not allowed",
   },
   {
-    what: "Several companies: locking the gate keeps what was allowed",
+    what: "Several companies: a load is refused again while the gate is locked (hotfix 2)",
     file: "src/features/workspace/payslipBatchData.ts",
-    find: "registerLockCleanup(forgetBatchAllowed);\n",
-    replace: "",
+    find: "      return NOT_ALLOWED;\n    }\n    const target",
+    replace:
+      '      return NOT_ALLOWED;\n    }\n    if (!(await import("@/lib/unlock")).isUnlocked()) return refuse("locked", "Locked.");\n    const target',
     test: "src/features/workspace/payslipBatch.test.tsx",
-    mustFail: "locking forgets what was allowed",
+    mustFail: "loads with the password gate locked",
   },
   {
     what: "The check lists the hub-owned date as a payroll column",
@@ -1432,12 +1439,13 @@ const BREAKS = [
     mustFail: "names every company, however many",
   },
   {
-    what: "Excel of several companies: locking the gate keeps what was allowed",
+    what: "Excel of several companies: a load is refused again while the gate is locked (hotfix 2)",
     file: "src/features/workspace/payrollBatchData.ts",
-    find: "registerLockCleanup(forgetPayrollBatchAllowed);\n",
-    replace: "",
+    find: "      return NOT_ALLOWED;\n    }\n    const target",
+    replace:
+      '      return NOT_ALLOWED;\n    }\n    if (!(await import("@/lib/unlock")).isUnlocked()) return refuse("locked", "Locked.");\n    const target',
     test: "src/features/workspace/payrollBatch.test.tsx",
-    mustFail: "locking forgets what was allowed",
+    mustFail: "loads with the password gate locked",
   },
   {
     what: "Excel of several companies: a load for a former admin is answered",
@@ -1474,12 +1482,13 @@ const BREAKS = [
     mustFail: "refuses at once, storing nothing",
   },
   {
-    what: "Import: a company is saved while the gate is locked",
+    what: "Hotfix 2: an import is refused again while the gate is locked",
     file: "src/features/workspace/payrollImportData.ts",
-    find: "  if (!isUnlocked()) return SAVE_LOCKED;",
-    replace: "",
+    find: '  if (command.action === "summary") return { ok: true, result: command };\n  const { viewer } = current;',
+    replace:
+      '  if (command.action === "summary") return { ok: true, result: command };\n  if (!(await import("@/lib/unlock")).isUnlocked()) return refuse("locked", "Locked.");\n  const { viewer } = current;',
     test: "src/features/workspace/payrollImport.test.ts",
-    mustFail: "refuses at once, storing nothing",
+    mustFail: "saves with the gate locked (hotfix 2)",
   },
   {
     what: "Import: a company the user already has is made again",
@@ -1564,12 +1573,12 @@ const BREAKS = [
     mustFail: "is not shown to a viewer",
   },
   {
-    what: "Members: changes are open with the gate locked",
+    what: "Hotfix 2: members cannot be changed again without the password",
     file: "src/features/profile/MembersCard.tsx",
-    find: "disabled={busy || !unlocked || you}",
-    replace: "disabled={busy || you}",
+    find: "disabled={busy || you}",
+    replace: "disabled={busy || you || true}",
     test: "src/features/profile/MembersCard.test.tsx",
-    mustFail: "with the gate locked",
+    mustFail: "members can be added, changed and removed, with no password",
   },
   {
     what: "P5: a run keeps no order",
@@ -1678,18 +1687,19 @@ const BREAKS = [
   {
     what: "MRA returns: a load is answered without being allowed",
     file: "src/features/workspace/mraBatchData.ts",
-    find: "      return NOT_ALLOWED;\n    }\n    if (!isUnlocked()) return READ_LOCKED;",
-    replace: "    }\n    if (!isUnlocked()) return READ_LOCKED;",
+    find: "      return NOT_ALLOWED;\n    }\n    const target",
+    replace: "    }\n    const target",
     test: "src/features/workspace/mraBatch.test.tsx",
     mustFail: "is refused when nothing was allowed",
   },
   {
-    what: "MRA returns: a load is answered with the gate locked",
+    what: "MRA returns: a load is refused again while the gate is locked (hotfix 2)",
     file: "src/features/workspace/mraBatchData.ts",
-    find: "registerLockCleanup(forgetMraBatchAllowed);\n",
-    replace: "",
+    find: "      return NOT_ALLOWED;\n    }\n    const target",
+    replace:
+      '      return NOT_ALLOWED;\n    }\n    if (!(await import("@/lib/unlock")).isUnlocked()) return refuse("locked", "Locked.");\n    const target',
     test: "src/features/workspace/mraBatch.test.tsx",
-    mustFail: "locking forgets what was allowed",
+    mustFail: "loads with the password gate locked",
   },
   {
     what: "MRA returns: a load for a former admin is answered",
@@ -2104,20 +2114,13 @@ const BREAKS = [
     mustFail: "never offers a formula column",
   },
   {
-    what: "Employees template: the months are read while the dashboard is locked",
+    what: "Hotfix 2: the employees template needs the password again",
     file: "src/features/company/employeeTemplateData.ts",
-    find: "  if (!isUnlocked()) throw new TemplateLocked();\n  const ids",
-    replace: "  const ids",
+    find: "  const ids = companies.map((company) => company.id);",
+    replace:
+      '  if (!(await import("@/lib/unlock")).isUnlocked()) throw new Error("Locked.");\n  const ids = companies.map((company) => company.id);',
     test: "src/features/company/employeeTemplate.test.ts",
-    mustFail: "reads nothing while the dashboard is locked",
-  },
-  {
-    what: "Employees template: a lock while reading is not noticed",
-    file: "src/features/company/employeeTemplateData.ts",
-    find: "then nothing leaves.\n  if (!isUnlocked()) throw new TemplateLocked();",
-    replace: "then nothing leaves.",
-    test: "src/features/company/employeeTemplate.test.ts",
-    mustFail: "returns nothing if the dashboard locks while the months are being read",
+    mustFail: "reads with the password gate locked",
   },
   {
     what: "Employees template: an older month is taken instead of the newest",
@@ -2128,19 +2131,21 @@ const BREAKS = [
     mustFail: "takes each company's newest saved month",
   },
   {
-    what: "Employees template: the dialog downloads without asking for the password",
+    what: "Hotfix 2: the template with my companies waits for the password again",
     file: "src/features/company/ImportCompaniesDialog.tsx",
-    find: '    if (!isUnlocked()) return setFilled({ status: "unlock" });',
-    replace: "",
+    find: '    setFilled({ status: "preparing" });',
+    replace:
+      '    if (!(await import("@/lib/unlock")).isUnlocked()) return;\n    setFilled({ status: "preparing" });',
     test: "src/features/company/ImportCompaniesDialog.test.tsx",
-    mustFail: "asks for the password before the template with my companies",
+    mustFail: "downloads the template with my companies without asking for the password",
   },
   // ---------- The Employees sheet uploaded: reading, checks, preview (EMPLOYEES_IMPORT_PLAN.md, Stage 2) ----------
   {
     what: "Employees import: a change to an employee starts ticked",
     file: "src/features/company/employeeImport.ts",
     find: '      status: changes.length > 0 ? "update" : "same",\n      ticked: false,',
-    replace: '      status: changes.length > 0 ? "update" : "same",\n      ticked: changes.length > 0,',
+    replace:
+      '      status: changes.length > 0 ? "update" : "same",\n      ticked: changes.length > 0,',
     test: "src/features/company/employeeImport.test.ts",
     mustFail: "matches by ID: a change is an update, unticked",
   },
@@ -2209,20 +2214,13 @@ const BREAKS = [
     mustFail: "refuses more than 5000 employees",
   },
   {
-    what: "Employees import: the months are read while the dashboard is locked",
+    what: "Hotfix 2: the employees preview needs the password again",
     file: "src/features/company/employeeImportData.ts",
-    find: "  if (!isUnlocked()) throw new TemplateLocked();\n\n  const ids",
-    replace: "  const ids",
+    find: "  const ids = named.map((company) => company.id);",
+    replace:
+      '  if (!(await import("@/lib/unlock")).isUnlocked()) throw new Error("Locked.");\n  const ids = named.map((company) => company.id);',
     test: "src/features/company/employeeImportData.test.ts",
-    mustFail: "reads nothing while the dashboard is locked",
-  },
-  {
-    what: "Employees import: a lock while the months are read is not noticed",
-    file: "src/features/company/employeeImportData.ts",
-    find: "then nothing leaves.\n  if (!isUnlocked()) throw new TemplateLocked();",
-    replace: "then nothing leaves.",
-    test: "src/features/company/employeeImportData.test.ts",
-    mustFail: "returns nothing if the dashboard locks while reading",
+    mustFail: "reads with the password gate locked",
   },
 
   // ---------- Saving the ticked employees and the report (EMPLOYEES_IMPORT_PLAN.md, Stage 3) ----------
@@ -2246,7 +2244,8 @@ const BREAKS = [
     what: "Employees import: employees of the month not in the file are dropped",
     file: "src/features/company/employeeSave.ts",
     find: "  const employees = saved.map((employee) => {",
-    replace: "  const employees = saved.filter((e) => patches.has(String(e.id))).map((employee) => {",
+    replace:
+      "  const employees = saved.filter((e) => patches.has(String(e.id))).map((employee) => {",
     test: "src/features/company/employeeSave.test.ts",
     mustFail: "keeps everyone, applies only the ticked changes",
   },
@@ -2278,7 +2277,8 @@ const BREAKS = [
     what: "Employees import: the save is not checked against the month seen in the preview",
     file: "src/features/company/employeeSave.ts",
     find: "              replace: newest !== null,",
-    replace: "              replace: newest !== null,\n              ...(newest ? { expected_revision: newest.revision + 1 } : {}),",
+    replace:
+      "              replace: newest !== null,\n              ...(newest ? { expected_revision: newest.revision + 1 } : {}),",
     test: "src/features/company/employeeSave.db.test.ts",
     mustFail: "adds and updates in the newest month as a new revision",
   },
@@ -2360,7 +2360,8 @@ const BREAKS = [
     what: "company-list: an app learns about another app's lists",
     file: "src/features/companyLists/companyListData.ts",
     find: "        lists: lists.filter((list) =>\n          on.some((row) => row.company_id === company.id && row.list === list),\n        ),",
-    replace: "        lists: on.filter((row) => row.company_id === company.id).map((row) => row.list),",
+    replace:
+      "        lists: on.filter((row) => row.company_id === company.id).map((row) => row.list),",
     test: "src/features/companyLists/companyListData.test.ts",
     mustFail: "lists every company of the user with only the asking app's lists",
   },
@@ -2387,6 +2388,49 @@ const BREAKS = [
     replace: "    onSave(changes, choice);",
     test: "src/features/companyLists/CompanyPicker.test.tsx",
     mustFail: "Done with nothing changed saves nothing and reloads nothing",
+  },
+  {
+    what: "Hotfix 2: a saved run is held back again while the gate is locked",
+    file: "src/features/workspace/deliver.ts",
+    find: "  const outcome: SendOutcome = await bridge.send(appId, payload, { id });",
+    replace:
+      '  const outcome: SendOutcome =\n    source.gated && !(await import("@/lib/unlock")).isUnlocked()\n      ? { ok: false, id, reason: "unavailable" }\n      : await bridge.send(appId, payload, { id });',
+    test: "src/features/transfer/transferLog.test.ts",
+    mustFail: "is sent with the gate locked",
+  },
+  {
+    what: "Hotfix 2: an unanswered request is called locked again",
+    file: "src/lib/bridge/bridge.ts",
+    find: '        code: "timeout",\n        error: "Nobody answered the request in the dashboard in time.",',
+    replace:
+      '        code: "locked",\n        error: "Nobody answered the request in the dashboard in time.",',
+    test: "src/lib/bridge/requests.test.ts",
+    mustFail: 'answers "timeout" at the deadline',
+  },
+  {
+    what: "Hotfix 2: sensitive details stay revealed after the session ends",
+    file: "src/features/profile/ProfilePage.tsx",
+    find: "        setRevealed(NONE);\n        setDialog((open) => (open?.detail?.is_sensitive ? null : open));\n      }),",
+    replace: "        setDialog((open) => (open?.detail?.is_sensitive ? null : open));\n      }),",
+    test: "src/features/profile/ProfilePage.test.tsx",
+    mustFail: "leave memory when the session ends",
+  },
+  {
+    what: "Hotfix 4: a dialog's buttons stop wrapping",
+    file: "src/styles/index.css",
+    find: ".dialog-actions {\n  display: flex;\n  flex-wrap: wrap;",
+    replace: ".dialog-actions {\n  display: flex;\n  flex-wrap: nowrap;",
+    test: "src/components/ui/dialogActions.test.ts",
+    mustFail: "wraps, lets a long label wrap",
+  },
+  {
+    what: "Hotfix 4: the request window's buttons leave the shared footer",
+    file: "src/features/workspace/BridgeDialogs.tsx",
+    find: '          <div className="dialog-actions mt-6">\n            <Button autoFocus disabled={busy} onClick={deny}>',
+    replace:
+      '          <div className="mt-6 flex justify-end gap-2">\n            <Button autoFocus disabled={busy} onClick={deny}>',
+    test: "src/features/workspace/appDataIssue.test.tsx",
+    mustFail: "asks the user for a read, with no password",
   },
 ];
 

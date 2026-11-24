@@ -41,7 +41,7 @@ export function ConfirmDialog({
           <Dialog.Description asChild>
             <div className="mt-2 space-y-2 text-sm text-muted">{children}</div>
           </Dialog.Description>
-          <div className="mt-6 flex justify-end gap-2">
+          <div className="dialog-actions mt-6">
             <Dialog.Close asChild>
               <Button autoFocus disabled={busy}>
                 {cancelLabel}

@@ -8,7 +8,7 @@ const { fake } = await import("@/test/fakeClient");
 const { buildFilledTemplate, buildTemplate } = await import("./companyImport");
 const { CATEGORIES, employeeCounts, employeesSheet, referenceOf, setupFields, sheetColumns } =
   await import("./employeeSheet");
-const { fetchTemplateEmployees, TemplateLocked } = await import("./employeeTemplateData");
+const { fetchTemplateEmployees } = await import("./employeeTemplateData");
 const { grantUnlock, lock } = await import("@/lib/unlock");
 type CurrentCompany = import("./companyUpdate").CurrentCompany;
 type CompanyEmployees = import("./companyImport").CompanyEmployees;
@@ -349,23 +349,11 @@ describe("reading the employees for the template", () => {
     return { data: [] };
   };
 
-  it("reads nothing while the dashboard is locked", async () => {
+  it("reads with the password gate locked: no password for this any more (hotfix 2)", async () => {
+    lock();
     fake.reset(answer);
-    await expect(fetchTemplateEmployees(VIEWER, [ALPHA, BETA])).rejects.toBeInstanceOf(
-      TemplateLocked,
-    );
-    expect(fake.state.queries).toEqual([]);
-  });
-
-  it("returns nothing if the dashboard locks while the months are being read", async () => {
-    grantUnlock(5);
-    fake.reset((calls) => {
-      if (fake.arg(calls, "from") === "payroll_months") lock();
-      return answer(calls);
-    });
-    await expect(fetchTemplateEmployees(VIEWER, [ALPHA, BETA])).rejects.toBeInstanceOf(
-      TemplateLocked,
-    );
+    const found = await fetchTemplateEmployees(VIEWER, [ALPHA, BETA]);
+    expect(found.get(ALPHA.id)?.period).toBe("2026-10-01");
   });
 
   it("takes each company's newest saved month, in a few grouped requests", async () => {

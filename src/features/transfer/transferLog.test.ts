@@ -176,12 +176,12 @@ describe("retrying a failed transfer", () => {
   });
 });
 
-describe("data from a saved run (behind the password gate)", () => {
-  it("is not sent while the gate is locked", async () => {
+describe("data from a saved run (no password since hotfix 2)", () => {
+  it("is sent with the gate locked", async () => {
+    send.mockImplementation(async (_a, _p, { id }) => ok(id));
     const outcome = await deliver("pdf-editor", PAYLOAD, { source: FROM_DATABASE });
-    expect(send).not.toHaveBeenCalled();
-    expect(outcome).toMatchObject({ ok: false, reason: "unavailable" });
-    expect(transferLog.get()[0]).toMatchObject({ status: "failed", reason: "dashboard locked" });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(outcome).toMatchObject({ ok: true });
   });
 
   it("is sent while the gate is open", async () => {
@@ -193,7 +193,7 @@ describe("data from a saved run (behind the password gate)", () => {
     expect(transferLog.get()[0]!.from).toBe("Database, September 2026");
   });
 
-  it("can no longer be retried once the gate locks; data from an app still can", async () => {
+  it("can still be retried once the gate locks, as data from an app can", async () => {
     grantUnlock(10);
     send.mockImplementation(async (_a, _p, { id }) => failed(id));
     const fromDatabase = await deliver("pdf-editor", PAYLOAD, { source: FROM_DATABASE });
@@ -201,10 +201,10 @@ describe("data from a saved run (behind the password gate)", () => {
 
     lock();
 
-    expect(retryTransfer(fromDatabase.id)).toBeNull();
     const byId = Object.fromEntries(transferLog.get().map((entry) => [entry.id, entry.canRetry]));
-    expect(byId[fromDatabase.id]).toBe(false);
+    expect(byId[fromDatabase.id]).toBe(true);
     expect(byId[fromApp.id]).toBe(true);
+    expect(retryTransfer(fromDatabase.id)).not.toBeNull();
   });
 });
 

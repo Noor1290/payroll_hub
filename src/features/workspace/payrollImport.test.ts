@@ -208,14 +208,9 @@ describe("check: what the dashboard has for each BRN of the file", () => {
     expect(JSON.stringify(answer)).not.toContain(ME);
   });
 
-  it("is refused while the gate is locked, for another selected company, and for a bad range", async () => {
+  it("answers with the gate locked (hotfix 2); is refused for another selected company and a bad range", async () => {
     lock();
-    expect(await check({ ...CHECK, companies: ["C1234567"] })).toMatchObject({
-      ok: false,
-      code: "locked",
-    });
-    expect(fake.state.queries).toHaveLength(0);
-    grantUnlock(10);
+    expect(await check({ ...CHECK, companies: ["C1234567"] })).toMatchObject({ ok: true });
     expect(await check({ ...CHECK, brn: "C3333333", companies: ["C1234567"] })).toMatchObject({
       ok: false,
       code: "wrong-company",
@@ -295,15 +290,16 @@ describe("company: one company of the file, all or nothing", () => {
     });
   });
 
-  it("refuses at once, storing nothing: a company the user only views, the gate locked", async () => {
+  it("refuses at once, storing nothing, a company the user only views; saves with the gate locked (hotfix 2)", async () => {
     expect(await save({ ...COMPANY, company_brn: "C2222222" })).toEqual({
       ok: false,
       code: "forbidden",
       error: "Only an admin of that company can import its months.",
     });
-    lock();
-    expect(await save(COMPANY)).toMatchObject({ ok: false, code: "locked" });
     expect(rpcs()).toHaveLength(0);
+    lock();
+    expect(await save(COMPANY)).toMatchObject({ ok: true });
+    expect(rpcs()).toHaveLength(1);
   });
 
   it("says plainly when the database refuses an approved month or a BRN in use", async () => {

@@ -117,10 +117,6 @@ const ADMIN = membership(ABC, "ABC Co Ltd", "admin");
 const VIEWER = membership(ABC, "ABC Co Ltd", "viewer");
 
 const reveal = () => screen.getByRole("button", { name: "Reveal Bank reference" });
-const submitPassword = (dialog: HTMLElement) => {
-  fireEvent.change(within(dialog).getByLabelText("Password"), { target: { value: "pw" } });
-  fireEvent.submit(within(dialog).getByLabelText("Password").closest("form")!);
-};
 
 beforeEach(() => {
   // An admin is sent both rows; a viewer is sent only what the database lets them read.
@@ -158,66 +154,18 @@ describe("sensitive details", () => {
     expect(sensitiveValues).not.toHaveBeenCalled();
   });
 
-  it("need the password before they are revealed", async () => {
+  it("are revealed without asking for the password (hotfix 2), even with the gate locked", async () => {
     render(<Page current={ADMIN} />);
     await screen.findByText("Bank reference");
     fireEvent.click(reveal());
 
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Confirm your password")).toBeTruthy();
-    expect(sensitiveValues).not.toHaveBeenCalled();
-    expect(screen.queryByText(SECRET)).toBeNull();
-
-    submitPassword(dialog);
     expect(await screen.findByText(SECRET)).toBeTruthy();
-    expect(verify).toHaveBeenCalledWith(auth.user, "pw");
-    expect(isUnlocked()).toBe(true);
     expect(screen.queryByRole("dialog")).toBeNull();
-  });
-
-  it("stay hidden when the password is wrong", async () => {
-    verify.mockResolvedValue({
-      kind: "invalid-credentials",
-      title: "Wrong",
-      message: "Try again.",
-    });
-    render(<Page current={ADMIN} />);
-    await screen.findByText("Bank reference");
-    fireEvent.click(reveal());
-    submitPassword(screen.getByRole("dialog"));
-
-    expect((await within(screen.getByRole("dialog")).findByRole("alert")).textContent).toContain(
-      "Wrong",
+    expect(verify).not.toHaveBeenCalled();
+    expect(isUnlocked()).toBe(false);
+    expect(GATED_QUERY_KEYS.map((key) => key[0] as string)).not.toContain(
+      "company-details-sensitive",
     );
-    expect(sensitiveValues).not.toHaveBeenCalled();
-    expect(screen.queryByText(SECRET)).toBeNull();
-  });
-
-  it("re-mask when the gate locks, and the value leaves memory", async () => {
-    grantUnlock(10);
-    render(<Page current={ADMIN} />);
-    await screen.findByText("Bank reference");
-    fireEvent.click(reveal());
-    expect(await screen.findByText(SECRET)).toBeTruthy();
-    expect(GATED_QUERY_KEYS.some((key) => key[0] === "company-details-sensitive")).toBe(true);
-
-    act(() => lock("timeout"));
-
-    expect(screen.queryByText(SECRET)).toBeNull();
-    expect(queryClient.getQueryData(["company-details-sensitive", ABC, USER])).toBeUndefined();
-    expect(
-      JSON.stringify(
-        queryClient
-          .getQueryCache()
-          .getAll()
-          .map((q) => q.state.data),
-      ),
-    ).not.toContain(SECRET);
-
-    // Unlocking again does not bring back what was revealed before.
-    act(() => grantUnlock(10));
-    expect(screen.queryByText(SECRET)).toBeNull();
-    expect(reveal()).toBeTruthy();
   });
 
   it("can be hidden again by hand", async () => {
@@ -249,7 +197,6 @@ describe("sensitive details", () => {
   });
 
   it("leave memory when the session ends", async () => {
-    grantUnlock(10);
     render(<Page current={ADMIN} />);
     await screen.findByText("Bank reference");
     fireEvent.click(reveal());

@@ -14,7 +14,6 @@ import {
   demoUpdateDetailValueIfUnchanged,
   demoUpdateLink,
 } from "@/lib/demo/demoCompanyData";
-import { isUnlocked } from "@/lib/unlock";
 import { supabase } from "./client";
 import { classifyDataError, isMissingTable, NotConfiguredError, type DataFailure } from "./errors";
 import type { Viewer } from "./queries";
@@ -114,12 +113,11 @@ export async function fetchDetails(viewer: Viewer, companyId: string): Promise<C
   ].sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
 }
 
-/** The values of the sensitive details, by id. Refused unless the password gate is open. */
+/** The values of the sensitive details, by id (admins only: row-level security). */
 export async function fetchSensitiveValues(
   viewer: Viewer,
   companyId: string,
 ): Promise<Record<string, string | null>> {
-  if (!isUnlocked()) throw new Error("The password gate is locked.");
   if (import.meta.env.DEV && viewer.isDemo) return demoFetchSensitiveValues(companyId);
 
   const { data, error } = await client()

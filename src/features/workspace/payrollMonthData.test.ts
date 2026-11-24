@@ -7,7 +7,7 @@ import { DATA_RULES } from "@/lib/bridge/protocol";
 import { demoMemberships } from "@/lib/demo/demoData";
 import { demoForgetPayrollMonths, demoPayrollMonthCounts } from "@/lib/demo/demoPayrollMonths";
 import { demoForgetPayrollSetups } from "@/lib/demo/demoPayrollSetups";
-import { GATED_QUERY_KEYS, PAYROLL_MONTHS_KEY, queryClient } from "@/lib/queryClient";
+import { GATED_QUERY_KEYS, PAYROLL_MONTHS_KEY } from "@/lib/queryClient";
 import { runSessionCleanup } from "@/lib/sessionCleanup";
 import type { Membership } from "@/lib/supabase/schemas";
 import { grantUnlock, isUnlocked, lock } from "@/lib/unlock";
@@ -111,7 +111,7 @@ afterEach(() => {
 });
 
 describe("the data type", () => {
-  it("is the payroll app's only, to ask for and to send, one command per message, and gated", () => {
+  it("is the payroll app's only, to ask for and to send, one command per message, with no password", () => {
     const users = APPS.filter(
       (app) => app.accepts.includes("payroll-month") || app.produces.includes("payroll-month"),
     );
@@ -127,74 +127,50 @@ describe("the data type", () => {
       produces: ["payroll-result", "payroll-setup", "payroll-month", "payroll-import"],
     });
     expect(DATA_RULES["payroll-month"]).toMatchObject({ sendRows: 1, answerRows: [0, 1_200] });
-    expect(GATED_QUERY_KEYS).toContainEqual([PAYROLL_MONTHS_KEY]);
+    // Hotfix 2: locking the Data explorer and Database does not wipe the months.
+    expect(GATED_QUERY_KEYS).not.toContainEqual([PAYROLL_MONTHS_KEY]);
   });
 });
 
-describe("payroll-month while the password gate is locked", () => {
+describe("payroll-month with the password gate locked (hotfix 2: no password for the apps)", () => {
   beforeEach(() => lock());
 
-  it("says whether it is open, to any member, with nothing else in the answer", async () => {
+  it("says it is open, to any member, with nothing else in the answer", async () => {
     expect(await request({ action: "gate" })).toMatchObject({
       ok: true,
-      rows: [{ unlocked: false }],
+      rows: [{ unlocked: true }],
     });
     signIn(XYZ);
     expect(await request({ action: "gate" })).toMatchObject({
       ok: true,
-      rows: [{ unlocked: false }],
+      rows: [{ unlocked: true }],
     });
   });
 
-  it("refuses every read and every save at once as locked, and stores nothing", async () => {
-    // Nothing is even read from the database while locked.
-    const read = vi.spyOn(queryClient, "fetchQuery");
+  it("reads and saves every month without the password, and asks nothing", async () => {
+    expect(await save()).toMatchObject({ ok: true, result: { revision: 1 } });
     for (const params of [
       { action: "list", brn: "C1234567" },
       { action: "load", brn: "C1234567", periods: ["2026-10"] },
       { action: "history", brn: "C1234567", period: "2026-10" },
       { action: "revision", brn: "C1234567", period: "2026-10", revision: 1 },
     ]) {
-      expect(await request(params), params.action).toMatchObject({ ok: false, code: "locked" });
+      expect(await request(params), params.action).toMatchObject({ ok: true });
     }
-    expect(await save()).toMatchObject({ ok: false, code: "locked" });
     expect(
-      await send({
-        action: "key-change",
-        brn: "C1234567",
-        moves: [{ old_key: "basicSalary", new_key: "basicPay", company_brn: null }],
-        shared: {
-          shared_setup_id: S1,
-          name: "Shared column setup",
-          body: SHARED,
-          expected_revision: 1,
-        },
-      }),
-    ).toMatchObject({ ok: false, code: "locked" });
-    expect(demoPayrollMonthCounts(ABC.company.id)).toEqual({
-      payrollMonths: 0,
-      payrollMonthRevisions: 0,
+      JSON.stringify(await request({ action: "load", brn: "C1234567", periods: ["2026-10"] })),
+    ).toContain("TST001");
+    expect(dataRequests.get()).toHaveLength(0);
+    expect(isUnlocked()).toBe(false);
+  });
+
+  it("'unlock', from an app of before the hotfix, is answered open at once, with no dialog", async () => {
+    expect(await request({ action: "unlock", brn: "C1234567" })).toMatchObject({
+      ok: true,
+      rows: [{ unlocked: true }],
     });
-    expect(read).not.toHaveBeenCalled();
-    read.mockRestore();
-  });
-
-  it("'unlock' asks for the password in the dashboard, and answers once the gate is open", async () => {
-    const asked = request({ action: "unlock", brn: "C1234567" });
-    await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
-    const [waiting] = dataRequests.get();
-    expect(waiting!.question).toMatchObject({ unlockOnly: true, what: "the employees' figures" });
-    grantUnlock(10);
-    // The dialog answers by itself once unlocked (BridgeDialogs); here, as it would.
-    waiting!.respond(await waiting!.question!.answer());
-    expect(await asked).toMatchObject({ ok: true, rows: [{ unlocked: true }] });
-  });
-
-  it("'unlock' turned down is not an unlock", async () => {
-    const asked = request({ action: "unlock", brn: "C1234567" });
-    await vi.waitFor(() => expect(dataRequests.get()).toHaveLength(1));
-    dataRequests.get()[0]!.respond({ ok: false, code: "denied", error: "Not now." });
-    expect(await asked).toMatchObject({ ok: false, code: "denied" });
+    expect(dataRequests.get()).toHaveLength(0);
+    // The dashboard's own gate (Data explorer, Database) stays as it was.
     expect(isUnlocked()).toBe(false);
   });
 });
@@ -318,15 +294,6 @@ describe("payroll-month: saving and reading a month", () => {
   it("a company with no column setup has no months", async () => {
     demoForgetPayrollSetups();
     expect(await save()).toMatchObject({ ok: false, code: "not-found" });
-  });
-
-  it("a read that the gate locks in the middle of answers locked, with nothing in it", async () => {
-    await save();
-    const reading = request({ action: "load", brn: "C1234567", periods: ["2026-10"] });
-    lock();
-    const answer = await reading;
-    expect(answer).toMatchObject({ ok: false, code: "locked" });
-    expect(JSON.stringify(answer)).not.toContain("TST001");
   });
 });
 
@@ -551,17 +518,13 @@ describe("the transfer log and the toasts", () => {
   });
 });
 
-describe("telling the payroll app when the gate opens or locks", () => {
-  it("sends whether it is open, and nothing else, only when that changes", () => {
+describe("the password gate opening or locking (hotfix 2)", () => {
+  it("tells the payroll app nothing: its months do not depend on it", () => {
     lock();
     const sent = vi.spyOn(bridge, "send").mockResolvedValue({ ok: true, id: "x" });
     grantUnlock(10);
-    grantUnlock(10); // still open: not told again
     lock();
-    expect(sent.mock.calls).toEqual([
-      ["payroll", { dataType: "payroll-month", rows: [{ action: "gate", unlocked: true }] }],
-      ["payroll", { dataType: "payroll-month", rows: [{ action: "gate", unlocked: false }] }],
-    ]);
+    expect(sent).not.toHaveBeenCalled();
     sent.mockRestore();
   });
 });

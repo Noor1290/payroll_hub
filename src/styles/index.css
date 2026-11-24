@@ -216,3 +216,32 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * A dialog's buttons (hotfix 4, 24 November 2026): the row wraps instead of pushing a button out of
+ * the window, a long label wraps onto a second line, and on a phone the buttons stack full width,
+ * the main one on top. Not in a layer, so it wins over the buttons' own height and nowrap.
+ */
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.dialog-actions > button,
+.dialog-actions > a {
+  height: auto;
+  min-height: 2.5rem;
+  max-width: 100%;
+  padding-block: 0.5rem;
+  white-space: normal;
+  text-align: center;
+}
+@media (max-width: 639px) {
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+  .dialog-actions > * {
+    width: 100%;
+  }
+}

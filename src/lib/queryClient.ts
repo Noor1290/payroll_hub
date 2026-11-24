@@ -27,14 +27,11 @@ export const ISSUED_PAYSLIPS_KEY = "issued-payslips";
 /** Payroll months read for the payroll app (payrollMonthData.ts). Salaries and national IDs: gated. */
 export const PAYROLL_MONTHS_KEY = "payroll-months";
 
-/** Query keys that hold data shown behind the password gate: per-employee rows and sensitive company details. */
-export const GATED_QUERY_KEYS = [
-  ["run-entries"],
-  ["db"],
-  ["company-details-sensitive"],
-  [ISSUED_PAYSLIPS_KEY],
-  [PAYROLL_MONTHS_KEY],
-] as const;
+/**
+ * Query keys that hold data shown behind the password gate: the Data explorer's run rows and the
+ * Database page. Since hotfix 2 (24 November 2026) nothing else is behind it.
+ */
+export const GATED_QUERY_KEYS = [["run-entries"], ["db"]] as const;
 
 // When the password gate locks, the rows it was protecting leave memory, not just the screen.
 registerLockCleanup(() => {

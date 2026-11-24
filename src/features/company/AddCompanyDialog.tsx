@@ -191,7 +191,7 @@ function AddCompanyForm({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-1">
+      <div className="dialog-actions pt-1">
         <Dialog.Close asChild>
           <Button disabled={busy}>Cancel</Button>
         </Dialog.Close>

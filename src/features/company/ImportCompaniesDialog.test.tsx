@@ -342,7 +342,7 @@ describe("<ImportCompaniesDialog>", () => {
     expect(rows.slice(1)).toEqual([["ABC Co Ltd", "C1234567"]]);
   });
 
-  it("asks for the password before the template with my companies, and reads no month until then", async () => {
+  it("downloads the template with my companies without asking for the password (hotfix 2)", async () => {
     renderAll();
     act(() => importCompaniesOpen.set(true));
     const saved: Blob[] = [];
@@ -351,38 +351,19 @@ describe("<ImportCompaniesDialog>", () => {
       return "blob:test";
     });
     try {
+      // The password gate is locked: the file is made all the same.
       fireEvent.click(
         await screen.findByRole("button", { name: "Download the template with my companies" }),
       );
-      expect(
-        await screen.findByText(
-          "Confirm your password first: the template with your companies also holds their employees.",
-        ),
-      ).toBeTruthy();
-      expect(saved).toHaveLength(0);
-      // Nothing for the file is read until then: not the months, not even the companies.
-      const read = fake.state.queries.map((q) => fake.arg(q, "from"));
-      for (const table of ["payroll_months", "companies", "company_details"]) {
-        expect(read, table).not.toContain(table);
-      }
-      // Once it is confirmed, the prompt goes and the button downloads.
-      act(() => grantUnlock(5));
-      expect(
-        screen.queryByText(
-          "Confirm your password first: the template with your companies also holds their employees.",
-        ),
-      ).toBeNull();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Download the template with my companies" }),
-      );
       await waitFor(() => expect(saved).toHaveLength(1));
+      expect(screen.queryByText(/Confirm your password/)).toBeNull();
     } finally {
       created.mockRestore();
       lock();
     }
   });
 
-  it("compares a file's employees with the newest saved month, after asking for the password", async () => {
+  it("compares a file's employees with the newest saved month, with no password (hotfix 2)", async () => {
     const before = fake.state.answer;
     fake.reset((calls) => {
       const from = fake.arg(calls, "from");
@@ -466,15 +447,6 @@ describe("<ImportCompaniesDialog>", () => {
     act(() => importCompaniesOpen.set(true));
     await screen.findByRole("button", { name: "Download the blank template" });
     try {
-      withEmployees();
-      expect(
-        await screen.findByText(
-          "Confirm your password first: the file has employees of your companies, and they are compared with your saved months. Then choose the file again.",
-        ),
-      ).toBeTruthy();
-      expect(fake.state.queries.some((q) => fake.arg(q, "from") === "payroll_months")).toBe(false);
-
-      act(() => grantUnlock(5));
       withEmployees();
       expect(
         await screen.findByText(

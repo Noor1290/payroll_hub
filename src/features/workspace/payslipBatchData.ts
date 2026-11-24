@@ -17,7 +17,6 @@ import {
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
 import { fetchStatutoryRates } from "@/lib/supabase/statutoryRates";
-import { isUnlocked, registerLockCleanup } from "@/lib/unlock";
 import {
   answerMeta,
   brnSchema,
@@ -91,12 +90,7 @@ export function forgetBatchAllowed(): void {
   permits.forget();
 }
 registerSessionCleanup(forgetBatchAllowed);
-registerLockCleanup(forgetBatchAllowed);
 
-const READ_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked. Confirm your password there to unlock it, then ask again.",
-);
 const NOT_ALLOWED = refuse(
   "denied",
   "That company and month were not allowed in the dashboard for this app. Ask again.",
@@ -228,7 +222,6 @@ export async function answerBatchRequest(
           // Asked again: the dialog may have been open for a while.
           const again = exchangeContextFor(params.data.brn);
           if ("ok" in again) return again;
-          if (!isUnlocked()) return READ_LOCKED;
           const still = await adminCompanies(again.viewer, again.membership.company.id);
           const stillBrns = new Set(still.map((one) => normaliseBrn(one.company.brn!)));
           const granted = (chosen as Membership[]).filter((one) =>
@@ -268,17 +261,13 @@ export async function answerBatchRequest(
     ) {
       return NOT_ALLOWED;
     }
-    if (!isUnlocked()) return READ_LOCKED;
     const target = (await adminCompanies(viewer, membership.company.id)).find(
       (one) => normaliseBrn(one.company.brn!) === wanted,
     );
     if (!target) return refuse("forbidden", "Only an admin of that company can make its payslips.");
     const row = await loadCompany(viewer, target, period);
-    // The gate may have locked while the database was answering: then nothing leaves.
-    if (!isUnlocked()) return READ_LOCKED;
     return { ok: true, dataType: PAYSLIP_BATCH, rows: [row], meta: meta(period) };
   } catch (error) {
-    if (params.data.action === "load" && !isUnlocked()) return READ_LOCKED;
     return refusalFor(error, IN_USE_MIGRATION);
   }
 }

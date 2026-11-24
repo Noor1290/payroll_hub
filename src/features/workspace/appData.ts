@@ -57,7 +57,6 @@ import {
   RATES_MIGRATION,
   saveStatutoryRates,
 } from "@/lib/supabase/statutoryRates";
-import { isUnlocked } from "@/lib/unlock";
 import { answerRequest, recordSave } from "./deliver";
 
 /**
@@ -921,15 +920,6 @@ const issueSaveSchema = z.strictObject({
   payslips: z.array(payslipSchema).min(1),
 });
 
-const READ_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked. Confirm your password there to unlock it, then ask again.",
-);
-const SAVE_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked, so nothing was issued. Confirm your password there, then issue again.",
-);
-
 /**
  * Says which payslip of a refused month is at fault: its position in the list the app sent,
  * counted from 0. The app names the employee from it; nothing here ever does.
@@ -961,11 +951,10 @@ function adminContext(brn: string): ExchangeContext | Refusal {
 async function loadIssued(brn: string, period: string): Promise<ResponseDataPayload> {
   const current = adminContext(brn);
   if ("ok" in current) return current;
-  if (!isUnlocked()) return READ_LOCKED;
 
   const { viewer, membership } = current;
   const { company } = membership;
-  // Read through the query cache under a gated key, so locking cancels a read in flight.
+  // Read through the query cache, and dropped from it once the app has its answer.
   const queryKey = [ISSUED_PAYSLIPS_KEY, company.id, period];
   try {
     const issued = await queryClient.fetchQuery({
@@ -975,8 +964,6 @@ async function loadIssued(brn: string, period: string): Promise<ResponseDataPayl
       gcTime: 0,
       retry: false,
     });
-    // The gate may have locked while the database was answering: then nothing leaves.
-    if (!isUnlocked()) return READ_LOCKED;
     return {
       ok: true,
       dataType: PAYSLIP_ISSUE,
@@ -988,7 +975,6 @@ async function loadIssued(brn: string, period: string): Promise<ResponseDataPayl
       meta: { ...meta(membership), period },
     };
   } catch (error) {
-    if (!isUnlocked()) return READ_LOCKED;
     return refusalFor(error, ISSUED_MIGRATION);
   } finally {
     // Nothing is kept once the app has its answer.
@@ -998,8 +984,8 @@ async function loadIssued(brn: string, period: string): Promise<ResponseDataPayl
 
 /**
  * An app asks for a month's issued payslips. Unlike rates and templates this is per-employee
- * data, so the user is asked first, in the same dialog as for a saved run, and the password
- * gate must be open. What can be refused without asking is refused straight away.
+ * data, so the user is asked first, in the same dialog as for a saved run (no password since
+ * hotfix 2). What can be refused without asking is refused straight away.
  */
 export function answerIssuedRequest(
   appId: string,
@@ -1021,8 +1007,8 @@ export function answerIssuedRequest(
 
 /**
  * Issues a month's selection: every payslip at its next revision, or none at all. No dialog (a
- * save must be answered within 8 seconds), so the password gate has to be open already; while
- * it is locked the save is refused at once and nothing reaches the database.
+ * save must be answered within 8 seconds). No password since hotfix 2: sign-in and row-level
+ * security protect it.
  */
 export async function issueFromApp(payload: SendDataPayload): Promise<ReceivedPayload> {
   const sent = payload.rows[0]?.payslips;
@@ -1036,7 +1022,6 @@ export async function issueFromApp(payload: SendDataPayload): Promise<ReceivedPa
   if (!row.success) return invalidPayslip(row.error);
   const current = adminContext(row.data.brn);
   if ("ok" in current) return current;
-  if (!isUnlocked()) return SAVE_LOCKED;
 
   const { period, payslips } = row.data;
   const seen = new Set<string>();

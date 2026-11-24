@@ -9,8 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/misc";
 import { ErrorState } from "@/components/ui/states";
 import { useAuth } from "@/features/auth/auth-context";
-import { UnlockForm } from "@/features/unlock/PasswordGate";
-import { useUnlock } from "@/features/unlock/useUnlock";
 import { formatDateTime } from "@/lib/format";
 import {
   addMember,
@@ -23,7 +21,12 @@ import {
   type MemberRole,
 } from "@/lib/supabase/members";
 import type { Membership } from "@/lib/supabase/schemas";
-import { changeText, classifyMemberError, memberEmailSchema, type MemberFailure } from "./membersModel";
+import {
+  changeText,
+  classifyMemberError,
+  memberEmailSchema,
+  type MemberFailure,
+} from "./membersModel";
 
 /**
  * The members of the selected company, for its admins: who they are, adding an existing user by
@@ -67,7 +70,6 @@ function RoleSelect({
 
 export function MembersCard({ current }: { current: Membership }) {
   const { user } = useAuth();
-  const { unlocked } = useUnlock();
   const queryClient = useQueryClient();
   const { company } = current;
   const admin = current.role === "admin";
@@ -167,7 +169,11 @@ export function MembersCard({ current }: { current: Membership }) {
   }
 
   return (
-    <section aria-labelledby="profile-members" className="glass rounded-2xl" data-testid="members-card">
+    <section
+      aria-labelledby="profile-members"
+      className="glass rounded-2xl"
+      data-testid="members-card"
+    >
       {heading}
       <p className="flex items-center gap-2.5 border-b border-line px-5 py-2.5 text-sm text-muted">
         <Users className="size-4 shrink-0 text-accent" aria-hidden="true" />
@@ -190,7 +196,7 @@ export function MembersCard({ current }: { current: Membership }) {
               <RoleSelect
                 label={`Role of ${member.email}`}
                 value={member.role}
-                disabled={busy || !unlocked || you}
+                disabled={busy || you}
                 onChange={(next) =>
                   void change(
                     () => setMemberRole(viewer!, company.id, member.user_id, next),
@@ -201,7 +207,7 @@ export function MembersCard({ current }: { current: Membership }) {
               {!you && (
                 <Button
                   size="sm"
-                  disabled={busy || !unlocked}
+                  disabled={busy}
                   onClick={() => setRemoving(member)}
                   aria-label={`Remove ${member.email}`}
                 >
@@ -216,45 +222,40 @@ export function MembersCard({ current }: { current: Membership }) {
 
       <div className="space-y-3 border-t border-line p-5">
         {failure && <FailureNote failure={{ kind: "unknown", retryable: false, ...failure }} />}
-        {unlocked ? (
-          <form onSubmit={onAdd} noValidate className="flex flex-wrap items-end gap-3">
-            <div className="min-w-56 flex-1">
-              <FormField label="Add an existing user by email" error={emailError}>
-                {(control) => (
-                  <Input
-                    {...control}
-                    value={email}
-                    maxLength={300}
-                    inputMode="email"
-                    autoComplete="off"
-                    disabled={busy}
-                    onChange={(event) => {
-                      setEmail(event.target.value);
-                      setEmailError(undefined);
-                    }}
-                  />
-                )}
-              </FormField>
-            </div>
-            <RoleSelect label="Role of the new member" value={role} disabled={busy} onChange={setRole} />
-            <Button type="submit" variant="primary" disabled={busy}>
-              {busy ? (
-                <LoaderCircle className="animate-spin" aria-hidden="true" />
-              ) : (
-                <UserPlus aria-hidden="true" />
+        <form onSubmit={onAdd} noValidate className="flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1">
+            <FormField label="Add an existing user by email" error={emailError}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={email}
+                  maxLength={300}
+                  inputMode="email"
+                  autoComplete="off"
+                  disabled={busy}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setEmailError(undefined);
+                  }}
+                />
               )}
-              Add
-            </Button>
-          </form>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-muted">
-              Confirm your password to add, change or remove members. They decide who sees national
-              IDs and pay.
-            </p>
-            <UnlockForm />
+            </FormField>
           </div>
-        )}
+          <RoleSelect
+            label="Role of the new member"
+            value={role}
+            disabled={busy}
+            onChange={setRole}
+          />
+          <Button type="submit" variant="primary" disabled={busy}>
+            {busy ? (
+              <LoaderCircle className="animate-spin" aria-hidden="true" />
+            ) : (
+              <UserPlus aria-hidden="true" />
+            )}
+            Add
+          </Button>
+        </form>
       </div>
 
       <div className="border-t border-line px-5 py-4">
@@ -280,7 +281,7 @@ export function MembersCard({ current }: { current: Membership }) {
         title={`Remove ${removing?.email ?? ""}?`}
         description={`They will no longer be able to open ${company.name}. You can add them again later.`}
       >
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="dialog-actions mt-5">
           <Dialog.Close asChild>
             <Button disabled={busy}>Cancel</Button>
           </Dialog.Close>

@@ -3,7 +3,6 @@ import { appOrigin, APPS, DASHBOARD_ID } from "@/config/apps.config";
 import { reportActivity } from "@/lib/activity";
 import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { createStore } from "@/lib/store";
-import { isUnlocked } from "@/lib/unlock";
 import { BridgeHub, type AppHealth } from "./hub";
 import type {
   ReceivedPayload,
@@ -51,11 +50,6 @@ export interface RequestQuestion {
   of?: string;
   /** What agreeing sends to the app, in one sentence. */
   warning: string;
-  /**
-   * The app only needs the dashboard unlocked (payroll months): the dialog asks for the
-   * password and nothing else, and answers by itself as soon as the gate is open.
-   */
-  unlockOnly?: boolean;
   answer: () => Promise<ResponseDataPayload>;
 }
 
@@ -148,20 +142,11 @@ export function handleDataRequest(
       resolve(response);
     };
     const deadline = setTimeout(() => {
-      respond(
-        isUnlocked()
-          ? {
-              ok: false,
-              code: "timeout",
-              error: "Nobody answered the request in the dashboard in time.",
-            }
-          : {
-              ok: false,
-              code: "locked",
-              error:
-                "The dashboard is locked. Confirm your password there to unlock it, then ask again.",
-            },
-      );
+      respond({
+        ok: false,
+        code: "timeout",
+        error: "Nobody answered the request in the dashboard in time.",
+      });
     }, REQUEST_DEADLINE_MS);
     dataRequests.set((current) => [...current, { id, appId, payload, question, respond }]);
   });

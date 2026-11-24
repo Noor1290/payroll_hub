@@ -16,7 +16,6 @@ import { fetchCompanySetup, fetchSharedSetup } from "@/lib/supabase/payrollSetup
 import { fetchRunColumns } from "@/lib/supabase/payslipTemplates";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
-import { isUnlocked, registerLockCleanup } from "@/lib/unlock";
 import {
   answerMeta,
   brnSchema,
@@ -98,12 +97,7 @@ export function forgetMraBatchAllowed(): void {
   permits.forget();
 }
 registerSessionCleanup(forgetMraBatchAllowed);
-registerLockCleanup(forgetMraBatchAllowed);
 
-const READ_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked. Confirm your password there to unlock it, then ask again.",
-);
 const NOT_ALLOWED = refuse(
   "denied",
   "That company and month were not allowed in the dashboard for this app. Ask again.",
@@ -272,7 +266,6 @@ export async function answerMraBatchRequest(
           // Asked again: the dialog may have been open for a while.
           const again = exchangeContextFor(params.data.brn);
           if ("ok" in again) return again;
-          if (!isUnlocked()) return READ_LOCKED;
           const still = await adminCompanies(again.viewer, again.membership.company.id);
           const stillBrns = new Set(still.map((one) => normaliseBrn(one.company.brn!)));
           const granted = (chosen as Membership[]).filter((one) =>
@@ -312,7 +305,6 @@ export async function answerMraBatchRequest(
     ) {
       return NOT_ALLOWED;
     }
-    if (!isUnlocked()) return READ_LOCKED;
     const target = (await adminCompanies(viewer, membership.company.id)).find(
       (one) => normaliseBrn(one.company.brn!) === wanted,
     );
@@ -320,11 +312,8 @@ export async function answerMraBatchRequest(
       return refuse("forbidden", "Only an admin of that company can make its MRA returns.");
     }
     const row = await loadCompany(viewer, target, period);
-    // The gate may have locked while the database was answering: then nothing leaves.
-    if (!isUnlocked()) return READ_LOCKED;
     return { ok: true, dataType: MRA_BATCH, rows: [row], meta: meta(period) };
   } catch (error) {
-    if (params.data.action === "load" && !isUnlocked()) return READ_LOCKED;
     // The saved runs are in the first migration: a missing table in a load or an overview is one of 0020's.
     return refusalFor(
       error,

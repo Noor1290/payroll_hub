@@ -24,24 +24,21 @@ import {
   Eye,
   EyeOff,
   GripVertical,
-  LockKeyhole,
   Pencil,
   Plus,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
+import { registerSessionCleanup } from "@/lib/sessionCleanup";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
-import { FormDialog } from "@/components/ui/form";
 import { Badge, Skeleton } from "@/components/ui/misc";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { useAuth } from "@/features/auth/auth-context";
 import { CompanyGate } from "@/features/company/CompanyGate";
 import { bySortOrder, moveBy, reorderWithin } from "@/features/links/linkModel";
-import { UnlockForm, UnlockStatus } from "@/features/unlock/PasswordGate";
-import { useUnlock } from "@/features/unlock/useUnlock";
 import {
   classifyCompanyDataError,
   deleteDetail,
@@ -51,7 +48,6 @@ import {
   type CompanyDetail,
 } from "@/lib/supabase/companyData";
 import type { Membership } from "@/lib/supabase/schemas";
-import { isUnlocked, registerLockCleanup, unlockState } from "@/lib/unlock";
 import { cn } from "@/lib/utils";
 import { CoreDialog } from "./CoreDialog";
 import { DetailDialog } from "./DetailDialog";
@@ -282,18 +278,14 @@ function CoreCard({ current }: { current: Membership }) {
   );
 }
 
-type Pending = { action: "reveal" | "edit"; detail: CompanyDetail };
-
 function Details({ current }: { current: Membership }) {
   const { user } = useAuth();
-  const { unlocked } = useUnlock();
   const queryClient = useQueryClient();
   const { company } = current;
   // A courtesy: the database decides what this account may read or change.
   const admin = current.role === "admin";
 
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(NONE);
-  const [pending, setPending] = useState<Pending | null>(null);
   const [dialog, setDialog] = useState<{ detail: CompanyDetail | null } | null>(null);
   const [deleting, setDeleting] = useState<CompanyDetail | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -310,41 +302,25 @@ function Details({ current }: { current: Membership }) {
     enabled: user !== null,
   });
 
-  // Nothing counts as revealed while the gate is locked, whatever was revealed before.
-  const visible = unlocked ? revealed : NONE;
+  const visible = revealed;
   const editingSensitive = dialog?.detail?.is_sensitive === true;
   const sensitive = useQuery({
-    // Wiped from memory when the password gate locks (see GATED_QUERY_KEYS).
     queryKey: ["company-details-sensitive", company.id, user?.id],
     queryFn: () => fetchSensitiveValues({ id: user!.id, isDemo: user!.isDemo }, company.id),
-    // Sensitive values are fetched only for an admin, with the gate open, who asked to see one.
-    enabled: admin && unlocked && user !== null && (visible.size > 0 || editingSensitive),
+    // Sensitive values are fetched only for an admin who asked to see one (no password: hotfix 2).
+    enabled: admin && user !== null && (visible.size > 0 || editingSensitive),
     staleTime: 0,
   });
 
-  // When the gate locks, everything masks again and a form holding a sensitive value closes.
+  // When the session ends, everything masks again and a form holding a sensitive value closes.
   useEffect(
     () =>
-      registerLockCleanup(() => {
+      registerSessionCleanup(() => {
         setRevealed(NONE);
         setDialog((open) => (open?.detail?.is_sensitive ? null : open));
       }),
     [],
   );
-
-  // Asked to reveal or edit while locked: carry on as soon as the password is confirmed.
-  useEffect(() => {
-    if (!pending) return;
-    return unlockState.subscribe(() => {
-      if (!unlockState.get().unlocked) return;
-      if (pending.action === "reveal") {
-        setRevealed((current) => new Set(current).add(pending.detail.id));
-      } else {
-        setDialog({ detail: pending.detail });
-      }
-      setPending(null);
-    });
-  }, [pending]);
 
   const heading = (
     <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
@@ -398,12 +374,6 @@ function Details({ current }: { current: Membership }) {
     toast.error(problem.title, { description: problem.message });
   };
 
-  const whenUnlocked = (action: Pending["action"], detail: CompanyDetail) => {
-    if (!isUnlocked()) setPending({ action, detail });
-    else if (action === "reveal") setRevealed((current) => new Set(current).add(detail.id));
-    else setDialog({ detail });
-  };
-
   const reorder = async (next: string[]) => {
     const changes = reorderWithin(list, next);
     if (changes.length === 0) return;
@@ -450,11 +420,10 @@ function Details({ current }: { current: Membership }) {
   };
 
   const actions: RowActions = {
-    onReveal: (detail) => whenUnlocked("reveal", detail),
+    onReveal: (detail) => setRevealed((current) => new Set(current).add(detail.id)),
     onHide: (detail) =>
       setRevealed((current) => new Set([...current].filter((id) => id !== detail.id))),
-    onEdit: (detail) =>
-      detail.is_sensitive ? whenUnlocked("edit", detail) : setDialog({ detail }),
+    onEdit: (detail) => setDialog({ detail }),
     onDelete: setDeleting,
     onMove: (detail, step) => void reorder(moveBy(ids, detail.id, step)),
   };
@@ -529,17 +498,6 @@ function Details({ current }: { current: Membership }) {
             }
             nextSortOrder={list.reduce((max, detail) => Math.max(max, detail.sort_order), -1) + 1}
           />
-          <FormDialog
-            open={pending !== null}
-            onOpenChange={(open) => !open && setPending(null)}
-            icon={LockKeyhole}
-            title="Confirm your password"
-            description={`${pending?.detail.label ?? "This detail"} is marked sensitive. It stays hidden until you confirm your password, and hides again when the lock closes.`}
-          >
-            <div className="mt-5">
-              <UnlockForm />
-            </div>
-          </FormDialog>
           <ConfirmDialog
             open={deleting !== null}
             onOpenChange={(open) => !open && setDeleting(null)}
@@ -563,7 +521,6 @@ export function ProfilePage() {
       <PageHeader
         title="Company profile"
         description="The selected company's registered details, and anything else worth keeping with it."
-        actions={<UnlockStatus />}
       />
       <div className="mt-8">
         <CompanyGate>

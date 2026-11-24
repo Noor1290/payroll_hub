@@ -2,6 +2,8 @@
 
 This is for whoever adds the bridge to an app (`payroll_sys`, `pdf-form-filler`, the payslip app, MRA Returns), including Claude Code working in that app's repository. It explains what to copy, what to wire up, and how to check it works.
 
+> **No password gate for apps (hotfix 2, 24 November 2026).** The dashboard no longer asks for its password before it answers or saves for an app: no data type is refused as `locked` any more, `payroll-month` answers `gate` and `unlock` with `{ unlocked: true }` at once, and the `gate` row is no longer pushed to the app. Where the sections below mention the password gate or `locked`, they describe the dashboard before the hotfix; apps keep handling `locked` so that they still work with an older dashboard. The request dialog (`payroll-result`, the batches, `payslip-issue` loads) stays until Part 2 of that task.
+
 ## The idea in one minute
 
 - The dashboard loads each app in an iframe and talks to it with `window.postMessage`.

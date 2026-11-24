@@ -72,7 +72,7 @@ function DateForm({ row, onDone }: { row: PayrollRow; onDone: () => void }) {
 
       {failure && <FailureNote failure={failure} />}
 
-      <div className="flex flex-wrap justify-end gap-2 pt-1">
+      <div className="dialog-actions pt-1">
         {row.date_of_employment && (
           <Button type="button" className="mr-auto" disabled={busy} onClick={() => void save(null)}>
             Clear the date

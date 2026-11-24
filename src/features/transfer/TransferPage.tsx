@@ -33,7 +33,6 @@ import {
 } from "@/config/apps.config";
 import { useAuth } from "@/features/auth/auth-context";
 import { useCompany } from "@/features/company/company-context";
-import { PasswordGate, UnlockStatus } from "@/features/unlock/PasswordGate";
 import {
   deliver,
   downloadJson,
@@ -1005,7 +1004,6 @@ export function TransferPage() {
       <PageHeader
         title="Transfer"
         description="Pick rows and columns, map them to what an app expects, check the result, and send."
-        actions={<UnlockStatus />}
       />
 
       <section className="glass mt-8 space-y-6 rounded-2xl p-5 sm:p-6">
@@ -1160,21 +1158,18 @@ export function TransferPage() {
             )}
 
             {state.step > 0 && choice?.kind === "run" && current && run && (
-              // Rows of a saved run only load, and only stay in memory, while the gate is open.
-              <PasswordGate what="A saved run">
-                <RunSource runId={run.id} company={current.company}>
-                  {(table) => (
-                    <Steps
-                      table={table}
-                      source={{ label: `Database, ${formatPeriod(run.period)}`, gated: true }}
-                      dataType={PAYROLL_RESULT}
-                      meta={runMeta(run.period, current.company)}
-                      state={state}
-                      update={update}
-                    />
-                  )}
-                </RunSource>
-              </PasswordGate>
+              <RunSource runId={run.id} company={current.company}>
+                {(table) => (
+                  <Steps
+                    table={table}
+                    source={{ label: `Database, ${formatPeriod(run.period)}`, gated: true }}
+                    dataType={PAYROLL_RESULT}
+                    meta={runMeta(run.period, current.company)}
+                    state={state}
+                    update={update}
+                  />
+                )}
+              </RunSource>
             )}
 
             {state.step > 0 && !sourceReady && (

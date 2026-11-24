@@ -68,7 +68,12 @@ beforeEach(() => {
   unlocked(true);
   vi.mocked(fetchMembers).mockResolvedValue([
     { user_id: ME, email: "me@example.com", role: "admin", added_at: "2026-01-05T09:00:00.000Z" },
-    { user_id: OTHER, email: "v@example.com", role: "viewer", added_at: "2026-02-05T09:00:00.000Z" },
+    {
+      user_id: OTHER,
+      email: "v@example.com",
+      role: "viewer",
+      added_at: "2026-02-05T09:00:00.000Z",
+    },
   ]);
   vi.mocked(fetchMemberChanges).mockResolvedValue([
     {
@@ -110,7 +115,10 @@ describe("the Members card", () => {
   it("offers no way to remove or demote yourself", async () => {
     show();
     await screen.findByRole("list", { name: "Members of this company" });
-    expect((screen.getByRole("combobox", { name: "Role of me@example.com" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("combobox", { name: "Role of me@example.com" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     expect(screen.queryByRole("button", { name: "Remove me@example.com" })).toBeNull();
   });
 
@@ -131,7 +139,11 @@ describe("the Members card", () => {
         "admin",
       ),
     );
-    await waitFor(() => expect((screen.getByLabelText("Add an existing user by email") as HTMLInputElement).value).toBe(""));
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Add an existing user by email") as HTMLInputElement).value,
+      ).toBe(""),
+    );
   });
 
   it("says when an email has no account, and keeps what was typed", async () => {
@@ -142,7 +154,9 @@ describe("the Members card", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(await screen.findByText("No account uses this email")).toBeTruthy();
-    expect((screen.getByLabelText("Add an existing user by email") as HTMLInputElement).value).toBe("nobody@example.com");
+    expect((screen.getByLabelText("Add an existing user by email") as HTMLInputElement).value).toBe(
+      "nobody@example.com",
+    );
   });
 
   it("refuses something that is not an email before asking the database", async () => {
@@ -174,21 +188,28 @@ describe("the Members card", () => {
     await waitFor(() => expect(removeMember).toHaveBeenCalledWith(expect.anything(), ABC, OTHER));
   });
 
-  it("with the gate locked: shows the members, changes nothing, and asks for the password", async () => {
+  it("with the gate locked: members can be added, changed and removed, with no password (hotfix 2)", async () => {
     unlocked(false);
     show();
     await screen.findByRole("list", { name: "Members of this company" });
-    expect(screen.getByText("The password form")).toBeTruthy();
-    expect(screen.queryByLabelText("Add an existing user by email")).toBeNull();
-    expect((screen.getByRole("combobox", { name: "Role of v@example.com" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Remove v@example.com" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText("The password form")).toBeNull();
+    expect(screen.getByLabelText("Add an existing user by email")).toBeTruthy();
+    expect(
+      (screen.getByRole("combobox", { name: "Role of v@example.com" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Remove v@example.com" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it("says what to run while migration 0021 has not been run", async () => {
     vi.mocked(fetchMembers).mockRejectedValue({ code: "PGRST202", message: "not found" });
     show();
     expect(
-      await screen.findByText("Members aren't set up in the database yet", undefined, { timeout: 10_000 }),
+      await screen.findByText("Members aren't set up in the database yet", undefined, {
+        timeout: 10_000,
+      }),
     ).toBeTruthy();
     expect(screen.getByText(/0021_company_members\.sql/)).toBeTruthy();
   }, 15_000);
@@ -210,9 +231,9 @@ describe("the words", () => {
     expect(changeText({ ...base, action: "added", old_role: null, new_role: "admin" })).toBe(
       "a@x.mu added b@x.mu as an admin.",
     );
-    expect(changeText({ ...base, action: "role-changed", old_role: "viewer", new_role: "admin" })).toBe(
-      "a@x.mu changed b@x.mu from a viewer to an admin.",
-    );
+    expect(
+      changeText({ ...base, action: "role-changed", old_role: "viewer", new_role: "admin" }),
+    ).toBe("a@x.mu changed b@x.mu from a viewer to an admin.");
     expect(changeText({ ...base, action: "removed", old_role: "viewer", new_role: null })).toBe(
       "a@x.mu removed b@x.mu, who was a viewer.",
     );

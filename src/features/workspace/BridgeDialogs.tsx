@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Database, Inbox, ListChecks, LoaderCircle, Send, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -26,9 +26,6 @@ import { formatCount, formatPeriod } from "@/lib/format";
 import { classifyDataError } from "@/lib/supabase/errors";
 import { fetchRunEntries, fetchRuns } from "@/lib/supabase/payroll";
 import { useStore } from "@/lib/store";
-import { isUnlocked } from "@/lib/unlock";
-import { UnlockForm } from "@/features/unlock/PasswordGate";
-import { useUnlock } from "@/features/unlock/useUnlock";
 import { exchangeContext } from "./appData";
 import { exchangeContextLoading, exchangeHasNoCompany, exchangeSignedIn } from "./exchangeContext";
 // Registers the PDF form filler's data types with the bridge.
@@ -112,7 +109,7 @@ function IncomingDialog({ batch }: { batch: IncomingBatch }) {
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <div className="dialog-actions mt-6">
             <Button variant="ghost" onClick={dismiss}>
               Dismiss
             </Button>
@@ -207,10 +204,6 @@ function RequestDialog({ request }: { request: DataRequest }) {
   const what =
     question?.what ?? (period ? `the ${formatPeriod(`${period}-01`)} run` : "the latest run");
 
-  const { unlocked } = useUnlock();
-  // Only the password is asked for (payroll months): nothing is sent from this dialog.
-  const unlockOnly = question?.unlockOnly === true;
-
   const deny = () =>
     request.respond({
       ok: false,
@@ -220,8 +213,6 @@ function RequestDialog({ request }: { request: DataRequest }) {
 
   const approve = async () => {
     if (!user || !current) return;
-    // The gate may have locked while this dialog was open. Saved runs never leave while locked.
-    if (!isUnlocked()) return;
     setBusy(true);
     if (question) {
       // The handler that asked knows how to read and shape its own data (appData.ts).
@@ -266,14 +257,6 @@ function RequestDialog({ request }: { request: DataRequest }) {
     request.respond(response);
   };
 
-  // Once the gate is open, an app that only needed it unlocked is answered by itself, once.
-  const answered = useRef(false);
-  useEffect(() => {
-    if (!unlockOnly || !unlocked || answered.current || !user || !current) return;
-    answered.current = true;
-    void approve();
-  });
-
   return (
     <Dialog.Root open>
       <Dialog.Portal>
@@ -290,9 +273,7 @@ function RequestDialog({ request }: { request: DataRequest }) {
             </span>
             <div className="min-w-0">
               <Dialog.Title className="text-lg font-semibold">
-                {unlockOnly
-                  ? `${app?.name ?? request.appId} needs the dashboard unlocked`
-                  : `${app?.name ?? request.appId} is asking for payroll data`}
+                {`${app?.name ?? request.appId} is asking for payroll data`}
               </Dialog.Title>
               <Dialog.Description asChild>
                 <div className="mt-1.5 space-y-2 text-sm text-muted">
@@ -300,30 +281,6 @@ function RequestDialog({ request }: { request: DataRequest }) {
                     <p>It asked for a kind of data this dashboard can't provide.</p>
                   ) : !current ? (
                     <p>No company is selected, so there is nothing to send.</p>
-                  ) : unlockOnly ? (
-                    <>
-                      <p>
-                        It works with {what} of{" "}
-                        <span className="text-fg">{current.company.name}</span>, which are kept
-                        behind your password.
-                      </p>
-                      <p>
-                        {unlocked
-                          ? "The dashboard is unlocked."
-                          : "Confirm your password to unlock the dashboard. Nothing is sent to the app by this."}
-                      </p>
-                    </>
-                  ) : !unlocked ? (
-                    <>
-                      <p>
-                        It wants {what}
-                        <WhoseData question={question} company={current.company.name} />.
-                      </p>
-                      <p>
-                        Saved payroll data is locked. Confirm your password to answer this request;
-                        if you don't, the app is told the dashboard is locked.
-                      </p>
-                    </>
                   ) : (
                     <>
                       <p>
@@ -341,16 +298,11 @@ function RequestDialog({ request }: { request: DataRequest }) {
               </Dialog.Description>
             </div>
           </div>
-          {supported && current && !unlocked && (
-            <div className="mt-5">
-              <UnlockForm />
-            </div>
-          )}
-          <div className="mt-6 flex justify-end gap-2">
-            <Button autoFocus={unlocked} disabled={busy} onClick={deny}>
-              {unlockOnly ? "Not now" : "Deny"}
+          <div className="dialog-actions mt-6">
+            <Button autoFocus disabled={busy} onClick={deny}>
+              Deny
             </Button>
-            {supported && current && unlocked && !unlockOnly && (
+            {supported && current && (
               <Button variant="primary" disabled={busy} onClick={() => void approve()}>
                 {busy ? (
                   <LoaderCircle className="animate-spin" aria-hidden="true" />

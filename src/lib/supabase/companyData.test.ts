@@ -158,9 +158,9 @@ describe("fetchDetails", () => {
 });
 
 describe("fetchSensitiveValues", () => {
-  it("is refused while the password gate is locked: the database is never asked", async () => {
-    await expect(fetchSensitiveValues(VIEWER, ABC)).rejects.toThrow(/locked/);
-    expect(db.state.calls).toEqual([]);
+  it("is read with the password gate locked: no password since hotfix 2", async () => {
+    db.state.answer = () => ({ data: [{ id: D2, value: SECRET }], error: null });
+    await expect(fetchSensitiveValues(VIEWER, ABC)).resolves.toEqual({ [D2]: SECRET });
   });
 
   it("returns the values by id once the gate is open", async () => {

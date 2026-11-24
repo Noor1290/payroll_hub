@@ -12,7 +12,6 @@ import {
 } from "@/lib/supabase/payrollSetups";
 import type { Viewer } from "@/lib/supabase/queries";
 import type { Membership } from "@/lib/supabase/schemas";
-import { isUnlocked, registerLockCleanup } from "@/lib/unlock";
 import {
   answerMeta,
   brnSchema,
@@ -102,12 +101,7 @@ export function forgetPayrollBatchAllowed(): void {
   permits.forget();
 }
 registerSessionCleanup(forgetPayrollBatchAllowed);
-registerLockCleanup(forgetPayrollBatchAllowed);
 
-const READ_LOCKED = refuse(
-  "locked",
-  "The dashboard is locked. Confirm your password there to unlock it, then ask again.",
-);
 const NOT_ALLOWED = refuse(
   "denied",
   "That company and those months were not allowed in the dashboard for this app. Ask again.",
@@ -228,7 +222,6 @@ export async function answerPayrollBatchRequest(
           // Asked again: the dialog may have been open for a while.
           const again = exchangeContextFor(params.data.brn);
           if ("ok" in again) return again;
-          if (!isUnlocked()) return READ_LOCKED;
           const still = await adminCompanies(again.viewer, again.membership.company.id);
           const stillBrns = new Set(still.map((one) => normaliseBrn(one.company.brn!)));
           const granted = (chosen as Membership[]).filter((one) =>
@@ -268,7 +261,6 @@ export async function answerPayrollBatchRequest(
     ) {
       return NOT_ALLOWED;
     }
-    if (!isUnlocked()) return READ_LOCKED;
     const target = (await adminCompanies(viewer, membership.company.id)).find(
       (one) => normaliseBrn(one.company.brn!) === wanted,
     );
@@ -280,8 +272,6 @@ export async function answerPayrollBatchRequest(
     }
     const row = await loadCompany(viewer, target, from, to);
     if ("ok" in row) return row as ResponseDataPayload;
-    // The gate may have locked while the database was answering: then nothing leaves.
-    if (!isUnlocked()) return READ_LOCKED;
     return {
       ok: true,
       dataType: PAYROLL_BATCH,
@@ -289,7 +279,6 @@ export async function answerPayrollBatchRequest(
       meta: meta(from === to ? from : undefined),
     };
   } catch (error) {
-    if (params.data.action === "load" && !isUnlocked()) return READ_LOCKED;
     return refusalFor(error, PAYROLL_MONTHS_MIGRATION);
   }
 }
